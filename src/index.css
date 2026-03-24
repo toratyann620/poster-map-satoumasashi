@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== モバイル最適化 ===== */
+
+html,
+body {
+  /* Pull-to-refresh / バウンス無効化 */
+  overscroll-behavior: none;
+  overflow: hidden;
+
+  /* ネイティブアプリ風: 高さを dvh で固定 */
+  height: 100dvh;
+  width: 100%;
+
+  margin: 0;
+  padding: 0;
+
+  /* ダブルタップズーム防止 */
+  touch-action: manipulation;
+
+  /* iOS SafariでのSafe Area対応 */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+#root {
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* ボタン・インタラクティブ要素のダブルタップズーム防止 */
+button,
+a,
+input,
+textarea,
+select,
+label,
+summary {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safariの入力フォーム自動ズーム防止 (font-size 16px以上を強制) */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+}
+
+/* =========================================
+   Custom Animations
+========================================= */
+@keyframes longpress-grow {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.3);
+  }
+}
+
+.longpress-scaling {
+  animation: longpress-grow 2s forwards;
+}
