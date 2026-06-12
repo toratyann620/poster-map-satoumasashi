@@ -48,3 +48,14 @@ export type FilterState = {
     types: string[];   // 複数選択、空配列 = すべて表示
     status: string[];  // 複数選択、空配列 = すべて表示
 };
+
+// 変更履歴ログ
+export interface ActivityLog {
+    id: string;
+    action: '追加' | '更新' | '削除';
+    posterId: string;
+    posterAddress: string;
+    changedBy: string;
+    changedAt: number;
+    diff?: string;  // 変更サマリー（例: "ステータス: 未設置→設置済"）
+}

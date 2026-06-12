@@ -5,6 +5,7 @@ import { SearchBar } from './components/SearchBar';
 import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
+import { PosterCountWidget } from './components/PosterCountWidget';
 import { usePosterData } from './hooks/usePosterData';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation } from 'lucide-react';
@@ -185,8 +186,9 @@ function App() {
   };
 
   const handleDelete = (id: string) => {
+    const targetPoster = posters.find(p => p.id === id);
     if (window.confirm('本当にこのポスター情報を削除しますか？')) {
-      deletePoster(id);
+      deletePoster(id, targetPoster?.address);
       setIsSheetOpen(false);
       setTimeout(() => {
         setSelectedPoster(null);
@@ -306,6 +308,9 @@ function App() {
               {userRole === 'admin' && currentView === 'map' && (
                 <CsvActions posters={posters} setPosters={setPosters} onImportSuccess={handleImportSuccess} />
               )}
+
+              {/* ポスター枚数ウィジェット（全ユーザー） */}
+              <PosterCountWidget posters={posters} />
             </>
           )}
 

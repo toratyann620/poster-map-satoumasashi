@@ -3,7 +3,7 @@ import { X, Trash2, Save, Edit2, Upload, Camera } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 
 interface PinBottomSheetProps {
@@ -147,26 +147,46 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
 
         setIsUploading(true);
         try {
-            const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true };
+            // Options for compression
+            const options = { 
+                maxSizeMB: 0.5, 
+                maxWidthOrHeight: 1200, 
+                useWebWorker: true,
+                initialQuality: 0.7 
+            };
+            
+            // Compress the image
             const compressedFile = await imageCompression(file, options);
-            const base64 = await imageCompression.getDataUrlFromFile(compressedFile);
-
-            const filename = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-            const storagePath = `posters/${poster?.id || 'new'}/${filename}`;
+            
+            // Generate a unique filename using timestamp and random string
+            const timestamp = Date.now();
+            const randomStr = Math.random().toString(36).substring(2, 9);
+            const filename = `${timestamp}_${randomStr}.jpg`;
+            
+            // Use a folder that doesn't rely solely on poster.id for new items
+            // If poster.id is missing, use 'uploads' folder as a fallback
+            const folderId = poster?.id || 'new_entry';
+            const storagePath = `posters/${folderId}/${filename}`;
             const storageRef = ref(storage, storagePath);
-            await uploadString(storageRef, base64, 'data_url');
-            const url = await getDownloadURL(storageRef);
+            
+            // Upload current blob (compressed file) directly instead of base64 string
+            const snapshot = await uploadBytes(storageRef, compressedFile);
+            const url = await getDownloadURL(snapshot.ref);
 
             setImageUrls(prev => {
                 const newArr = [...prev, url];
+                // For direct legacy support, always keep the first URL in imageUrl
                 if (newArr.length === 1) setImageUrl(url);
                 return newArr;
             });
         } catch (error) {
             console.error('Error uploading image:', error);
-            alert('画像のアップロードに失敗しました。');
+            // Alert user with specific message if possible
+            alert('画像のアップロードに失敗しました。ファイル形式や接続を確認してください。');
         } finally {
             setIsUploading(false);
+            // Reset input so the same file can be selected again if needed
+            event.target.value = '';
         }
     };
 

@@ -16,6 +16,28 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
+// アクティビティログをFirestoreに書き込むヘルパー
+const writeActivityLog = async (
+    action: '追加' | '更新' | '削除',
+    posterId: string,
+    posterAddress: string,
+    changedBy: string,
+    diff?: string
+) => {
+    try {
+        await addDoc(collection(db, 'activityLogs'), {
+            action,
+            posterId,
+            posterAddress,
+            changedBy,
+            changedAt: Date.now(),
+            diff: diff || '',
+        });
+    } catch (e) {
+        console.warn('Failed to write activity log:', e);
+    }
+};
+
 export const usePosterData = () => {
     const [posters, setPosters] = useState<PosterPin[]>([]);
     const [loading, setLoading] = useState(true);
@@ -148,7 +170,7 @@ export const usePosterData = () => {
     const addPoster = async (posterData: Partial<PosterPin>) => {
         try {
             const now = Date.now();
-            await addDoc(collection(db, 'posters'), {
+            const docRef = await addDoc(collection(db, 'posters'), {
                 ...posterData,
                 type: posterData.type || '佐藤まさし',
                 status: Array.isArray(posterData.status) ? posterData.status : ['設置済'],
@@ -157,6 +179,7 @@ export const usePosterData = () => {
                 createdBy: userName,
                 updatedBy: userName
             });
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName);
         } catch (e) {
             console.error('Error adding document: ', e);
             alert('データの保存に失敗しました。');
@@ -166,19 +189,28 @@ export const usePosterData = () => {
     const updatePoster = async (id: string, updates: Partial<PosterPin>) => {
         try {
             const posterRef = doc(db, 'posters', id);
+            // 差分サマリーを作成
+            const diffParts: string[] = [];
+            if (updates.status) diffParts.push(`ステータス: ${Array.isArray(updates.status) ? updates.status.join(',') : updates.status}`);
+            if (updates.address) diffParts.push(`住所: ${updates.address}`);
+            if (updates.type) diffParts.push(`種類: ${updates.type}`);
+            if (updates.quantity !== undefined) diffParts.push(`枚数: ${updates.quantity}枚`);
+            const diff = diffParts.length > 0 ? diffParts.join(' / ') : '内容を更新';
             await updateDoc(posterRef, {
                 ...updates,
                 updatedAt: Date.now(),
                 updatedBy: userName
             });
+            await writeActivityLog('更新', id, updates.address || '', userName, diff);
         } catch (e) {
             console.error('Error updating document: ', e);
             alert('データの更新に失敗しました。');
         }
     };
 
-    const deletePoster = async (id: string) => {
+    const deletePoster = async (id: string, address?: string) => {
         try {
+            await writeActivityLog('削除', id, address || '住所不明', userName);
             await deleteDoc(doc(db, 'posters', id));
         } catch (e) {
             console.error('Error deleting document: ', e);
