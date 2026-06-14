@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useUsers } from '../hooks/useUsers';
 import type { UserData } from '../hooks/useUsers';
 import { useActivityLogs } from '../hooks/useActivityLogs';
+import { usePosterData } from '../hooks/usePosterData';
 import { UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -19,6 +20,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const { users, loading: usersLoading, createUser, removeUser } = useUsers();
     const { logs, loading: logsLoading } = useActivityLogs(200);
+    const { userRole } = usePosterData();
     const [activeTab, setActiveTab] = useState<Tab>('users');
 
     const [name, setName] = useState('');
@@ -28,6 +30,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
+
+    // 一般ユーザーが何らかの方法でこの画面を表示しようとした場合の防御策
+    if (userRole !== 'admin') {
+        return (
+            <div className="absolute inset-0 bg-gray-50 dark:bg-zinc-950 z-50 flex flex-col items-center justify-center p-4">
+                <p className="text-red-500 font-bold text-lg mb-4">アクセス権限がありません。</p>
+                <button onClick={onClose} className="px-4 py-2 bg-indigo-600 text-white rounded-xl">
+                    マップに戻る
+                </button>
+            </div>
+        );
+    }
 
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -2,7 +2,8 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAnalytics } from "firebase/analytics";
+// Analytics は Firebase Installations API / Dynamic Config API を必要とするため、
+// GCP APIキー制限との競合を避けるため無効化しています。
 
 // Your web app's Firebase configuration
 export const firebaseConfig = {
@@ -32,5 +33,5 @@ try {
 export const db = firestoreDb;
 export const storage = getStorage(app);
 
-// Initialize Analytics if needed (and available in browser context)
-export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+// Analytics は無効化（Firebase Installations API / Dynamic Config API が GCP で制限されているため）
+export const analytics = null;

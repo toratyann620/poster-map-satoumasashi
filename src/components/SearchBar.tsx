@@ -21,38 +21,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
             }
             const places = window.google.maps.places as any;
 
-            // 新しいAPIが利用可能な場合は PlaceAutocompleteElement を使用
-            if (places.PlaceAutocompleteElement) {
-                const container = placeInputRef.current!.parentElement!;
-                const autocompleteEl = new places.PlaceAutocompleteElement({
-                    componentRestrictions: { country: 'jp' },
-                });
-                autocompleteEl.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:all;';
-                container.style.position = 'relative';
-                container.appendChild(autocompleteEl);
-                autocompleteEl.addEventListener('gmp-select', (event: any) => {
-                    const place = event.place;
-                    if (place) {
-                        place.fetchFields({ fields: ['location'] }).then(() => {
-                            if (place.location) {
-                                onPlaceSelect(place.location.lat(), place.location.lng());
-                            }
-                        });
-                    }
-                });
-            } else {
-                // フォールバック: 旧 Autocomplete API
-                const autocomplete = new places.Autocomplete(placeInputRef.current!, {
-                    fields: ['geometry', 'name'],
-                    componentRestrictions: { country: 'jp' }
-                });
-                autocomplete.addListener('place_changed', () => {
-                    const place = autocomplete.getPlace();
-                    if (place.geometry?.location) {
-                        onPlaceSelect(place.geometry.location.lat(), place.geometry.location.lng());
-                    }
-                });
-            }
+            // 安定した旧 Autocomplete API を使用して、既存の input 要素に直接アタッチする
+            const autocomplete = new places.Autocomplete(placeInputRef.current!, {
+                fields: ['geometry', 'name'],
+                componentRestrictions: { country: 'jp' }
+            });
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (place.geometry?.location) {
+                    onPlaceSelect(place.geometry.location.lat(), place.geometry.location.lng());
+                }
+            });
         };
         initAutocomplete();
     }, [onPlaceSelect]);

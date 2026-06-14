@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ログイン中のユーザーが管理者（users/{uid} の role が admin）かを判定するヘルパー
+    function isAdmin() {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ログイン中のユーザー本人かを判定するヘルパー
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // 1. ユーザー情報 (users)
+    match /users/{userId} {
+      // 閲覧: 本人、または管理者のみ許可
+      allow read: if isOwner(userId) || isAdmin();
+      // 作成・更新・削除: 管理者のみ許可（一般ユーザーは自分自身のロール変更を含めて一切不可）
+      allow write: if isAdmin();
+    }
+
+    // 2. ポスター情報 (posters)
+    match /posters/{posterId} {
+      // 閲覧・作成・更新・削除: ログイン済みの全ユーザーに許可
+      allow read, write: if request.auth != null;
+    }
+
+    // 3. 変更履歴 (activityLogs)
+    match /activityLogs/{logId} {
+      // 閲覧: 管理者のみ許可
+      allow read: if isAdmin();
+      // 作成: ログイン済みのユーザー全員に許可（ログの書き込みはポスター更新時に行われるため）
+      allow create: if request.auth != null;
+      // 更新・削除: 履歴の改ざんを防ぐため、管理者であっても不可
+      allow update, delete: if false;
+    }
+  }
+}
