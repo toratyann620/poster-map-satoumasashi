@@ -146,6 +146,154 @@ const ActivityBarChart: React.FC<{ data: DailyData[] }> = ({ data }) => {
 };
 
 // ──────────────────────────────────────────────────────────
+// 種類別ピン数推移 折れ線グラフ（SVG）
+// ──────────────────────────────────────────────────────────
+interface TypeTrendLineChartProps {
+    data: Array<{ date: string; [type: string]: string | number }>;
+    types: string[];
+}
+
+const TypeTrendLineChart: React.FC<TypeTrendLineChartProps> = ({ data, types }) => {
+    const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+    if (data.length === 0) return null;
+
+    const chartH = 180;
+    const chartW = 560;
+    const padLeft = 28;
+    const padRight = 10;
+    const padTop = 12;
+    const padBottom = 24;
+    const innerW = chartW - padLeft - padRight;
+    const innerH = chartH - padTop - padBottom;
+
+    const maxVal = Math.max(...data.flatMap(d => types.map(t => Number(d[t] || 0))), 1);
+    const labelInterval = Math.max(1, Math.ceil(data.length / 8));
+
+    // (x, y) 座標を計算
+    const getX = (i: number) => padLeft + (i / Math.max(data.length - 1, 1)) * innerW;
+    const getY = (val: number) => padTop + innerH - (val / maxVal) * innerH;
+
+    return (
+        <div
+            className="relative overflow-x-auto"
+            onMouseLeave={() => { setHoveredIdx(null); setMousePos(null); }}
+        >
+            <svg
+                width={Math.max(chartW, 560)}
+                height={chartH}
+                className="min-w-full"
+                onMouseMove={(e) => {
+                    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+                    const relX = e.clientX - rect.left - padLeft;
+                    const idx = Math.round((relX / innerW) * (data.length - 1));
+                    setHoveredIdx(Math.max(0, Math.min(data.length - 1, idx)));
+                    setMousePos({ x: e.clientX, y: e.clientY });
+                }}
+            >
+                {/* グリッド線 */}
+                {[0.25, 0.5, 0.75, 1.0].map(ratio => (
+                    <g key={ratio}>
+                        <line
+                            x1={padLeft} y1={padTop + innerH * (1 - ratio)}
+                            x2={chartW - padRight} y2={padTop + innerH * (1 - ratio)}
+                            stroke="currentColor" strokeOpacity={0.15} strokeDasharray="4,3"
+                            className="text-gray-400"
+                        />
+                        <text x={padLeft - 4} y={padTop + innerH * (1 - ratio) + 3} textAnchor="end" fontSize={9} className="fill-gray-400 dark:fill-gray-500">
+                            {Math.round(maxVal * ratio)}
+                        </text>
+                    </g>
+                ))}
+
+                {/* 各種類の折れ線 */}
+                {types.map(type => {
+                    const color = PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280';
+                    const points = data.map((d, i) =>
+                        `${getX(i)},${getY(Number(d[type] || 0))}`
+                    ).join(' ');
+
+                    return (
+                        <g key={type}>
+                            {/* 塗りつぶしエリア */}
+                            <polyline
+                                points={`${padLeft},${padTop + innerH} ${points} ${getX(data.length - 1)},${padTop + innerH}`}
+                                fill={color}
+                                fillOpacity={0.08}
+                                stroke="none"
+                            />
+                            {/* 折れ線 */}
+                            <polyline
+                                points={points}
+                                fill="none"
+                                stroke={color}
+                                strokeWidth={2}
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                            />
+                        </g>
+                    );
+                })}
+
+                {/* ホバー縦線 + 点 */}
+                {hoveredIdx !== null && (
+                    <g>
+                        <line
+                            x1={getX(hoveredIdx)} y1={padTop}
+                            x2={getX(hoveredIdx)} y2={padTop + innerH}
+                            stroke="currentColor" strokeOpacity={0.3}
+                            className="text-gray-500"
+                        />
+                        {types.map(type => {
+                            const color = PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280';
+                            const val = Number(data[hoveredIdx][type] || 0);
+                            return (
+                                <circle
+                                    key={type}
+                                    cx={getX(hoveredIdx)} cy={getY(val)}
+                                    r={4} fill={color} stroke="white" strokeWidth={1.5}
+                                />
+                            );
+                        })}
+                    </g>
+                )}
+
+                {/* X軸ラベル */}
+                {data.map((d, i) => i % labelInterval === 0 && (
+                    <text key={i} x={getX(i)} y={chartH - 4} textAnchor="middle" fontSize={9} className="fill-gray-400 dark:fill-gray-500">
+                        {d.date}
+                    </text>
+                ))}
+            </svg>
+
+            {/* ツールチップ */}
+            {hoveredIdx !== null && mousePos && (
+                <div
+                    className="fixed z-50 pointer-events-none bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-xl rounded-xl px-3.5 py-2.5 text-xs"
+                    style={{ left: mousePos.x + 14, top: mousePos.y - 30 - types.length * 18 }}
+                >
+                    <p className="font-semibold text-gray-700 dark:text-gray-200 mb-1.5">{data[hoveredIdx].date}</p>
+                    <div className="space-y-1">
+                        {types.map(type => (
+                            <div key={type} className="flex items-center gap-2">
+                                <span
+                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }}
+                                />
+                                <span className="text-gray-600 dark:text-gray-300">
+                                    {type}: <strong>{Number(data[hoveredIdx][type] || 0)}</strong>件
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ──────────────────────────────────────────────────────────
 // メインコンポーネント
 // ──────────────────────────────────────────────────────────
 export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
@@ -165,7 +313,35 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         });
     }, [posters, statusFilter]);
 
-    // ──── KPI 計算 ────
+    // ──── KPI 計算（佐藤まさし 専用） ────
+    const satoPosters = useMemo(() =>
+        posters.filter(p => p.type === '佐藤まさし'),
+    [posters]);
+
+    const satoFilteredPosters = useMemo(() => {
+        if (statusFilter.length === 0) return [];
+        if (statusFilter.length === POSTER_STATUS_OPTIONS.length) return satoPosters;
+        return satoPosters.filter(p => {
+            const statuses = Array.isArray(p.status) ? p.status : [p.status];
+            return statusFilter.some(s => statuses.includes(s));
+        });
+    }, [satoPosters, statusFilter]);
+
+    const satoInstalled = useMemo(() =>
+        satoPosters.filter(p => {
+            const statuses = Array.isArray(p.status) ? p.status : [p.status];
+            return statuses.includes('設置済');
+        }).length,
+    [satoPosters]);
+
+    const satoInstalledRate = satoPosters.length > 0
+        ? Math.round((satoInstalled / satoPosters.length) * 100)
+        : 0;
+
+    const satoNetChange = logs.filter(l => l.action === '追加' && l.posterType === '佐藤まさし').length
+        - logs.filter(l => l.action === '削除' && l.posterType === '佐藤まさし').length;
+
+    // ──── KPI 計算（全体） ────
     const installedPosters = useMemo(() =>
         posters.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
@@ -246,6 +422,62 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         return result;
     }, [logs, dateFromStr, dateToStr]);
 
+    // ──── 種類別 累積追加数（折れ線グラフ用） ────
+    // posterType が記録されているログ（B案以降）を使い、各種類の累積追加数を日別に計算
+    interface TypeTrendPoint {
+        date: string;
+        [type: string]: string | number;
+    }
+
+    const typeTrendData = useMemo((): TypeTrendPoint[] => {
+        // posterType が記録されているログのみ使用
+        const logsWithType = logs.filter(l => l.posterType);
+        if (logsWithType.length === 0) return [];
+
+        // 登場する種類を抽出（上位10種類に制限）
+        const typeCounts: Record<string, number> = {};
+        logsWithType.forEach(l => {
+            if (l.action === '追加') typeCounts[l.posterType!] = (typeCounts[l.posterType!] || 0) + 1;
+        });
+        const activeTypes = Object.entries(typeCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([t]) => t);
+
+        if (activeTypes.length === 0) return [];
+
+        const result: TypeTrendPoint[] = [];
+        const cursor = new Date(dateFromStr + 'T00:00:00');
+        const end = new Date(dateToStr + 'T23:59:59');
+        const cumulative: Record<string, number> = {};
+        activeTypes.forEach(t => { cumulative[t] = 0; });
+
+        while (cursor <= end) {
+            const dayStart = new Date(cursor).setHours(0, 0, 0, 0);
+            const dayEnd = new Date(cursor).setHours(23, 59, 59, 999);
+            const dayLogs = logsWithType.filter(l => l.changedAt >= dayStart && l.changedAt <= dayEnd);
+
+            dayLogs.forEach(l => {
+                if (!l.posterType || !activeTypes.includes(l.posterType)) return;
+                if (l.action === '追加') cumulative[l.posterType] = (cumulative[l.posterType] || 0) + 1;
+                if (l.action === '削除') cumulative[l.posterType] = Math.max(0, (cumulative[l.posterType] || 0) - 1);
+            });
+
+            const point: TypeTrendPoint = { date: `${cursor.getMonth() + 1}/${cursor.getDate()}` };
+            activeTypes.forEach(t => { point[t] = cumulative[t]; });
+            result.push(point);
+            cursor.setDate(cursor.getDate() + 1);
+        }
+        return result;
+    }, [logs, dateFromStr, dateToStr]);
+
+    // 折れ線グラフで描画するアクティブな種類
+    const trendTypes = useMemo(() => {
+        if (typeTrendData.length === 0) return [];
+        const sample = typeTrendData[typeTrendData.length - 1];
+        return Object.keys(sample).filter(k => k !== 'date');
+    }, [typeTrendData]);
+
     // ──── 時間差フォーマット ────
     const formatRelative = (ts: number) => {
         const diff = Date.now() - ts;
@@ -320,39 +552,39 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                     {/* ───── KPI カード ───── */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-                        {/* 総ピン数 */}
+                        {/* 佐藤まさし ポスター数 */}
                         <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">総ピン数</span>
+                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">佐藤まさし ピン数</span>
                                 <MapPin className="w-4 h-4 text-indigo-300" />
                             </div>
-                            <div className="text-3xl font-bold">{filteredPosters.length.toLocaleString()}</div>
-                            <div className="text-xs text-indigo-200 mt-0.5">全体: {posters.length.toLocaleString()}件</div>
+                            <div className="text-3xl font-bold">{satoFilteredPosters.length.toLocaleString()}</div>
+                            <div className="text-xs text-indigo-200 mt-0.5">全体: {satoPosters.length.toLocaleString()}件</div>
                             <div className="mt-2 flex items-center gap-1 text-sm">
-                                {netChange >= 0 ? (
-                                    <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{netChange}</span></>
+                                {satoNetChange >= 0 ? (
+                                    <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{satoNetChange}</span></>
                                 ) : (
-                                    <><TrendingDown className="w-3.5 h-3.5 text-red-300" /><span className="text-red-300 font-medium">{netChange}</span></>
+                                    <><TrendingDown className="w-3.5 h-3.5 text-red-300" /><span className="text-red-300 font-medium">{satoNetChange}</span></>
                                 )}
                                 <span className="text-indigo-300 text-xs">期間純増減</span>
                             </div>
                         </div>
 
-                        {/* 設置済み率 */}
+                        {/* 佐藤まさし 設置済み率 */}
                         <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">設置済み率</span>
+                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">佐藤まさし 設置率</span>
                                 <CheckCircle className="w-4 h-4 text-emerald-300" />
                             </div>
-                            <div className="text-3xl font-bold">{installedRate}%</div>
+                            <div className="text-3xl font-bold">{satoInstalledRate}%</div>
                             <div className="mt-2 bg-emerald-600/50 rounded-full h-1.5">
                                 <div
                                     className="bg-white rounded-full h-1.5 transition-all duration-700"
-                                    style={{ width: `${installedRate}%` }}
+                                    style={{ width: `${satoInstalledRate}%` }}
                                 />
                             </div>
                             <div className="mt-1.5 text-xs text-emerald-100">
-                                設置済: {installedPosters.toLocaleString()} / {posters.length.toLocaleString()}枚
+                                設置済: {satoInstalled.toLocaleString()} / {satoPosters.length.toLocaleString()}枚
                             </div>
                         </div>
 
@@ -389,6 +621,34 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                                 </div>
                             )}
                         </div>
+                    </div>
+
+                    {/* ───── 種類別ピン数 折れ線グラフ ───── */}
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
+                                種類別 ピン数推移（累積追加数）
+                            </h3>
+                            {trendTypes.length > 0 && (
+                                <div className="flex flex-wrap gap-3 text-xs">
+                                    {trendTypes.map(type => (
+                                        <span key={type} className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                            <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }} />
+                                            {type}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {trendTypes.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400 dark:text-gray-500 text-sm">
+                                <span className="text-2xl">📊</span>
+                                <p>まだデータがありません</p>
+                                <p className="text-xs text-center">ポスターの追加・削除操作を行うと、ここに種類別のピン数推移が表示されます（B案ログから集計）</p>
+                            </div>
+                        ) : (
+                            <TypeTrendLineChart data={typeTrendData} types={trendTypes} />
+                        )}
                     </div>
 
                     {/* ───── 日別アクション推移グラフ ───── */}

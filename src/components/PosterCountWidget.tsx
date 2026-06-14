@@ -1,26 +1,44 @@
 import React, { useMemo } from 'react';
-import type { PosterPin } from '../types';
+import type { PosterPin, ActivityLog } from '../types';
 import { TrendingUp, TrendingDown, Minus, FileText } from 'lucide-react';
 
 interface PosterCountWidgetProps {
     posters: PosterPin[];
+    activityLogs?: ActivityLog[];
 }
 
-export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters }) => {
+export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters, activityLogs = [] }) => {
     const { totalCount, weeklyDiff } = useMemo(() => {
+        // 「佐藤まさし」ポスターのみ集計
+        const satoPosters = posters.filter(p => p.type === '佐藤まさし');
+
+        // 現在の総枚数
+        const total = satoPosters.reduce((sum, p) => sum + (p.quantity || 1), 0);
+
+        // 過去7日間の活動ログから「佐藤まさし」の純増減枚数を集計
         const now = Date.now();
         const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-        // 現在の総枚数
-        const total = posters.reduce((sum, p) => sum + (p.quantity || 1), 0);
+        const parseQuantityFromDiff = (diff: string | undefined): number => {
+            if (!diff) return 1;
+            const match = diff.match(/枚数:\s*(\d+)枚/);
+            return match ? parseInt(match[1], 10) : 1;
+        };
 
-        // 1週間以内に追加されたポスターの枚数（先週比 = 増加分）
-        const newThisWeek = posters
-            .filter(p => p.createdAt >= oneWeekAgo)
-            .reduce((sum, p) => sum + (p.quantity || 1), 0);
+        let satoWeeklyDiff = 0;
+        activityLogs.forEach(log => {
+            if (log.changedAt >= oneWeekAgo && log.posterType === '佐藤まさし') {
+                const qty = parseQuantityFromDiff(log.diff);
+                if (log.action === '追加') {
+                    satoWeeklyDiff += qty;
+                } else if (log.action === '削除') {
+                    satoWeeklyDiff -= qty;
+                }
+            }
+        });
 
-        return { totalCount: total, weeklyDiff: newThisWeek };
-    }, [posters]);
+        return { totalCount: total, weeklyDiff: satoWeeklyDiff };
+    }, [posters, activityLogs]);
 
     const TrendIcon = weeklyDiff > 0 ? TrendingUp : weeklyDiff < 0 ? TrendingDown : Minus;
     const trendColor =
@@ -48,7 +66,7 @@ export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters })
                 {/* テキスト */}
                 <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-none mb-0.5">
-                        掲示中のポスター
+                        佐藤まさし ポスター
                     </p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">
                         {totalCount.toLocaleString()}

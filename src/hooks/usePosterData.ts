@@ -181,7 +181,8 @@ export const usePosterData = () => {
                 createdBy: userName,
                 updatedBy: userName
             });
-            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, undefined, posterData.type || '');
+            const diff = `枚数: ${posterData.quantity || 1}枚`;
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, diff, posterData.type || '');
         } catch (e) {
             console.error('Error adding document: ', e);
             alert('データの保存に失敗しました。');
@@ -218,7 +219,8 @@ export const usePosterData = () => {
             // 削除前に種類情報を state から取得（削除後は参照できないため）
             const currentPoster = posters.find(p => p.id === id);
             const posterType = currentPoster?.type || '';
-            await writeActivityLog('削除', id, address || '住所不明', userName, undefined, posterType);
+            const diff = `枚数: ${currentPoster?.quantity || 1}枚`;
+            await writeActivityLog('削除', id, address || '住所不明', userName, diff, posterType);
             await deleteDoc(doc(db, 'posters', id));
         } catch (e) {
             console.error('Error deleting document: ', e);

@@ -7,6 +7,7 @@ import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { usePosterData } from './hooks/usePosterData';
+import { useActivityLogs } from './hooks/useActivityLogs';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -35,6 +36,8 @@ function App() {
     posters,
     userRole
   } = usePosterData();
+
+  const { logs: activityLogs } = useActivityLogs(300);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedPoster, setSelectedPoster] = useState<Partial<PosterPin> | null>(null);
@@ -310,7 +313,7 @@ function App() {
               )}
 
               {/* ポスター枚数ウィジェット（全ユーザー） */}
-              <PosterCountWidget posters={posters} />
+              <PosterCountWidget posters={posters} activityLogs={activityLogs} />
             </>
           )}
 
