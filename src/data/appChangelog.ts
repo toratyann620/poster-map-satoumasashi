@@ -9,6 +9,18 @@ export interface ChangelogItem {
 export const APP_CHANGELOG: ChangelogItem[] = [
     {
         date: '2026-06-14',
+        title: 'ダッシュボードおよびユーザー分析の枚数ベース集計化',
+        author: 'Antigravity',
+        description: 'ダッシュボードおよびユーザー分析のすべての集計指標（グラフ、テーブル、ランキング、サマリー等）について、ピン数（箇所数）ではなく、ポスター枚数（各ピンの quantity の合計）を基準とする仕様に変更しました。',
+        details: [
+            'ダッシュボード内の「佐藤まさし ポスター枚数」「佐藤まさし 設置率」「期間アクション数」「未設置数」をすべて枚数ベースに修正。',
+            '種類別サマリーテーブルの現在数、追加・削除・純増減、および日別推移グラフ (ActivityBarChart), 累積推移グラフ (TypeTrendLineChart) をすべて枚数ベースの集計に変更。',
+            'ユーザー分析内の期間総アクション数、平均アクション数、ユーザーランキング、登録ポスター数をポスター枚数集計に修正。',
+            'アプリ仕様書 (appSpecification.ts) および改修ログ (appChangelog.ts) に本改修を反映。'
+        ]
+    },
+    {
+        date: '2026-06-14',
         title: '佐藤まさしポスター枚数ウィジェットの増減算出ロジックの正確化',
         author: 'Antigravity',
         description: 'ウィジェットに表示される「週間の増減数」について、活動ログ (activityLogs) から過去7日間の「追加」「削除」アクションを集計して純増減を計算するように変更しました。',

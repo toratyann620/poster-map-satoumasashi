@@ -21,6 +21,12 @@ const getDefault30DaysAgo = () => {
     return d;
 };
 
+const parseQuantityFromDiff = (diff: string | undefined): number => {
+    if (!diff) return 1;
+    const match = diff.match(/枚数:\s*(\d+)枚/);
+    return match ? parseInt(match[1], 10) : 1;
+};
+
 // ──────────────────────────────────────────────────────────
 // カスタム SVG バーチャート
 // ──────────────────────────────────────────────────────────
@@ -314,9 +320,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     }, [posters, statusFilter]);
 
     // ──── KPI 計算（佐藤まさし 専用） ────
+    // ──── KPI 計算（佐藤まさし 専用） ────
     const satoPosters = useMemo(() =>
         posters.filter(p => p.type === '佐藤まさし'),
     [posters]);
+
+    const satoTotalQty = useMemo(() =>
+        satoPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [satoPosters]);
 
     const satoFilteredPosters = useMemo(() => {
         if (statusFilter.length === 0) return [];
@@ -327,43 +338,72 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         });
     }, [satoPosters, statusFilter]);
 
-    const satoInstalled = useMemo(() =>
+    const satoFilteredQty = useMemo(() =>
+        satoFilteredPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [satoFilteredPosters]);
+
+    const satoInstalledQty = useMemo(() =>
         satoPosters.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('設置済');
-        }).length,
+        }).reduce((sum, p) => sum + (p.quantity || 1), 0),
     [satoPosters]);
 
-    const satoInstalledRate = satoPosters.length > 0
-        ? Math.round((satoInstalled / satoPosters.length) * 100)
+    const satoInstalledRate = satoTotalQty > 0
+        ? Math.round((satoInstalledQty / satoTotalQty) * 100)
         : 0;
 
-    const satoNetChange = logs.filter(l => l.action === '追加' && l.posterType === '佐藤まさし').length
-        - logs.filter(l => l.action === '削除' && l.posterType === '佐藤まさし').length;
+    const satoNetChange = useMemo(() => {
+        let change = 0;
+        logs.forEach(l => {
+            if (l.posterType === '佐藤まさし') {
+                const qty = parseQuantityFromDiff(l.diff);
+                if (l.action === '追加') change += qty;
+                if (l.action === '削除') change -= qty;
+            }
+        });
+        return change;
+    }, [logs]);
 
     // ──── KPI 計算（全体） ────
-    const installedPosters = useMemo(() =>
+    const totalPostersQty = useMemo(() =>
+        posters.reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [posters]);
+
+    const installedPostersQty = useMemo(() =>
         posters.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('設置済');
-        }).length,
+        }).reduce((sum, p) => sum + (p.quantity || 1), 0),
     [posters]);
 
-    const uninstalledCount = useMemo(() =>
+    const uninstalledCountQty = useMemo(() =>
         posters.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('未設置');
-        }).length,
+        }).reduce((sum, p) => sum + (p.quantity || 1), 0),
     [posters]);
 
-    const installedRate = posters.length > 0
-        ? Math.round((installedPosters / posters.length) * 100)
+    const installedRate = totalPostersQty > 0
+        ? Math.round((installedPostersQty / totalPostersQty) * 100)
         : 0;
 
-    const periodAdded = logs.filter(l => l.action === '追加').length;
-    const periodUpdated = logs.filter(l => l.action === '更新').length;
-    const periodDeleted = logs.filter(l => l.action === '削除').length;
-    const netChange = periodAdded - periodDeleted;
+    const periodAddedQty = useMemo(() => {
+        return logs.filter(l => l.action === '追加')
+            .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+    }, [logs]);
+
+    const periodUpdatedQty = useMemo(() => {
+        return logs.filter(l => l.action === '更新')
+            .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+    }, [logs]);
+
+    const periodDeletedQty = useMemo(() => {
+        return logs.filter(l => l.action === '削除')
+            .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+    }, [logs]);
+
+    const netChange = periodAddedQty - periodDeletedQty;
     const lastActionTs = logs.length > 0 ? logs[0].changedAt : null;
 
     // ──── 最もアクティブな曜日 ────
@@ -380,19 +420,33 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         POSTER_PERSONS.map(type => {
             const allOfType = posters.filter(p => p.type === type);
             const filteredOfType = filteredPosters.filter(p => p.type === type);
-            const installedOfType = allOfType.filter(p => {
+
+            const currentAllQty = allOfType.reduce((sum, p) => sum + (p.quantity || 1), 0);
+            const currentQty = filteredOfType.reduce((sum, p) => sum + (p.quantity || 1), 0);
+
+            const installedOfTypeQty = allOfType.filter(p => {
                 const statuses = Array.isArray(p.status) ? p.status : [p.status];
                 return statuses.includes('設置済');
-            }).length;
-            const installRate = allOfType.length > 0
-                ? Math.round((installedOfType / allOfType.length) * 100)
+            }).reduce((sum, p) => sum + (p.quantity || 1), 0);
+
+            const installRate = currentAllQty > 0
+                ? Math.round((installedOfTypeQty / currentAllQty) * 100)
                 : 0;
-            const added = logs.filter(l => l.action === '追加' && l.posterType === type).length;
-            const deleted = logs.filter(l => l.action === '削除' && l.posterType === type).length;
+
+            let added = 0;
+            let deleted = 0;
+            logs.forEach(l => {
+                if (l.posterType === type) {
+                    const qty = parseQuantityFromDiff(l.diff);
+                    if (l.action === '追加') added += qty;
+                    if (l.action === '削除') deleted += qty;
+                }
+            });
+
             return {
                 type,
-                current: filteredOfType.length,
-                currentAll: allOfType.length,
+                current: currentQty,
+                currentAll: currentAllQty,
                 installRate,
                 added,
                 deleted,
@@ -411,11 +465,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
             const dayStart = new Date(cursor).setHours(0, 0, 0, 0);
             const dayEnd = new Date(cursor).setHours(23, 59, 59, 999);
             const dayLogs = logs.filter(l => l.changedAt >= dayStart && l.changedAt <= dayEnd);
+
+            let added = 0;
+            let updated = 0;
+            let deleted = 0;
+            dayLogs.forEach(l => {
+                const qty = parseQuantityFromDiff(l.diff);
+                if (l.action === '追加') added += qty;
+                if (l.action === '更新') updated += qty;
+                if (l.action === '削除') deleted += qty;
+            });
+
             result.push({
                 date: `${cursor.getMonth() + 1}/${cursor.getDate()}`,
-                added: dayLogs.filter(l => l.action === '追加').length,
-                updated: dayLogs.filter(l => l.action === '更新').length,
-                deleted: dayLogs.filter(l => l.action === '削除').length,
+                added,
+                updated,
+                deleted,
             });
             cursor.setDate(cursor.getDate() + 1);
         }
@@ -423,21 +488,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     }, [logs, dateFromStr, dateToStr]);
 
     // ──── 種類別 累積追加数（折れ線グラフ用） ────
-    // posterType が記録されているログ（B案以降）を使い、各種類の累積追加数を日別に計算
     interface TypeTrendPoint {
         date: string;
         [type: string]: string | number;
     }
 
     const typeTrendData = useMemo((): TypeTrendPoint[] => {
-        // posterType が記録されているログのみ使用
         const logsWithType = logs.filter(l => l.posterType);
         if (logsWithType.length === 0) return [];
 
-        // 登場する種類を抽出（上位10種類に制限）
         const typeCounts: Record<string, number> = {};
         logsWithType.forEach(l => {
-            if (l.action === '追加') typeCounts[l.posterType!] = (typeCounts[l.posterType!] || 0) + 1;
+            if (l.action === '追加') {
+                const qty = parseQuantityFromDiff(l.diff);
+                typeCounts[l.posterType!] = (typeCounts[l.posterType!] || 0) + qty;
+            }
         });
         const activeTypes = Object.entries(typeCounts)
             .sort((a, b) => b[1] - a[1])
@@ -459,8 +524,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
 
             dayLogs.forEach(l => {
                 if (!l.posterType || !activeTypes.includes(l.posterType)) return;
-                if (l.action === '追加') cumulative[l.posterType] = (cumulative[l.posterType] || 0) + 1;
-                if (l.action === '削除') cumulative[l.posterType] = Math.max(0, (cumulative[l.posterType] || 0) - 1);
+                const qty = parseQuantityFromDiff(l.diff);
+                if (l.action === '追加') cumulative[l.posterType] = (cumulative[l.posterType] || 0) + qty;
+                if (l.action === '削除') cumulative[l.posterType] = Math.max(0, (cumulative[l.posterType] || 0) - qty);
             });
 
             const point: TypeTrendPoint = { date: `${cursor.getMonth() + 1}/${cursor.getDate()}` };
@@ -555,11 +621,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                         {/* 佐藤まさし ポスター数 */}
                         <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">佐藤まさし ピン数</span>
+                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">佐藤まさし ポスター枚数</span>
                                 <MapPin className="w-4 h-4 text-indigo-300" />
                             </div>
-                            <div className="text-3xl font-bold">{satoFilteredPosters.length.toLocaleString()}</div>
-                            <div className="text-xs text-indigo-200 mt-0.5">全体: {satoPosters.length.toLocaleString()}件</div>
+                            <div className="text-3xl font-bold">{satoFilteredQty.toLocaleString()}</div>
+                            <div className="text-xs text-indigo-200 mt-0.5">全体: {satoTotalQty.toLocaleString()}枚</div>
                             <div className="mt-2 flex items-center gap-1 text-sm">
                                 {satoNetChange >= 0 ? (
                                     <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{satoNetChange}</span></>
@@ -584,7 +650,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                                 />
                             </div>
                             <div className="mt-1.5 text-xs text-emerald-100">
-                                設置済: {satoInstalled.toLocaleString()} / {satoPosters.length.toLocaleString()}枚
+                                設置済: {satoInstalledQty.toLocaleString()} / {satoTotalQty.toLocaleString()}枚
                             </div>
                         </div>
 
@@ -596,9 +662,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                             </div>
                             <div className="text-3xl font-bold">{logs.length.toLocaleString()}</div>
                             <div className="mt-1.5 flex gap-2.5 text-xs text-violet-200">
-                                <span className="text-emerald-300 font-medium">+{periodAdded}</span>
-                                <span className="text-blue-300">○{periodUpdated}</span>
-                                <span className="text-red-300">−{periodDeleted}</span>
+                                <span className="text-emerald-300 font-medium">+{periodAddedQty}</span>
+                                <span className="text-blue-300">○{periodUpdatedQty}</span>
+                                <span className="text-red-300">−{periodDeletedQty}</span>
                             </div>
                         </div>
 
@@ -614,10 +680,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                             {mostActiveDow && (
                                 <div className="mt-1 text-xs text-amber-200">最活発: <strong>{mostActiveDow}曜日</strong></div>
                             )}
-                            {uninstalledCount > 0 && (
+                            {uninstalledCountQty > 0 && (
                                 <div className="mt-2 flex items-center gap-1 bg-amber-600/40 rounded-lg px-2 py-0.5 text-xs">
                                     <AlertTriangle className="w-3 h-3" />
-                                    未設置: {uninstalledCount}件
+                                    未設置: {uninstalledCountQty}枚
                                 </div>
                             )}
                         </div>

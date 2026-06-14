@@ -21,6 +21,12 @@ const getDefault30DaysAgo = () => {
     return d;
 };
 
+const parseQuantityFromDiff = (diff: string | undefined): number => {
+    if (!diff) return 1;
+    const match = diff.match(/枚数:\s*(\d+)枚/);
+    return match ? parseInt(match[1], 10) : 1;
+};
+
 const ACTION_BADGE: Record<string, string> = {
     '追加': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
     '更新': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
@@ -71,23 +77,24 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
 
         return [...nameSet].map(name => {
             const userLogs = logs.filter(l => l.changedBy === name);
-            const added = userLogs.filter(l => l.action === '追加').length;
-            const updated = userLogs.filter(l => l.action === '更新').length;
-            const deleted = userLogs.filter(l => l.action === '削除').length;
+            const added = userLogs.filter(l => l.action === '追加').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            const updated = userLogs.filter(l => l.action === '更新').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            const deleted = userLogs.filter(l => l.action === '削除').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
 
-            // 種類別の追加数（posterType が記録されているログのみ）
+            // 種類別の追加数（posterType が記録されているログのみ、枚数で集計）
             const byType: Record<string, number> = {};
             userLogs
                 .filter(l => l.action === '追加' && l.posterType)
                 .forEach(l => {
-                    byType[l.posterType!] = (byType[l.posterType!] || 0) + 1;
+                    const qty = parseQuantityFromDiff(l.diff);
+                    byType[l.posterType!] = (byType[l.posterType!] || 0) + qty;
                 });
             const topType = Object.entries(byType).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-            const ownedPosters = posters.filter(p => p.createdBy === name).length;
+            const ownedPosters = posters.filter(p => p.createdBy === name).reduce((sum, p) => sum + (p.quantity || 1), 0);
             const lastActivity = userLogs.length > 0 ? userLogs[0].changedAt : null;
 
-            return { name, added, updated, deleted, totalActions: userLogs.length, ownedPosters, lastActivity, topType };
+            return { name, added, updated, deleted, totalActions: added + updated + deleted, ownedPosters, lastActivity, topType };
         }).sort((a, b) => b.totalActions - a.totalActions);
     }, [logs, users, posters]);
 
@@ -163,8 +170,8 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                             <div>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">期間総アクション</p>
                                 <p className="text-xl font-bold text-gray-900 dark:text-white">
-                                    {logs.length.toLocaleString()}
-                                    <span className="text-sm font-normal text-gray-400 ml-1">件</span>
+                                    {logs.reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0).toLocaleString()}
+                                    <span className="text-sm font-normal text-gray-400 ml-1">枚分</span>
                                 </p>
                             </div>
                         </div>
@@ -176,9 +183,9 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                                 <p className="text-xs text-gray-500 dark:text-gray-400">平均アクション/人</p>
                                 <p className="text-xl font-bold text-gray-900 dark:text-white">
                                     {userStats.filter(u => u.totalActions > 0).length > 0
-                                        ? Math.round(logs.length / userStats.filter(u => u.totalActions > 0).length)
+                                        ? Math.round(logs.reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0) / userStats.filter(u => u.totalActions > 0).length)
                                         : 0}
-                                    <span className="text-sm font-normal text-gray-400 ml-1">件</span>
+                                    <span className="text-sm font-normal text-gray-400 ml-1">枚分</span>
                                 </p>
                             </div>
                         </div>
@@ -226,7 +233,7 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                                                 <div className="flex items-center justify-between mb-1.5">
                                                     <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">{u.name}</span>
                                                     <span className="text-sm font-bold text-gray-700 dark:text-gray-200 ml-2 flex-shrink-0">
-                                                        {u.totalActions}<span className="text-xs font-normal text-gray-400 ml-0.5">件</span>
+                                                        {u.totalActions}<span className="text-xs font-normal text-gray-400 ml-0.5">枚分</span>
                                                     </span>
                                                 </div>
 
@@ -241,16 +248,16 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                                                 {/* 詳細バッジ群 */}
                                                 <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                                                     {u.added > 0 && (
-                                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">+{u.added} 追加</span>
+                                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">+{u.added}枚 追加</span>
                                                     )}
                                                     {u.updated > 0 && (
-                                                        <span className="text-blue-600 dark:text-blue-400 font-medium">○{u.updated} 更新</span>
+                                                        <span className="text-blue-600 dark:text-blue-400 font-medium">○{u.updated}枚 更新</span>
                                                     )}
                                                     {u.deleted > 0 && (
-                                                        <span className="text-red-500 dark:text-red-400 font-medium">−{u.deleted} 削除</span>
+                                                        <span className="text-red-500 dark:text-red-400 font-medium">−{u.deleted}枚 削除</span>
                                                     )}
                                                     {u.ownedPosters > 0 && (
-                                                        <span className="ml-auto text-gray-400">登録ピン {u.ownedPosters}件</span>
+                                                        <span className="ml-auto text-gray-400">登録ポスター {u.ownedPosters}枚</span>
                                                     )}
                                                     {u.topType && (
                                                         <span className="flex items-center gap-1">
