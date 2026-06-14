@@ -23,6 +23,7 @@ export const useActivityLogs = (maxCount = 100) => {
                     action: d.action || '更新',
                     posterId: d.posterId || '',
                     posterAddress: d.posterAddress || '',
+                    posterType: d.posterType || '',
                     changedBy: d.changedBy || '',
                     changedAt: d.changedAt || 0,
                     diff: d.diff || '',

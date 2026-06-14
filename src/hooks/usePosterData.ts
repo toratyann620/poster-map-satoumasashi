@@ -22,7 +22,8 @@ const writeActivityLog = async (
     posterId: string,
     posterAddress: string,
     changedBy: string,
-    diff?: string
+    diff?: string,
+    posterType?: string  // B案: 種類情報を含める（ダッシュボード集計用）
 ) => {
     try {
         await addDoc(collection(db, 'activityLogs'), {
@@ -32,6 +33,7 @@ const writeActivityLog = async (
             changedBy,
             changedAt: Date.now(),
             diff: diff || '',
+            posterType: posterType || '',
         });
     } catch (e) {
         console.warn('Failed to write activity log:', e);
@@ -179,7 +181,7 @@ export const usePosterData = () => {
                 createdBy: userName,
                 updatedBy: userName
             });
-            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName);
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, undefined, posterData.type || '');
         } catch (e) {
             console.error('Error adding document: ', e);
             alert('データの保存に失敗しました。');
@@ -189,6 +191,9 @@ export const usePosterData = () => {
     const updatePoster = async (id: string, updates: Partial<PosterPin>) => {
         try {
             const posterRef = doc(db, 'posters', id);
+            // 種類情報: updates に含まれる場合はそれを優先、なければ現在の state から取得
+            const currentPoster = posters.find(p => p.id === id);
+            const posterType = updates.type || currentPoster?.type || '';
             // 差分サマリーを作成
             const diffParts: string[] = [];
             if (updates.status) diffParts.push(`ステータス: ${Array.isArray(updates.status) ? updates.status.join(',') : updates.status}`);
@@ -201,7 +206,7 @@ export const usePosterData = () => {
                 updatedAt: Date.now(),
                 updatedBy: userName
             });
-            await writeActivityLog('更新', id, updates.address || '', userName, diff);
+            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType);
         } catch (e) {
             console.error('Error updating document: ', e);
             alert('データの更新に失敗しました。');
@@ -210,7 +215,10 @@ export const usePosterData = () => {
 
     const deletePoster = async (id: string, address?: string) => {
         try {
-            await writeActivityLog('削除', id, address || '住所不明', userName);
+            // 削除前に種類情報を state から取得（削除後は参照できないため）
+            const currentPoster = posters.find(p => p.id === id);
+            const posterType = currentPoster?.type || '';
+            await writeActivityLog('削除', id, address || '住所不明', userName, undefined, posterType);
             await deleteDoc(doc(db, 'posters', id));
         } catch (e) {
             console.error('Error deleting document: ', e);

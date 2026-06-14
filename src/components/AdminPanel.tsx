@@ -3,13 +3,18 @@ import { useUsers } from '../hooks/useUsers';
 import type { UserData } from '../hooks/useUsers';
 import { useActivityLogs } from '../hooks/useActivityLogs';
 import { usePosterData } from '../hooks/usePosterData';
-import { UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle } from 'lucide-react';
+import { DashboardTab } from './DashboardTab';
+import { UserAnalyticsTab } from './UserAnalyticsTab';
+import {
+    UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle,
+    LayoutDashboard, Users,
+} from 'lucide-react';
 
 interface AdminPanelProps {
     onClose: () => void;
 }
 
-type Tab = 'users' | 'history';
+type Tab = 'users' | 'history' | 'dashboard' | 'analytics';
 
 const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; Icon: React.ElementType }> = {
     '追加': { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-400', label: '追加', Icon: PlusCircle },
@@ -20,8 +25,8 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const { users, loading: usersLoading, createUser, removeUser } = useUsers();
     const { logs, loading: logsLoading } = useActivityLogs(200);
-    const { userRole } = usePosterData();
-    const [activeTab, setActiveTab] = useState<Tab>('users');
+    const { userRole, posters } = usePosterData();
+    const [activeTab, setActiveTab] = useState<Tab>('dashboard');
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -103,10 +108,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
             </div>
 
             {/* タブ */}
-            <div className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-4 flex gap-1 shrink-0">
+            <div className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 px-4 flex gap-1 shrink-0 overflow-x-auto">
+                <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                        activeTab === 'dashboard'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <LayoutDashboard className="w-4 h-4" />
+                    ダッシュボード
+                </button>
+                <button
+                    onClick={() => setActiveTab('analytics')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                        activeTab === 'analytics'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <Users className="w-4 h-4" />
+                    ユーザー分析
+                </button>
                 <button
                     onClick={() => setActiveTab('users')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                         activeTab === 'users'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -117,7 +144,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </button>
                 <button
                     onClick={() => setActiveTab('history')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                         activeTab === 'history'
                             ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -133,7 +160,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
+
+                {/* ===== ダッシュボードタブ ===== */}
+                {activeTab === 'dashboard' && (
+                    <DashboardTab posters={posters} />
+                )}
+
+                {/* ===== ユーザー分析タブ ===== */}
+                {activeTab === 'analytics' && (
+                    <UserAnalyticsTab posters={posters} users={users} />
+                )}
 
                 {/* ===== ユーザー管理タブ ===== */}
                 {activeTab === 'users' && (

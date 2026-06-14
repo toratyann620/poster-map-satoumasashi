@@ -55,6 +55,7 @@ export interface ActivityLog {
     action: '追加' | '更新' | '削除';
     posterId: string;
     posterAddress: string;
+    posterType?: string; // ポスターの種類（例: 佐藤まさし）※B案: 今後のログから含まれる
     changedBy: string;
     changedAt: number;
     diff?: string;  // 変更サマリー（例: "ステータス: 未設置→設置済"）
