@@ -1,16 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { Search, Filter, MapPin, X } from 'lucide-react';
 import type { FilterState } from '../types';
-import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
+import { POSTER_STATUS_OPTIONS } from '../types';
 
 interface SearchBarProps {
     filter: FilterState;
     setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
     onPlaceSelect: (lat: number, lng: number, name?: string, address?: string, url?: string) => void;
     allTags?: string[];
+    pinTypes?: { name: string, color: string }[];
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect, allTags = [] }) => {
+export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect, allTags = [], pinTypes = [] }) => {
     const placeInputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
@@ -180,9 +181,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                                 <span>種類で絞り込み</span>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                                {POSTER_PERSONS.map(person => {
+                                {pinTypes.map(pt => {
+                                    const person = pt.name;
                                     const active = filter.types.includes(person);
-                                    const color = PERSON_COLORS[person];
+                                    const color = pt.color;
                                     return (
                                         <button key={person}
                                             onClick={() => toggleType(person)}

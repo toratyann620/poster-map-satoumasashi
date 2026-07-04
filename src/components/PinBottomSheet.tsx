@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Save, Edit2, Upload, Camera } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, Camera, PackageOpen } from 'lucide-react';
 import type { PosterPin } from '../types';
-import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
+import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
@@ -12,8 +12,10 @@ interface PinBottomSheetProps {
     poster: Partial<PosterPin> | null;
     initialViewMode?: boolean;
     allTags?: string[];
+    pinTypes?: { name: string, color: string }[];
     onSave: (posterData: Partial<PosterPin>) => void;
     onDelete?: (id: string) => void;
+    onRemove?: (id: string) => void;
 }
 
 export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
@@ -22,8 +24,10 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     poster,
     initialViewMode = false,
     allTags = [],
+    pinTypes = [],
     onSave,
-    onDelete
+    onDelete,
+    onRemove
 }) => {
     const [isViewMode, setIsViewMode] = useState(initialViewMode);
 
@@ -211,6 +215,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     };
 
     const handleSave = () => {
+        let finalTags = [...tags];
+        const trimmed = newTagInput.trim();
+        if (trimmed && !finalTags.includes(trimmed)) {
+            finalTags.push(trimmed);
+        }
         onSave({
             ...poster,
             type,
@@ -224,7 +233,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             specialNote,
             imageUrl: imageUrls.length > 0 ? imageUrls[0] : imageUrl,
             imageUrls,
-            tags
+            tags: finalTags
         });
     };
 
@@ -276,7 +285,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap pointer-events-none">
                             {isNew ? 'ポスターを新規登録' : isViewMode ? (
                                 <span className="inline-flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1 rounded-full text-white"
-                                    style={{ backgroundColor: PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }}>
+                                    style={{ backgroundColor: pinTypes.find(pt => pt.name === type)?.color || PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }}>
                                     {type}
                                 </span>
                             ) : 'ポスター情報を編集'}
@@ -293,6 +302,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                     {/* 閲覧モード時の Peek 状態でも表示する要素 (ステータスバッジなど) */}
                     {isViewMode && sheetState === 'peek' && (
                         <div className="mt-4 flex flex-wrap gap-2 pointer-events-none">
+                            {poster?.removed && (
+                                <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                    撤去済み
+                                </span>
+                            )}
                             {status.map(s => {
                                 const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' : s === '張替え予定' ? 'bg-amber-100 text-amber-700' : s === '未設置' ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-700';
                                 return <span key={s} className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{s}</span>;
@@ -343,6 +357,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     <div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">ステータス</p>
                                         <div className="flex flex-wrap gap-2">
+                                            {poster?.removed && (
+                                                <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                                    撤去済み
+                                                </span>
+                                            )}
                                             {status.map(s => {
                                                 const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' :
                                                     s === '張替え予定' ? 'bg-amber-100 text-amber-700' :
@@ -384,11 +403,31 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 </div>
                             </div>
 
-                            <div className="flex gap-4 pt-4 border-t border-gray-100 dark:border-zinc-800">
+                            <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-zinc-800 flex-wrap">
                                 <button onClick={() => setIsViewMode(false)} className="flex-1 flex items-center justify-center px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors">
                                     <Edit2 className="w-5 h-5 mr-2" />
                                     修正
                                 </button>
+                                {/* 撤去ボタン or 撤去解除ボタン */}
+                                {onRemove && poster?.id && (
+                                    poster.removed ? (
+                                        <button
+                                            onClick={() => onRemove(poster.id! + ':restore')}
+                                            className="flex items-center justify-center px-4 py-3 border border-amber-400 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors text-sm font-medium"
+                                        >
+                                            <PackageOpen className="w-4 h-4 mr-1" />
+                                            撤去を解除
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => onRemove(poster.id!)}
+                                            className="flex items-center justify-center px-4 py-3 border border-orange-400 text-orange-600 dark:text-orange-400 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-sm font-medium"
+                                        >
+                                            <PackageOpen className="w-4 h-4 mr-1" />
+                                            撤去
+                                        </button>
+                                    )
+                                )}
                                 {onDelete && (
                                     <button onClick={() => onDelete(poster!.id!)} className="flex items-center justify-center px-4 py-3 border border-red-500 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                                         <Trash2 className="w-5 h-5 mr-1" />
@@ -477,9 +516,10 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     種類 <span className="text-xs text-gray-400">（単一選択）</span>
                                 </label>
                                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                                    {POSTER_PERSONS.map(person => {
+                                    {pinTypes.map(pt => {
+                                        const person = pt.name;
                                         const selected = type === person;
-                                        const color = PERSON_COLORS[person];
+                                        const color = pt.color;
                                         return (
                                             <label key={person}
                                                 className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all select-none ${selected ? 'border-current text-white' : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}

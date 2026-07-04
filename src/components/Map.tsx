@@ -18,6 +18,7 @@ interface MapComponentProps {
     centerLocation?: { lat: number, lng: number } | null;
     fitBounds?: { southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null;
     currentLocation?: { lat: number, lng: number } | null;
+    pinTypes?: { name: string, color: string }[];
 }
 
 const render = (status: Status): React.ReactElement => {
@@ -32,10 +33,10 @@ const render = (status: Status): React.ReactElement => {
  * - status で透明度・アニメーション・バッジを重ね掛け
  * - isFloating = true の場合は浮いた大きいデザイン
  */
-function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
+function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Record<string, string>): HTMLElement {
     const statuses: string[] = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
     const isTemp = poster.id === 'temp-marker-id' || statuses.includes('仮ピン');
-    const hexColor = isTemp ? '#EA4335' : (PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280');
+    const hexColor = isTemp ? '#EA4335' : (colorsMap?.[poster.type] || PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280');
 
     const isUninstalled = statuses.includes('未設置');
     const isReplacement = statuses.includes('張替え予定');
@@ -50,10 +51,10 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
         flex-direction: column;
         align-items: center;
         cursor: pointer;
-        opacity: ${isUninstalled ? '0.5' : '1'};
+        opacity: ${poster.removed ? '0.35' : (isUninstalled ? '0.5' : '1')};
         transform: ${isFloating ? 'scale(1.4) translateY(-8px)' : 'scale(1)'};
         transition: transform 0.2s;
-        filter: ${isFloating ? 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))'};
+        filter: ${poster.removed ? 'grayscale(80%)' : ''} ${isFloating ? 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))'};
     `;
 
     if (isTemp) {
@@ -175,13 +176,21 @@ const MapInner: React.FC<MapComponentProps> = ({
     selectedPoster,
     centerLocation,
     fitBounds,
-    currentLocation
+    currentLocation,
+    pinTypes = []
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map>();
     const [heading, setHeading] = useState(0);
-    // AdvancedMarkerElement の型が @types/google.maps に含まれない場合への対応
     const markersRef = useRef<any[]>([]);
+
+    const colorsMap = React.useMemo(() => {
+        const m: Record<string, string> = {};
+        pinTypes.forEach(pt => {
+            m[pt.name] = pt.color;
+        });
+        return m;
+    }, [pinTypes]);
 
     // Stale closure回避: 常に最新のコールバックをリスナーから参照する
     const onMapClickRef = useRef(onMapClick);
@@ -333,7 +342,7 @@ const MapInner: React.FC<MapComponentProps> = ({
 
         posters.forEach(poster => {
             const isFloating = relocatingPoster?.id === poster.id;
-            const domEl = buildDomMarker(poster, isFloating);
+            const domEl = buildDomMarker(poster, isFloating, colorsMap);
 
             const marker = new AdvancedMarkerElement({
                 position: { lat: poster.lat, lng: poster.lng },
@@ -405,7 +414,7 @@ const MapInner: React.FC<MapComponentProps> = ({
             } as any as PosterPin;
             
             const isFloating = relocatingPoster?.id === 'temp-marker-id';
-            const domEl = buildDomMarker(dummyPoster, isFloating); // 移動中ならさらに浮いた大きなデザインに
+            const domEl = buildDomMarker(dummyPoster, isFloating, colorsMap); // 移動中ならさらに浮いた大きなデザインに
 
             const marker = new AdvancedMarkerElement({
                 position: { lat: selectedPoster.lat, lng: selectedPoster.lng },

@@ -12,6 +12,7 @@ import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { usePinTypes } from './hooks/usePinTypes';
 
 function App() {
   const [user, setUser] = useState<any>(null);
@@ -38,6 +39,7 @@ function App() {
   } = usePosterData();
 
   const { logs: activityLogs } = useActivityLogs(300);
+  const { pinTypes } = usePinTypes();
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedPoster, setSelectedPoster] = useState<Partial<PosterPin> | null>(null);
@@ -46,6 +48,10 @@ function App() {
   const [mapCenter, setMapCenter] = useState<{ lat: number, lng: number } | null>(null);
   const [fitBounds, setFitBounds] = useState<{ southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
+  // 撤去ピンの表示設定（localStorageで端末ごとに持続）
+  const [showRemovedPins, setShowRemovedPins] = useState<boolean>(
+    () => localStorage.getItem('showRemovedPins') === 'true'
+  );
 
   // 全ポスターから使用されているユニークなタグ一覧を生成（早期リターン前に宣言する必要あり）
   const allTags = useMemo(() => {
@@ -53,6 +59,17 @@ function App() {
     posters.forEach(p => (p.tags || []).forEach(t => tagSet.add(t)));
     return Array.from(tagSet).sort();
   }, [posters]);
+
+  // 撤去ピンの表示制御を加味したポスターリスト（早期リターン前に宣言する必要あり）
+  const displayPosters = useMemo(() => {
+    return filteredPosters.filter(p => {
+      if (p.removed) {
+        return showRemovedPins;
+      }
+      return true;
+    });
+  }, [filteredPosters, showRemovedPins]);
+
 
   // 初回ロード時に現在地を取得してジャンプする
   useEffect(() => {
@@ -262,6 +279,26 @@ function App() {
     }
   };
 
+  // 撤去フラグを立てる（データを消さずに撤去済みにする）
+  const handleRemove = (idOrAction: string) => {
+    const isRestore = idOrAction.endsWith(':restore');
+    const id = isRestore ? idOrAction.replace(':restore', '') : idOrAction;
+    if (isRestore) {
+      updatePoster(id, { removed: false });
+    } else {
+      if (window.confirm('このポスターを「撤去」しますか？\nデータは残りますがマップから非表示になります。')) {
+        updatePoster(id, { removed: true });
+        setIsSheetOpen(false);
+        setTimeout(() => setSelectedPoster(null), 300);
+      }
+    }
+  };
+
+  const handleToggleShowRemoved = (val: boolean) => {
+    setShowRemovedPins(val);
+    localStorage.setItem('showRemovedPins', String(val));
+  };
+
   if (authChecking) {
     return <div className="h-dvh w-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950">
       <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent"></div>
@@ -286,12 +323,16 @@ function App() {
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
       {currentView === 'admin' && userRole === 'admin' ? (
-        <AdminPanel onClose={() => setCurrentView('map')} />
+        <AdminPanel
+          onClose={() => setCurrentView('map')}
+          showRemovedPins={showRemovedPins}
+          onToggleShowRemoved={handleToggleShowRemoved}
+        />
       ) : (
         <>
           {/* Map Area */}
           <MapWrapper
-            posters={filteredPosters}
+            posters={displayPosters}
             onMapClick={handleMapClick}
             onMarkerClick={handleMarkerClick}
             onPinLongPress={handlePinLongPress}
@@ -301,6 +342,7 @@ function App() {
             centerLocation={mapCenter}
             fitBounds={fitBounds}
             currentLocation={currentLocation}
+            pinTypes={pinTypes}
           />
 
           {/* ======  移動モード用UI  ====== */}
@@ -334,7 +376,7 @@ function App() {
           {/* Floating UI Elements（移動モード中は非表示） */}
           {!isRelocating && (
             <>
-              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} />
+              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
 
               {/* Floating Buttons: Add New, Admin Toggle & Logout */}
               <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3">
@@ -394,8 +436,10 @@ function App() {
             poster={selectedPoster}
             initialViewMode={initialViewMode}
             allTags={allTags}
+            pinTypes={pinTypes}
             onSave={handleSave}
             onDelete={handleDelete}
+            onRemove={handleRemove}
           />
         </>
       )}

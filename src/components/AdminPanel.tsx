@@ -7,16 +7,19 @@ import { DashboardTab } from './DashboardTab';
 import { UserAnalyticsTab } from './UserAnalyticsTab';
 import { SpecTab } from './SpecTab';
 import { ChangelogTab } from './ChangelogTab';
+import { SettingsTab } from './SettingsTab';
 import {
     UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle,
-    LayoutDashboard, Users, BookOpen, ClipboardList,
+    LayoutDashboard, Users, BookOpen, ClipboardList, Settings,
 } from 'lucide-react';
 
 interface AdminPanelProps {
     onClose: () => void;
+    showRemovedPins: boolean;
+    onToggleShowRemoved: (val: boolean) => void;
 }
 
-type Tab = 'users' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog';
+type Tab = 'users' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog' | 'settings';
 
 const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; Icon: React.ElementType }> = {
     '追加': { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-400', label: '追加', Icon: PlusCircle },
@@ -24,7 +27,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
     '削除': { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-400', label: '削除', Icon: XCircle },
 };
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved }) => {
     const { users, loading: usersLoading, createUser, removeUser } = useUsers();
     const { logs, loading: logsLoading } = useActivityLogs(200);
     const { userRole, posters } = usePosterData();
@@ -182,6 +185,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     <ClipboardList className="w-4 h-4" />
                     改修ログ
                 </button>
+                <button
+                    onClick={() => setActiveTab('settings')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                        activeTab === 'settings'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <Settings className="w-4 h-4" />
+                    設定
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
@@ -204,6 +218,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 {/* ===== 改修ログタブ ===== */}
                 {activeTab === 'changelog' && (
                     <ChangelogTab />
+                )}
+
+                {/* ===== 設定タブ ===== */}
+                {activeTab === 'settings' && (
+                    <SettingsTab
+                        showRemovedPins={showRemovedPins}
+                        onToggleShowRemoved={onToggleShowRemoved}
+                    />
                 )}
 
                 {/* ===== ユーザー管理タブ ===== */}
