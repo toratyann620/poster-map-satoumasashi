@@ -170,6 +170,7 @@ const MapInner: React.FC<MapComponentProps> = ({
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map>();
+    const [heading, setHeading] = useState(0);
     // AdvancedMarkerElement の型が @types/google.maps に含まれない場合への対応
     const markersRef = useRef<any[]>([]);
 
@@ -190,8 +191,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 disableDefaultUI: true,
                 zoomControl: true,
                 gestureHandling: 'greedy',
-                mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたラスターマップを設定
-                renderingType: google.maps.RenderingType.RASTER, // Vercel特有のVector CORSエラーを回避するため強制的にRaster(画像)モードで描画
+                mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたマップIDを設定
             });
 
             newMap.addListener('click', (e: google.maps.MapMouseEvent) => {
@@ -204,6 +204,24 @@ const MapInner: React.FC<MapComponentProps> = ({
             setMap(newMap);
         }
     }, [map]);
+
+    // 地図の回転を検知する
+    useEffect(() => {
+        if (!map) return;
+        const listener = map.addListener('heading_changed', () => {
+            setHeading(map.getHeading() || 0);
+        });
+        return () => {
+            google.maps.event.removeListener(listener);
+        };
+    }, [map]);
+
+    const handleResetHeading = () => {
+        if (map) {
+            map.setHeading(0);
+            map.setTilt(0);
+        }
+    };
 
     // Pan to searched location
     useEffect(() => {
@@ -320,7 +338,28 @@ const MapInner: React.FC<MapComponentProps> = ({
         };
     }, [map, currentLocation]);
 
-    return <div ref={ref} className="w-full h-full" />;
+    return (
+        <div className="w-full h-full relative">
+            <div ref={ref} className="w-full h-full" />
+            {map && heading !== 0 && (
+                <button
+                    onClick={handleResetHeading}
+                    className="absolute top-4 right-4 z-10 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
+                    title="北を上にする"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        className="w-6 h-6"
+                        style={{ transform: `rotate(${-heading}deg)`, transition: 'transform 0.1s ease-out' }}
+                    >
+                        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-20" />
+                        <path d="M12,2 L16,12 L12,9.5 L8,12 Z" fill="#EF4444" />
+                        <path d="M12,22 L16,12 L12,9.5 L8,12 Z" fill="#9CA3AF" />
+                    </svg>
+                </button>
+            )}
+        </div>
+    );
 };
 
 export const MapWrapper: React.FC<MapComponentProps> = (props) => {

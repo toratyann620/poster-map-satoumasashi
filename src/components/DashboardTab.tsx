@@ -299,6 +299,17 @@ const TypeTrendLineChart: React.FC<TypeTrendLineChartProps> = ({ data, types }) 
     );
 };
 
+type CityCategory = '全体' | '厚木市' | '海老名市' | '伊勢原市' | 'それ以外';
+const CITY_CATEGORIES: CityCategory[] = ['全体', '厚木市', '海老名市', '伊勢原市', 'それ以外'];
+
+const getCityCategory = (address: string): '厚木市' | '海老名市' | '伊勢原市' | 'それ以外' => {
+    if (!address) return 'それ以外';
+    if (address.includes('厚木市')) return '厚木市';
+    if (address.includes('海老名市')) return '海老名市';
+    if (address.includes('伊勢原市')) return '伊勢原市';
+    return 'それ以外';
+};
+
 // ──────────────────────────────────────────────────────────
 // メインコンポーネント
 // ──────────────────────────────────────────────────────────
@@ -306,24 +317,96 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     const [dateFromStr, setDateFromStr] = useState(toInputDate(getDefault30DaysAgo()));
     const [dateToStr, setDateToStr] = useState(toInputDate(new Date()));
     const [statusFilter, setStatusFilter] = useState<string[]>([...POSTER_STATUS_OPTIONS]);
+    const [selectedCity, setSelectedCity] = useState<CityCategory>('全体');
 
     const { logs, loading } = useDashboardData(dateFromStr, dateToStr);
+
+    // ──── 市区町村別フィルタリング ────
+    const filteredPostersByCity = useMemo(() => {
+        if (selectedCity === '全体') return posters;
+        return posters.filter(p => getCityCategory(p.address) === selectedCity);
+    }, [posters, selectedCity]);
+
+    const filteredLogsByCity = useMemo(() => {
+        if (selectedCity === '全体') return logs;
+        return logs.filter(l => getCityCategory(l.posterAddress) === selectedCity);
+    }, [logs, selectedCity]);
+
+    // ──── 「全体」選択時のカード内ホバー内訳データ ────
+    const satoQtyByCity = useMemo(() => {
+        const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
+        return cities.map(city => {
+            const postersInCity = posters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
+            
+            const filteredInCity = postersInCity.filter(p => {
+                const statuses = Array.isArray(p.status) ? p.status : [p.status];
+                return statusFilter.some(s => statuses.includes(s));
+            });
+            const filteredQty = filteredInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
+
+            let change = 0;
+            logs.forEach(l => {
+                if (l.posterType === '佐藤まさし' && getCityCategory(l.posterAddress) === city) {
+                    const qty = parseQuantityFromDiff(l.diff);
+                    if (l.action === '追加') change += qty;
+                    if (l.action === '削除') change -= qty;
+                }
+            });
+
+            return { city, totalQty, filteredQty, change };
+        });
+    }, [posters, logs, statusFilter]);
+
+    const satoInstallRateByCity = useMemo(() => {
+        const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
+        return cities.map(city => {
+            const postersInCity = posters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
+            const installedQty = postersInCity.filter(p => {
+                const statuses = Array.isArray(p.status) ? p.status : [p.status];
+                return statuses.includes('設置済');
+            }).reduce((sum, p) => sum + (p.quantity || 1), 0);
+            const rate = totalQty > 0 ? Math.round((installedQty / totalQty) * 100) : 0;
+            return { city, totalQty, installedQty, rate };
+        });
+    }, [posters]);
+
+    const actionsByCity = useMemo(() => {
+        const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
+        return cities.map(city => {
+            const cityLogs = logs.filter(l => getCityCategory(l.posterAddress) === city);
+            const total = cityLogs.length;
+            const added = cityLogs.filter(l => l.action === '追加').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            const updated = cityLogs.filter(l => l.action === '更新').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            const deleted = cityLogs.filter(l => l.action === '削除').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            return { city, total, added, updated, deleted };
+        });
+    }, [logs]);
+
+    const lastUpdateByCity = useMemo(() => {
+        const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
+        return cities.map(city => {
+            const cityLogs = logs.filter(l => getCityCategory(l.posterAddress) === city);
+            const lastTs = cityLogs.length > 0 ? cityLogs[0].changedAt : null;
+            return { city, lastTs };
+        });
+    }, [logs]);
 
     // ──── フィルター済みポスター（ステータスで絞り込み） ────
     const filteredPosters = useMemo(() => {
         if (statusFilter.length === 0) return [];
-        if (statusFilter.length === POSTER_STATUS_OPTIONS.length) return posters;
-        return posters.filter(p => {
+        if (statusFilter.length === POSTER_STATUS_OPTIONS.length) return filteredPostersByCity;
+        return filteredPostersByCity.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statusFilter.some(s => statuses.includes(s));
         });
-    }, [posters, statusFilter]);
+    }, [filteredPostersByCity, statusFilter]);
 
     // ──── KPI 計算（佐藤まさし 専用） ────
-    // ──── KPI 計算（佐藤まさし 専用） ────
     const satoPosters = useMemo(() =>
-        posters.filter(p => p.type === '佐藤まさし'),
-    [posters]);
+        filteredPostersByCity.filter(p => p.type === '佐藤まさし'),
+    [filteredPostersByCity]);
 
     const satoTotalQty = useMemo(() =>
         satoPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
@@ -355,7 +438,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
 
     const satoNetChange = useMemo(() => {
         let change = 0;
-        logs.forEach(l => {
+        filteredLogsByCity.forEach(l => {
             if (l.posterType === '佐藤まさし') {
                 const qty = parseQuantityFromDiff(l.diff);
                 if (l.action === '追加') change += qty;
@@ -363,62 +446,62 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
             }
         });
         return change;
-    }, [logs]);
+    }, [filteredLogsByCity]);
 
     // ──── KPI 計算（全体） ────
     const totalPostersQty = useMemo(() =>
-        posters.reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [posters]);
+        filteredPostersByCity.reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [filteredPostersByCity]);
 
     const installedPostersQty = useMemo(() =>
-        posters.filter(p => {
+        filteredPostersByCity.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('設置済');
         }).reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [posters]);
+    [filteredPostersByCity]);
 
     const uninstalledCountQty = useMemo(() =>
-        posters.filter(p => {
+        filteredPostersByCity.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('未設置');
         }).reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [posters]);
+    [filteredPostersByCity]);
 
     const installedRate = totalPostersQty > 0
         ? Math.round((installedPostersQty / totalPostersQty) * 100)
         : 0;
 
     const periodAddedQty = useMemo(() => {
-        return logs.filter(l => l.action === '追加')
+        return filteredLogsByCity.filter(l => l.action === '追加')
             .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-    }, [logs]);
+    }, [filteredLogsByCity]);
 
     const periodUpdatedQty = useMemo(() => {
-        return logs.filter(l => l.action === '更新')
+        return filteredLogsByCity.filter(l => l.action === '更新')
             .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-    }, [logs]);
+    }, [filteredLogsByCity]);
 
     const periodDeletedQty = useMemo(() => {
-        return logs.filter(l => l.action === '削除')
+        return filteredLogsByCity.filter(l => l.action === '削除')
             .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-    }, [logs]);
+    }, [filteredLogsByCity]);
 
     const netChange = periodAddedQty - periodDeletedQty;
-    const lastActionTs = logs.length > 0 ? logs[0].changedAt : null;
+    const lastActionTs = filteredLogsByCity.length > 0 ? filteredLogsByCity[0].changedAt : null;
 
     // ──── 最もアクティブな曜日 ────
     const mostActiveDow = useMemo(() => {
         const days = ['日', '月', '火', '水', '木', '金', '土'];
         const counts = Array(7).fill(0);
-        logs.forEach(l => counts[new Date(l.changedAt).getDay()]++);
+        filteredLogsByCity.forEach(l => counts[new Date(l.changedAt).getDay()]++);
         const maxCount = Math.max(...counts);
         return maxCount > 0 ? days[counts.indexOf(maxCount)] : null;
-    }, [logs]);
+    }, [filteredLogsByCity]);
 
     // ──── 種類別サマリー ────
     const typeSummary = useMemo(() =>
         POSTER_PERSONS.map(type => {
-            const allOfType = posters.filter(p => p.type === type);
+            const allOfType = filteredPostersByCity.filter(p => p.type === type);
             const filteredOfType = filteredPosters.filter(p => p.type === type);
 
             const currentAllQty = allOfType.reduce((sum, p) => sum + (p.quantity || 1), 0);
@@ -435,7 +518,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
 
             let added = 0;
             let deleted = 0;
-            logs.forEach(l => {
+            filteredLogsByCity.forEach(l => {
                 if (l.posterType === type) {
                     const qty = parseQuantityFromDiff(l.diff);
                     if (l.action === '追加') added += qty;
@@ -453,7 +536,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                 net: added - deleted,
             };
         }).filter(s => s.currentAll > 0 || s.added > 0),
-    [posters, filteredPosters, logs]);
+    [filteredPostersByCity, filteredPosters, filteredLogsByCity]);
 
     // ──── 日別アクティビティデータ ────
     const dailyData = useMemo((): DailyData[] => {
@@ -464,7 +547,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         while (cursor <= end) {
             const dayStart = new Date(cursor).setHours(0, 0, 0, 0);
             const dayEnd = new Date(cursor).setHours(23, 59, 59, 999);
-            const dayLogs = logs.filter(l => l.changedAt >= dayStart && l.changedAt <= dayEnd);
+            const dayLogs = filteredLogsByCity.filter(l => l.changedAt >= dayStart && l.changedAt <= dayEnd);
 
             let added = 0;
             let updated = 0;
@@ -485,7 +568,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
             cursor.setDate(cursor.getDate() + 1);
         }
         return result;
-    }, [logs, dateFromStr, dateToStr]);
+    }, [filteredLogsByCity, dateFromStr, dateToStr]);
 
     // ──── 種類別 累積追加数（折れ線グラフ用） ────
     interface TypeTrendPoint {
@@ -494,7 +577,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     }
 
     const typeTrendData = useMemo((): TypeTrendPoint[] => {
-        const logsWithType = logs.filter(l => l.posterType);
+        const logsWithType = filteredLogsByCity.filter(l => l.posterType);
         if (logsWithType.length === 0) return [];
 
         const typeCounts: Record<string, number> = {};
@@ -535,7 +618,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
             cursor.setDate(cursor.getDate() + 1);
         }
         return result;
-    }, [logs, dateFromStr, dateToStr]);
+    }, [filteredLogsByCity, dateFromStr, dateToStr]);
 
     // 折れ線グラフで描画するアクティブな種類
     const trendTypes = useMemo(() => {
@@ -587,6 +670,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                         />
                     </div>
 
+                    {/* 市区町村フィルター */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">市区町村</span>
+                        <select
+                            value={selectedCity}
+                            onChange={e => setSelectedCity(e.target.value as CityCategory)}
+                            className="px-3 py-1.5 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                            {CITY_CATEGORIES.map(city => (
+                                <option key={city} value={city}>{city}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* ステータスフィルター */}
                     <div className="flex items-center gap-3 flex-wrap sm:ml-auto">
                         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">ステータス</span>
@@ -619,7 +716,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
                         {/* 佐藤まさし ポスター数 */}
-                        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl p-5 text-white shadow-lg">
+                        <div className="relative group bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">佐藤まさし ポスター枚数</span>
                                 <MapPin className="w-4 h-4 text-indigo-300" />
@@ -634,10 +731,31 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                                 )}
                                 <span className="text-indigo-300 text-xs">期間純増減</span>
                             </div>
+
+                            {/* ツールチップ (全体選択時のみ) */}
+                            {selectedCity === '全体' && (
+                                <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
+                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (佐藤まさし)</p>
+                                    <div className="space-y-1.5">
+                                        {satoQtyByCity.map(item => (
+                                            <div key={item.city} className="flex justify-between items-center">
+                                                <span className="text-zinc-400">{item.city}</span>
+                                                <div className="flex items-center gap-1.5 font-medium">
+                                                    <span>{item.filteredQty.toLocaleString()}枚</span>
+                                                    <span className="text-[10px] text-zinc-500">(全体:{item.totalQty.toLocaleString()})</span>
+                                                    <span className={`text-[10px] ${item.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                        {item.change >= 0 ? `+${item.change}` : item.change}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 佐藤まさし 設置済み率 */}
-                        <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg">
+                        <div className="relative group bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">佐藤まさし 設置率</span>
                                 <CheckCircle className="w-4 h-4 text-emerald-300" />
@@ -652,10 +770,31 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                             <div className="mt-1.5 text-xs text-emerald-100">
                                 設置済: {satoInstalledQty.toLocaleString()} / {satoTotalQty.toLocaleString()}枚
                             </div>
+
+                            {/* ツールチップ (全体選択時のみ) */}
+                            {selectedCity === '全体' && (
+                                <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
+                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (設置率)</p>
+                                    <div className="space-y-1.5">
+                                        {satoInstallRateByCity.map(item => (
+                                            <div key={item.city} className="flex justify-between items-center">
+                                                <span className="text-zinc-400">{item.city}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-12 bg-zinc-800 rounded-full h-1">
+                                                        <div className="bg-emerald-400 rounded-full h-1" style={{ width: `${item.rate}%` }} />
+                                                    </div>
+                                                    <span className="font-medium w-8 text-right">{item.rate}%</span>
+                                                    <span className="text-[10px] text-zinc-500">({item.installedQty}/{item.totalQty}枚)</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 期間アクション数 */}
-                        <div className="bg-gradient-to-br from-violet-500 to-purple-700 rounded-2xl p-5 text-white shadow-lg">
+                        <div className="relative group bg-gradient-to-br from-violet-500 to-purple-700 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-violet-200 uppercase tracking-wide">期間アクション</span>
                                 <Activity className="w-4 h-4 text-violet-300" />
@@ -666,10 +805,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                                 <span className="text-blue-300">○{periodUpdatedQty}</span>
                                 <span className="text-red-300">−{periodDeletedQty}</span>
                             </div>
+
+                            {/* ツールチップ (全体選択時のみ) */}
+                            {selectedCity === '全体' && (
+                                <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
+                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (アクション数)</p>
+                                    <div className="space-y-1.5">
+                                        {actionsByCity.map(item => (
+                                            <div key={item.city} className="flex justify-between items-center">
+                                                <span className="text-zinc-400">{item.city}</span>
+                                                <div className="flex items-center gap-1.5 font-medium">
+                                                    <span>{item.total.toLocaleString()}件</span>
+                                                    <span className="text-[10px] text-zinc-500">(+{item.added} ○{item.updated} −{item.deleted})</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 最終更新 */}
-                        <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 text-white shadow-lg">
+                        <div className="relative group bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-amber-200 uppercase tracking-wide">最終更新</span>
                                 <Clock className="w-4 h-4 text-amber-300" />
@@ -684,6 +841,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                                 <div className="mt-2 flex items-center gap-1 bg-amber-600/40 rounded-lg px-2 py-0.5 text-xs">
                                     <AlertTriangle className="w-3 h-3" />
                                     未設置: {uninstalledCountQty}枚
+                                </div>
+                            )}
+
+                            {/* ツールチップ (全体選択時のみ) */}
+                            {selectedCity === '全体' && (
+                                <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
+                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (最終更新)</p>
+                                    <div className="space-y-1.5">
+                                        {lastUpdateByCity.map(item => (
+                                            <div key={item.city} className="flex justify-between items-center">
+                                                <span className="text-zinc-400">{item.city}</span>
+                                                <span className="font-medium text-[11px]">
+                                                    {item.lastTs ? formatRelative(item.lastTs) : '—'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
