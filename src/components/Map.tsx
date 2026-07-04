@@ -192,6 +192,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 zoomControl: true,
                 gestureHandling: 'greedy',
                 mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたマップIDを設定
+                renderingType: google.maps.RenderingType.VECTOR, // 明示的にベクトル(WebGL)モードを指定して回転を可能にする
             });
 
             newMap.addListener('click', (e: google.maps.MapMouseEvent) => {
@@ -341,11 +342,14 @@ const MapInner: React.FC<MapComponentProps> = ({
     return (
         <div className="w-full h-full relative">
             <div ref={ref} className="w-full h-full" />
-            {map && heading !== 0 && (
+            {map && (
                 <button
                     onClick={handleResetHeading}
-                    className="absolute top-4 right-4 z-10 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
-                    title="北を上にする"
+                    disabled={heading === 0}
+                    className={`absolute top-4 right-4 z-10 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
+                        heading === 0 ? 'opacity-40 cursor-default' : 'hover:scale-105 active:scale-95 cursor-pointer'
+                    }`}
+                    title={heading === 0 ? '北向き' : '北を上にする'}
                 >
                     <svg
                         viewBox="0 0 24 24"
