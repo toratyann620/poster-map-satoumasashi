@@ -13,6 +13,7 @@ interface MapComponentProps {
     onMarkerClick: (poster: PosterPin) => void;
     onPinLongPress?: (poster: PosterPin) => void;
     relocatingPoster?: PosterPin | null;
+    selectedPoster?: PosterPin | Partial<PosterPin> | null;
     centerLocation?: { lat: number, lng: number } | null;
     fitBounds?: { southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null;
     currentLocation?: { lat: number, lng: number } | null;
@@ -31,8 +32,9 @@ const render = (status: Status): React.ReactElement => {
  * - isFloating = true の場合は浮いた大きいデザイン
  */
 function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
-    const hexColor = PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280';
     const statuses: string[] = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
+    const isTemp = poster.id === 'temp-marker-id' || statuses.includes('仮ピン');
+    const hexColor = isTemp ? '#EF4444' : (PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280');
 
     const isUninstalled = statuses.includes('未設置');
     const isReplacement = statuses.includes('張替え予定');
@@ -53,6 +55,10 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
         filter: ${isFloating ? 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))'};
     `;
 
+    if (isTemp) {
+        // 仮ピンの場合は、Tailwindのanimate-bounceを追加してピョコピョコ弾むアニメーションを適用
+        container.classList.add('animate-bounce');
+    }
 
     // ピン本体（ドロップ形状）
     const pinSize = isFloating ? 44 : 32;
@@ -70,8 +76,8 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
         border: 2.5px solid rgba(255,255,255,0.6);
     `;
 
-    // 種類の頭文字
-    const initials = poster.type ? poster.type.charAt(0) : '?';
+    // 種類の頭文字（仮ピンの場合は "+"）
+    const initials = isTemp ? '+' : (poster.type ? poster.type.charAt(0) : '?');
     const label = document.createElement('span');
     label.textContent = initials;
     label.style.cssText = `
@@ -164,6 +170,7 @@ const MapInner: React.FC<MapComponentProps> = ({
     onMarkerClick,
     onPinLongPress,
     relocatingPoster,
+    selectedPoster,
     centerLocation,
     fitBounds,
     currentLocation
@@ -370,7 +377,32 @@ const MapInner: React.FC<MapComponentProps> = ({
 
             markersRef.current.push(marker);
         });
-    }, [map, posters, relocatingPoster]);
+
+        // 新規追加中の「仮ピン」を地図上に描画
+        if (selectedPoster && !selectedPoster.id && selectedPoster.lat && selectedPoster.lng) {
+            const dummyPoster = {
+                id: 'temp-marker-id',
+                lat: selectedPoster.lat,
+                lng: selectedPoster.lng,
+                type: selectedPoster.type || '佐藤まさし',
+                status: ['仮ピン'],
+                address: selectedPoster.address || '',
+                quantity: selectedPoster.quantity || 1,
+            } as any as PosterPin;
+            
+            const domEl = buildDomMarker(dummyPoster, true); // 大きく目立たせる
+
+            const marker = new AdvancedMarkerElement({
+                position: { lat: selectedPoster.lat, lng: selectedPoster.lng },
+                map,
+                title: '新規追加プレイス',
+                content: domEl,
+                zIndex: 1500, // 通常のピンよりも最前面に表示
+            });
+
+            markersRef.current.push(marker);
+        }
+    }, [map, posters, relocatingPoster, selectedPoster]);
 
     // Current Location Marker
     useEffect(() => {

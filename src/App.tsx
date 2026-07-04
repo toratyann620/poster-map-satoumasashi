@@ -99,6 +99,24 @@ function App() {
 
   const handlePlaceSelect = (lat: number, lng: number) => {
     setMapCenter({ lat, lng });
+
+    // 選択された緯度経度から逆ジオコーディングで住所を取得して、新規ポスター登録フォームを開く
+    if (window.google) {
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        let addressStr = '';
+        if (status === 'OK' && results && results[0]) {
+          addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+        }
+        setSelectedPoster({ lat, lng, address: addressStr, type: '佐藤まさし' });
+        setInitialViewMode(false); // 編集・登録モード
+        setIsSheetOpen(true); // 新規追加フォームを開く
+      });
+    } else {
+      setSelectedPoster({ lat, lng, type: '佐藤まさし' });
+      setInitialViewMode(false);
+      setIsSheetOpen(true);
+    }
   };
 
   const handleImportSuccess = (imported: PosterPin[]) => {
@@ -228,6 +246,7 @@ function App() {
             onMarkerClick={handleMarkerClick}
             onPinLongPress={handlePinLongPress}
             relocatingPoster={relocatingPin}
+            selectedPoster={isSheetOpen ? selectedPoster : null}
             centerLocation={mapCenter}
             fitBounds={fitBounds}
             currentLocation={currentLocation}
