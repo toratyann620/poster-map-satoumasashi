@@ -11,14 +11,42 @@ interface SearchBarProps {
 
 export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect }) => {
     const placeInputRef = useRef<HTMLInputElement>(null);
+    const isComposingRef = useRef(false);
+
+    const handleCompositionStart = () => {
+        isComposingRef.current = true;
+    };
+
+    const handleCompositionEnd = () => {
+        // 日本語の確定Enter時にKeyDownイベントが走るタイミングのブラウザ差異を防ぐため、少し遅らせてフラグを落とす
+        setTimeout(() => {
+            isComposingRef.current = false;
+        }, 50);
+    };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
+            // IME入力中（日本語の変換確定など）の場合はジオコーディングを実行しない
+            if (isComposingRef.current || e.nativeEvent.isComposing) {
+                e.stopPropagation();
+                return;
+            }
             const value = placeInputRef.current?.value;
             if (value && value.trim()) {
                 e.preventDefault();
                 geocodeAndSelect(value.trim());
             }
+        }
+    };
+
+    const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        // IME変換中のサブミット誤爆を防ぐ
+        if (isComposingRef.current) return;
+
+        const value = placeInputRef.current?.value;
+        if (value && value.trim()) {
+            geocodeAndSelect(value.trim());
         }
     };
 
@@ -103,16 +131,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
     return (
         <div className="absolute top-4 left-4 right-4 z-10 space-y-2">
             {/* 住所・施設名検索 */}
-            <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3 flex items-center gap-2">
+            <form onSubmit={handleSearchSubmit} className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3 flex items-center gap-2 flex-1">
                 <MapPin className="w-5 h-5 text-indigo-500 flex-shrink-0" />
                 <input
                     ref={placeInputRef}
-                    type="text"
+                    type="search"
+                    enterKeyHint="search"
                     placeholder="マップを住所や施設名で移動..."
                     onKeyDown={handleKeyDown}
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
                     className="flex-1 bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-500 border-none focus:ring-0 text-base"
                 />
-            </div>
+            </form>
 
             {/* ピン絞り込み */}
             <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3">
