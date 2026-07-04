@@ -12,6 +12,7 @@ interface MapComponentProps {
     onMapClick: (lat: number, lng: number) => void;
     onMarkerClick: (poster: PosterPin) => void;
     onPinLongPress?: (poster: PosterPin) => void;
+    onCancelTempPin?: () => void;
     relocatingPoster?: PosterPin | null;
     selectedPoster?: PosterPin | Partial<PosterPin> | null;
     centerLocation?: { lat: number, lng: number } | null;
@@ -169,6 +170,7 @@ const MapInner: React.FC<MapComponentProps> = ({
     onMapClick,
     onMarkerClick,
     onPinLongPress,
+    onCancelTempPin,
     relocatingPoster,
     selectedPoster,
     centerLocation,
@@ -185,9 +187,13 @@ const MapInner: React.FC<MapComponentProps> = ({
     const onMapClickRef = useRef(onMapClick);
     const onMarkerClickRef = useRef(onMarkerClick);
     const onPinLongPressRef = useRef(onPinLongPress);
+    const onCancelTempPinRef = useRef(onCancelTempPin);
+    const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+
     useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
     useEffect(() => { onMarkerClickRef.current = onMarkerClick; }, [onMarkerClick]);
     useEffect(() => { onPinLongPressRef.current = onPinLongPress; }, [onPinLongPress]);
+    useEffect(() => { onCancelTempPinRef.current = onCancelTempPin; }, [onCancelTempPin]);
 
     useEffect(() => {
         if (ref.current && !map) {
@@ -380,6 +386,12 @@ const MapInner: React.FC<MapComponentProps> = ({
 
         // 新規追加中の「仮ピン」を地図上に描画
         if (selectedPoster && !selectedPoster.id && selectedPoster.lat && selectedPoster.lng) {
+            // 既存の仮ピン用 InfoWindow があれば閉じる
+            if (infoWindowRef.current) {
+                infoWindowRef.current.close();
+                infoWindowRef.current = null;
+            }
+
             const dummyPoster = {
                 id: 'temp-marker-id',
                 lat: selectedPoster.lat,
@@ -388,9 +400,12 @@ const MapInner: React.FC<MapComponentProps> = ({
                 status: ['仮ピン'],
                 address: selectedPoster.address || '',
                 quantity: selectedPoster.quantity || 1,
+                name: (selectedPoster as any).name || '選択された場所',
+                googleMapsUrl: (selectedPoster as any).googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${selectedPoster.lat},${selectedPoster.lng}`
             } as any as PosterPin;
             
-            const domEl = buildDomMarker(dummyPoster, true); // 大きく目立たせる
+            const isFloating = relocatingPoster?.id === 'temp-marker-id';
+            const domEl = buildDomMarker(dummyPoster, isFloating); // 移動中ならさらに浮いた大きなデザインに
 
             const marker = new AdvancedMarkerElement({
                 position: { lat: selectedPoster.lat, lng: selectedPoster.lng },
@@ -400,19 +415,105 @@ const MapInner: React.FC<MapComponentProps> = ({
                 zIndex: 1500, // 通常のピンよりも最前面に表示
             });
 
+            // --- 2秒長押しで onPinLongPress 発火 (仮ピン用移動調整) ---
+            let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+            const startLongPress = () => {
+                domEl.classList.add('longpress-scaling');
+                longPressTimer = setTimeout(() => {
+                    if (onPinLongPressRef.current) onPinLongPressRef.current(dummyPoster);
+                }, 2000);
+            };
+            const cancelLongPress = () => {
+                domEl.classList.remove('longpress-scaling');
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            };
+            domEl.addEventListener('mousedown', startLongPress);
+            domEl.addEventListener('touchstart', startLongPress, { passive: true });
+            domEl.addEventListener('mouseup', cancelLongPress);
+            domEl.addEventListener('touchend', cancelLongPress);
+
             // 仮ピンのクリックイベント：親の onMarkerClick を呼び出す
             marker.element?.addEventListener('gmp-click', () => {
+                cancelLongPress();
                 if (onMarkerClickRef.current) {
                     onMarkerClickRef.current(dummyPoster);
                 }
             });
             marker.addListener('click', () => {
+                cancelLongPress();
                 if (onMarkerClickRef.current) {
                     onMarkerClickRef.current(dummyPoster);
                 }
             });
 
+            // Google Map標準風の InfoWindow (吹き出し情報カード) を開く
+            const escapeHtml = (str: string) => {
+                return str
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            };
+
+            const infoHtml = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 6px 4px; font-size: 13px; line-height: 1.4; color: #374151; max-width: 250px;">
+                    <div style="font-weight: 700; font-size: 14px; color: #111827; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${escapeHtml((dummyPoster as any).name || '選択された場所')}
+                    </div>
+                    <div style="color: #6b7280; font-size: 12px; margin-bottom: 8px;">
+                        日本<br/>${escapeHtml((dummyPoster.address || '').replace(/^日本、/, ''))}
+                    </div>
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 6px;">
+                        <a href="#" id="register-temp-btn" style="color: #2563eb; text-decoration: none; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                            新規登録する →
+                        </a>
+                    </div>
+                </div>
+            `;
+
+            const infoWindow = new window.google.maps.InfoWindow({
+                content: infoHtml,
+                pixelOffset: new window.google.maps.Size(0, -10)
+            });
+
+            infoWindow.open({
+                map,
+                anchor: marker
+            });
+            infoWindowRef.current = infoWindow;
+
+            // HTMLがDOMに配置されたタイミングで「新規登録する」ボタンにリスナーをアタッチ
+            infoWindow.addListener('domready', () => {
+                const registerBtn = document.getElementById('register-temp-btn');
+                if (registerBtn) {
+                    registerBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        cancelLongPress();
+                        if (onMarkerClickRef.current) {
+                            onMarkerClickRef.current(dummyPoster);
+                        }
+                    });
+                }
+            });
+
+            // X をクリックした際のクローズイベント
+            infoWindow.addListener('closeclick', () => {
+                if (onCancelTempPinRef.current) {
+                    onCancelTempPinRef.current();
+                }
+            });
+
             markersRef.current.push(marker);
+        } else {
+            // 仮ピンがない場合は確実に InfoWindow を閉じる
+            if (infoWindowRef.current) {
+                infoWindowRef.current.close();
+                infoWindowRef.current = null;
+            }
         }
     }, [map, posters, relocatingPoster, selectedPoster]);
 

@@ -226,12 +226,21 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
         <>
             <div
                 className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-300 ${sheetState === 'expanded' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                onClick={sheetState === 'expanded' ? () => { setSheetState('peek'); setDragY(0); } : onClose}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (sheetState === 'expanded') {
+                        setSheetState('peek');
+                        setDragY(0);
+                    } else {
+                        onClose();
+                    }
+                }}
             />
 
             <div
                 className={bottomSheetClasses}
                 style={{ transform: sheetTranslateY, transition: sheetTransition }}
+                onClick={(e) => e.stopPropagation()}
             >
                 {/* Drag Handle & Header */}
                 <div

@@ -6,7 +6,7 @@ import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 interface SearchBarProps {
     filter: FilterState;
     setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
-    onPlaceSelect: (lat: number, lng: number) => void;
+    onPlaceSelect: (lat: number, lng: number, name?: string, address?: string, url?: string) => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect }) => {
@@ -21,15 +21,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
             }
             const places = window.google.maps.places as any;
 
-            // 安定した旧 Autocomplete API を使用して、既存の input 要素に直接アタッチする
+            // fields に formatted_address と url を追加
             const autocomplete = new places.Autocomplete(placeInputRef.current!, {
-                fields: ['geometry', 'name'],
+                fields: ['geometry', 'name', 'formatted_address', 'url'],
                 componentRestrictions: { country: 'jp' }
             });
             autocomplete.addListener('place_changed', () => {
                 const place = autocomplete.getPlace();
                 if (place.geometry?.location) {
-                    onPlaceSelect(place.geometry.location.lat(), place.geometry.location.lng());
+                    onPlaceSelect(
+                        place.geometry.location.lat(),
+                        place.geometry.location.lng(),
+                        place.name || '',
+                        place.formatted_address || '',
+                        place.url || ''
+                    );
                 }
             });
         };

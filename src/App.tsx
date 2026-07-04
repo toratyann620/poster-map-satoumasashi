@@ -97,11 +97,23 @@ function App() {
     setRelocatingPin(null);
   };
 
-  const handlePlaceSelect = (lat: number, lng: number) => {
+  const handlePlaceSelect = (lat: number, lng: number, name?: string, address?: string, url?: string) => {
     setMapCenter({ lat, lng });
 
-    // 検索した場所には仮のピン（赤い跳ねるピン）を置くだけにする（この時点ではシートを開かない）
-    setSelectedPoster({ lat, lng, type: '佐藤まさし', status: ['仮ピン'] });
+    // 検索した場所の名前と住所情報を保持して、仮ピン（赤い跳ねるピン）を表示
+    const formattedAddress = address ? address.replace(/^日本、/, '') : '';
+    const mapsUrl = url || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+    setSelectedPoster({
+      lat,
+      lng,
+      type: '佐藤まさし',
+      status: ['仮ピン'],
+      address: formattedAddress,
+      name: name || '選択された場所',
+      googleMapsUrl: mapsUrl
+    } as any);
+    
     setInitialViewMode(false);
     setIsSheetOpen(false);
   };
@@ -127,11 +139,19 @@ function App() {
   };
 
   const handleMapClick = (lat: number, lng: number) => {
-    // 移動モード中: 座標を確定してFirestoreに保存
-    if (isRelocating && relocatingPin?.id) {
-      updatePoster(relocatingPin.id, { lat, lng });
-      cancelRelocation();
-      return;
+    // 移動モード中: 座標を確定
+    if (isRelocating && relocatingPin) {
+      if (relocatingPin.id === 'temp-marker-id') {
+        // 仮ピンの移動: selectedPoster の緯度経度を更新して移動モードを抜ける
+        setSelectedPoster(prev => prev ? { ...prev, lat, lng } : null);
+        cancelRelocation();
+        return;
+      } else if (relocatingPin.id) {
+        // 既存のピンの移動: Firestoreのアップデート
+        updatePoster(relocatingPin.id, { lat, lng });
+        cancelRelocation();
+        return;
+      }
     }
 
     // すでに仮ピンが立っている状態で、別のマップ領域をクリックした場合は、新規作成をキャンセルして仮ピンを消去
@@ -251,6 +271,11 @@ function App() {
     }
   };
 
+  const handleCancelTempPin = () => {
+    setSelectedPoster(null);
+    setIsSheetOpen(false);
+  };
+
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
       {currentView === 'admin' && userRole === 'admin' ? (
@@ -263,8 +288,9 @@ function App() {
             onMapClick={handleMapClick}
             onMarkerClick={handleMarkerClick}
             onPinLongPress={handlePinLongPress}
+            onCancelTempPin={handleCancelTempPin}
             relocatingPoster={relocatingPin}
-            selectedPoster={isSheetOpen ? selectedPoster : null}
+            selectedPoster={selectedPoster}
             centerLocation={mapCenter}
             fitBounds={fitBounds}
             currentLocation={currentLocation}
