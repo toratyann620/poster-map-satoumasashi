@@ -350,11 +350,8 @@ const MapInner: React.FC<MapComponentProps> = ({
             {map && (
                 <button
                     onClick={handleResetHeading}
-                    disabled={heading === 0}
-                    className={`absolute top-4 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
-                        heading === 0 ? 'opacity-40 cursor-default' : 'hover:scale-105 active:scale-95 cursor-pointer'
-                    }`}
-                    title={heading === 0 ? '北向き' : '北を上にする'}
+                    className="absolute top-1/2 -translate-y-1/2 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
+                    title="北を上にする"
                 >
                     <svg
                         viewBox="0 0 24 24"

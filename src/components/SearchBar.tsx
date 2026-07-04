@@ -59,7 +59,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
     const hasFilters = filter.types.length > 0 || filter.status.length > 0 || filter.keyword;
 
     return (
-        <div className="absolute top-4 left-4 right-16 z-10 space-y-2">
+        <div className="absolute top-4 left-4 right-4 z-10 space-y-2">
             {/* 住所・施設名検索 */}
             <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3 flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-indigo-500 flex-shrink-0" />
