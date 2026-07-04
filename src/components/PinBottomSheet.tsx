@@ -11,6 +11,7 @@ interface PinBottomSheetProps {
     onClose: () => void;
     poster: Partial<PosterPin> | null;
     initialViewMode?: boolean;
+    allTags?: string[];
     onSave: (posterData: Partial<PosterPin>) => void;
     onDelete?: (id: string) => void;
 }
@@ -20,6 +21,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     onClose,
     poster,
     initialViewMode = false,
+    allTags = [],
     onSave,
     onDelete
 }) => {
@@ -42,6 +44,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     const [specialNote, setSpecialNote] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [imageUrls, setImageUrls] = useState<string[]>([]);
+    const [tags, setTags] = useState<string[]>([]);
+    const [newTagInput, setNewTagInput] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [selectedImgIdx, setSelectedImgIdx] = useState(0);
 
@@ -65,6 +69,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             setSpecialNote(poster.specialNote || '');
             setImageUrl(poster.imageUrl || '');
             setImageUrls(poster.imageUrls || (poster.imageUrl ? [poster.imageUrl] : []));
+            setTags(poster.tags || []);
+            setNewTagInput('');
             setSelectedImgIdx(0);
 
             // Set initial sheet state
@@ -84,6 +90,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                 setSpecialNote('');
                 setImageUrl('');
                 setImageUrls([]);
+                setTags([]);
+                setNewTagInput('');
                 setSelectedImgIdx(0);
             }, 300);
         }
@@ -190,6 +198,18 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
         }
     };
 
+    const handleAddTag = (tagText: string) => {
+        const trimmed = tagText.trim();
+        if (trimmed && !tags.includes(trimmed)) {
+            setTags(prev => [...prev, trimmed]);
+        }
+        setNewTagInput('');
+    };
+
+    const handleRemoveTag = (tagToRemove: string) => {
+        setTags(prev => prev.filter(t => t !== tagToRemove));
+    };
+
     const handleSave = () => {
         onSave({
             ...poster,
@@ -203,7 +223,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             memo,
             specialNote,
             imageUrl: imageUrls.length > 0 ? imageUrls[0] : imageUrl,
-            imageUrls
+            imageUrls,
+            tags
         });
     };
 
@@ -271,15 +292,25 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
 
                     {/* 閲覧モード時の Peek 状態でも表示する要素 (ステータスバッジなど) */}
                     {isViewMode && sheetState === 'peek' && (
-                        <div className="mt-4 flex gap-2 pointer-events-none">
+                        <div className="mt-4 flex flex-wrap gap-2 pointer-events-none">
                             {status.map(s => {
                                 const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' : s === '張替え予定' ? 'bg-amber-100 text-amber-700' : s === '未設置' ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-700';
                                 return <span key={s} className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{s}</span>;
                             })}
+                            {tags && tags.slice(0, 3).map(t => (
+                                <span key={t} className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400">
+                                    #{t}
+                                </span>
+                            ))}
+                            {tags && tags.length > 3 && (
+                                <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-gray-50 dark:bg-zinc-800 text-gray-400">
+                                    +{tags.length - 3}
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
-
+ 
                 <div className="px-6 overflow-y-auto flex-1 pb-6 space-y-5">
                     {/* ===== 閲覧モード ===== */}
                     {isViewMode && (
@@ -307,7 +338,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                         </div>
                                     </div>
                                 ) : null}
-
+ 
                                 {sheetState === 'expanded' && (
                                     <div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">ステータス</p>
@@ -319,6 +350,19 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                                             'bg-purple-100 text-purple-700';
                                                 return <span key={s} className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{s}</span>;
                                             })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {sheetState === 'expanded' && tags && tags.length > 0 && (
+                                    <div>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">タグ</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {tags.map(t => (
+                                                <span key={t} className="inline-block px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
+                                                    #{t}
+                                                </span>
+                                            ))}
                                         </div>
                                     </div>
                                 )}
@@ -449,6 +493,75 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                         );
                                     })}
                                 </div>
+                            </div>
+
+                            {/* カスタムタグ */}
+                            <div className="mt-4">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    カスタムタグ <span className="text-xs text-gray-400">（複数設定可）</span>
+                                </label>
+
+                                {/* 現在設定されているタグ */}
+                                {tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {tags.map(t => (
+                                            <span key={t} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
+                                                #{t}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveTag(t)}
+                                                    className="ml-0.5 text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-200 leading-none"
+                                                >
+                                                    ×
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* 新規タグ入力 */}
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newTagInput}
+                                        onChange={(e) => setNewTagInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleAddTag(newTagInput);
+                                            }
+                                        }}
+                                        placeholder="新しいタグを入力..."
+                                        className="flex-1 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAddTag(newTagInput)}
+                                        disabled={!newTagInput.trim()}
+                                        className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        追加
+                                    </button>
+                                </div>
+
+                                {/* 既存タグのサジェスト（他のポスターで使用されているタグ） */}
+                                {allTags.filter(t => !tags.includes(t)).length > 0 && (
+                                    <div className="mt-2">
+                                        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">既存のタグから選ぶ:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {allTags.filter(t => !tags.includes(t)).map(t => (
+                                                <button
+                                                    key={t}
+                                                    type="button"
+                                                    onClick={() => handleAddTag(t)}
+                                                    className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                                                >
+                                                    + #{t}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="mt-4">

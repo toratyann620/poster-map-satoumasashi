@@ -47,6 +47,7 @@ export const usePosterData = () => {
         keyword: '',
         types: [],   // 空配列 = すべて表示
         status: [],  // 空配列 = すべて表示
+        tags: [],    // 空配列 = すべて表示
     });
     const [userRole, setUserRole] = useState<'admin' | 'general'>('general');
     const [userName, setUserName] = useState<string>('unknown');
@@ -268,14 +269,21 @@ export const usePosterData = () => {
                 if (!hasMatch) return false;
             }
 
-            // キーワードフィルター
+            // タグフィルター（複数選択: いずれか一つでも含まれていれば表示）
+            if (filter.tags && filter.tags.length > 0) {
+                const hasTagMatch = filter.tags.some(t => p.tags?.includes(t));
+                if (!hasTagMatch) return false;
+            }
+
+            // キーワードフィルター（住所・備考・特記事項・所有者・タグ名も対象）
             if (filter.keyword) {
                 const term = filter.keyword.toLowerCase();
                 const addressMatch = (p.address || '').toLowerCase().includes(term);
                 const memoMatch = (p.memo || '').toLowerCase().includes(term);
                 const specialMatch = (p.specialNote || '').toLowerCase().includes(term);
                 const ownerMatch = (p.owner || '').toLowerCase().includes(term);
-                if (!addressMatch && !memoMatch && !specialMatch && !ownerMatch) return false;
+                const tagMatch = (p.tags || []).some(t => t.toLowerCase().includes(term));
+                if (!addressMatch && !memoMatch && !specialMatch && !ownerMatch && !tagMatch) return false;
             }
 
             return true;

@@ -7,9 +7,10 @@ interface SearchBarProps {
     filter: FilterState;
     setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
     onPlaceSelect: (lat: number, lng: number, name?: string, address?: string, url?: string) => void;
+    allTags?: string[];
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect }) => {
+export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect, allTags = [] }) => {
     const placeInputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
@@ -158,7 +159,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                         onChange={(e) => setFilter({ ...filter, keyword: e.target.value })}
                     />
                     {hasFilters && (
-                        <button onClick={() => setFilter({ keyword: '', types: [], status: [] })}
+                        <button onClick={() => setFilter({ keyword: '', types: [], status: [], tags: [] })}
                             className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1 flex-shrink-0">
                             <X className="w-3.5 h-3.5" />クリア
                         </button>
@@ -225,6 +226,33 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                                 })}
                             </div>
                         </div>
+                        {/* タグフィルター */}
+                        {allTags.length > 0 && (
+                            <div>
+                                <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs mb-2">
+                                    <span>タグで絞り込み</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {allTags.map(tag => {
+                                        const active = (filter.tags || []).includes(tag);
+                                        return (
+                                            <button key={tag}
+                                                onClick={() => {
+                                                    const current = filter.tags || [];
+                                                    const next = active
+                                                        ? current.filter(t => t !== tag)
+                                                        : [...current, tag];
+                                                    setFilter(prev => ({ ...prev, tags: next }));
+                                                }}
+                                                className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-all flex-shrink-0 ${active ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-800'}`}
+                                            >
+                                                #{tag}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </details>
             </div>

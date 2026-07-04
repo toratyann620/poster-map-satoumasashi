@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MapWrapper } from './components/Map';
 import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
@@ -119,7 +119,7 @@ function App() {
   };
 
   const handleImportSuccess = (imported: PosterPin[]) => {
-    setFilter({ keyword: '', types: [], status: [] });
+    setFilter({ keyword: '', types: [], status: [], tags: [] });
     if (imported.length === 0) return;
 
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -276,6 +276,13 @@ function App() {
     setIsSheetOpen(false);
   };
 
+  // 全ポスターから使用されているユニークなタグ一覧を生成
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    posters.forEach(p => (p.tags || []).forEach(t => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [posters]);
+
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
       {currentView === 'admin' && userRole === 'admin' ? (
@@ -327,7 +334,7 @@ function App() {
           {/* Floating UI Elements（移動モード中は非表示） */}
           {!isRelocating && (
             <>
-              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} />
+              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} />
 
               {/* Floating Buttons: Add New, Admin Toggle & Logout */}
               <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3">
@@ -386,6 +393,7 @@ function App() {
             onClose={() => setIsSheetOpen(false)}
             poster={selectedPoster}
             initialViewMode={initialViewMode}
+            allTags={allTags}
             onSave={handleSave}
             onDelete={handleDelete}
           />

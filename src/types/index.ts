@@ -1,5 +1,5 @@
 // ポスターに紐づく「誰のポスターか」の選択肢（複数選択可）
-export const POSTER_PERSONS = ['佐藤まさし', 'ごとう祐一', '高市早苗', '党員募集', '公明党', '中道', '共産党', '難波県議', '渡辺県議', '長田県議', '山口市長', 'その他'] as const;
+export const POSTER_PERSONS = ['佐藤まさし', 'ごとう祐一', '堀江県議', '党員募集', '公明党', '中道', '共産党', '難波県議', '渡辺県議', '長田県議', '山口市長', 'その他'] as const;
 export type PosterPerson = typeof POSTER_PERSONS[number];
 
 // ポスターの「状態」の選択肢（複数選択）
@@ -10,7 +10,7 @@ export type PosterStatus = typeof POSTER_STATUS_OPTIONS[number];
 export const PERSON_COLORS: Record<PosterPerson, string> = {
     '佐藤まさし': '#3B82F6',  // blue-500
     'ごとう祐一': '#EAB308',  // yellow-500
-    '高市早苗': '#10B981',   // emerald-500
+    '堀江県議': '#10B981',   // emerald-500
     '党員募集': '#F43F5E',   // rose-500
     '公明党': '#EC4899',   // pink-500
     '中道': '#F59E0B',   // amber-500
@@ -37,6 +37,7 @@ export interface PosterPin {
     specialNote: string;     // 特記事項
     imageUrl: string;        // 写真 (Base64またはStorage URL、互換性用)
     imageUrls?: string[];    // 複数写真 (Storage URL配列)
+    tags?: string[];         // カスタムタグ (複数指定可能)
     createdAt: number;       // 作成日時 (timestamp)
     updatedAt: number;       // 更新日時 (timestamp)
     createdBy: string;       // 登録者
@@ -47,6 +48,7 @@ export type FilterState = {
     keyword: string;
     types: string[];   // 複数選択、空配列 = すべて表示
     status: string[];  // 複数選択、空配列 = すべて表示
+    tags: string[];    // 複数選択、空配列 = すべて表示
 };
 
 // 変更履歴ログ
