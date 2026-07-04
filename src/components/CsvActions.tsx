@@ -210,7 +210,7 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
     };
 
     return (
-        <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-10">
+        <div className="absolute bottom-28 right-4 flex flex-col gap-2 z-10">
             <button
                 onClick={handleDownloadTemplate}
                 className="w-12 h-12 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors relative group"

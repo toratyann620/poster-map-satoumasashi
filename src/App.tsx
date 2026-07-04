@@ -10,7 +10,7 @@ import { NotificationPanel } from './components/NotificationPanel';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import type { PosterPin } from './types';
-import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation } from 'lucide-react';
+import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation, Settings } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
@@ -53,6 +53,7 @@ function App() {
   const [showRemovedPins, setShowRemovedPins] = useState<boolean>(
     () => localStorage.getItem('showRemovedPins') === 'true'
   );
+  const [isMenuExpanded, setIsMenuExpanded] = useState(false);
 
   // 全ポスターから使用されているユニークなタグ一覧を生成（早期リターン前に宣言する必要あり）
   const allTags = useMemo(() => {
@@ -386,48 +387,78 @@ function App() {
             <>
               <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
 
-              {/* Floating Buttons: Add New, Admin Toggle & Logout */}
-              <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3">
-                {/* Add New Button (FAB) */}
-                <button
-                  onClick={() => {
-                    setSelectedPoster({ type: '佐藤まさし' });
-                    setInitialViewMode(false);
-                    setIsSheetOpen(true);
-                  }}
-                  className="bg-indigo-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
-                  title="新規追加"
-                >
-                  <Plus className="w-7 h-7" />
-                </button>
-
-                {/* Current Location Button */}
-                <button
-                  onClick={locateMe}
-                  className="bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
-                  title="現在地へ移動"
-                >
-                  <Navigation className="w-6 h-6" />
-                </button>
-
-                {/* Notification Bell */}
-                <NotificationPanel userId={user?.uid ?? null} />
-
-                {userRole === 'admin' && (
+              {/* Floating Buttons: Expandable Menu with Gear Icon */}
+              <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3 items-center">
+                {/* 展開されたメニューアイテム */}
+                <div className={`flex flex-col gap-3 items-center transition-all duration-300 origin-bottom ${
+                  isMenuExpanded 
+                    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto mb-1' 
+                    : 'opacity-0 translate-y-4 scale-75 pointer-events-none h-0 overflow-hidden mb-0'
+                }`}>
+                  {/* Add New Button (FAB) */}
                   <button
-                    onClick={() => setCurrentView(currentView === 'map' ? 'admin' : 'map')}
-                    className={`${currentView === 'admin' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300'} p-3.5 rounded-full shadow-lg hover:bg-opacity-90 transition-colors flex items-center justify-center`}
-                    title={currentView === 'map' ? "管理パネルへ" : "マップへ戻る"}
+                    onClick={() => {
+                      setSelectedPoster({ type: '佐藤まさし' });
+                      setInitialViewMode(false);
+                      setIsSheetOpen(true);
+                      setIsMenuExpanded(false);
+                    }}
+                    className="bg-indigo-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
+                    title="新規追加"
                   >
-                    {currentView === 'map' ? <Shield className="w-5 h-5" /> : <MapIcon className="w-5 h-5" />}
+                    <Plus className="w-7 h-7" />
                   </button>
-                )}
+
+                  {/* Current Location Button */}
+                  <button
+                    onClick={() => {
+                      locateMe();
+                      setIsMenuExpanded(false);
+                    }}
+                    className="bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
+                    title="現在地へ移動"
+                  >
+                    <Navigation className="w-6 h-6" />
+                  </button>
+
+                  {/* Notification Bell */}
+                  <NotificationPanel userId={user?.uid ?? null} />
+
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        setCurrentView(currentView === 'map' ? 'admin' : 'map');
+                        setIsMenuExpanded(false);
+                      }}
+                      className={`${currentView === 'admin' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300'} p-3.5 rounded-full shadow-lg hover:bg-opacity-90 transition-colors flex items-center justify-center`}
+                      title={currentView === 'map' ? "管理パネルへ" : "マップへ戻る"}
+                    >
+                      {currentView === 'map' ? <Shield className="w-5 h-5" /> : <MapIcon className="w-5 h-5" />}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsMenuExpanded(false);
+                    }}
+                    className="bg-white dark:bg-zinc-800 p-3.5 rounded-full shadow-lg hover:bg-gray-50 flex items-center justify-center transition-colors"
+                    title="ログアウト"
+                  >
+                    <LogOut className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                  </button>
+                </div>
+
+                {/* メニュー展開トリガー（歯車ボタン） */}
                 <button
-                  onClick={handleLogout}
-                  className="bg-white dark:bg-zinc-800 p-3.5 rounded-full shadow-lg hover:bg-gray-50 flex items-center transition-colors"
-                  title="ログアウト"
+                  onClick={() => setIsMenuExpanded(!isMenuExpanded)}
+                  className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center active:scale-95 transition-all ${
+                    isMenuExpanded 
+                      ? 'bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-900 border border-zinc-700 dark:border-zinc-300 rotate-90' 
+                      : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50'
+                  }`}
+                  title={isMenuExpanded ? "メニューを閉じる" : "メニューを開く"}
                 >
-                  <LogOut className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                  {isMenuExpanded ? <X className="w-6 h-6" /> : <Settings className="w-6 h-6" />}
                 </button>
               </div>
 
