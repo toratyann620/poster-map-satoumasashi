@@ -390,62 +390,70 @@ function App() {
               {/* Floating Buttons: Expandable Menu with Gear Icon */}
               <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3 items-center">
                 {/* 展開されたメニューアイテム */}
-                <div className={`flex flex-col gap-3 items-center transition-all duration-300 origin-bottom ${
+                <div className={`flex gap-4 items-end transition-all duration-300 origin-bottom ${
                   isMenuExpanded 
                     ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto mb-1' 
                     : 'opacity-0 translate-y-4 scale-75 pointer-events-none h-0 overflow-hidden mb-0'
                 }`}>
-                  {/* Add New Button (FAB) */}
-                  <button
-                    onClick={() => {
-                      setSelectedPoster({ type: '佐藤まさし' });
-                      setInitialViewMode(false);
-                      setIsSheetOpen(true);
-                      setIsMenuExpanded(false);
-                    }}
-                    className="bg-indigo-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
-                    title="新規追加"
-                  >
-                    <Plus className="w-7 h-7" />
-                  </button>
-
-                  {/* Current Location Button */}
-                  <button
-                    onClick={() => {
-                      locateMe();
-                      setIsMenuExpanded(false);
-                    }}
-                    className="bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
-                    title="現在地へ移動"
-                  >
-                    <Navigation className="w-6 h-6" />
-                  </button>
-
-                  {/* Notification Bell */}
-                  <NotificationPanel userId={user?.uid ?? null} />
-
-                  {userRole === 'admin' && (
+                  {/* 1列目: アプリ機能 */}
+                  <div className="flex flex-col gap-3 items-center">
+                    {/* Add New Button (FAB) */}
                     <button
                       onClick={() => {
-                        setCurrentView(currentView === 'map' ? 'admin' : 'map');
+                        setSelectedPoster({ type: '佐藤まさし' });
+                        setInitialViewMode(false);
+                        setIsSheetOpen(true);
                         setIsMenuExpanded(false);
                       }}
-                      className={`${currentView === 'admin' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300'} p-3.5 rounded-full shadow-lg hover:bg-opacity-90 transition-colors flex items-center justify-center`}
-                      title={currentView === 'map' ? "管理パネルへ" : "マップへ戻る"}
+                      className="bg-indigo-600 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
+                      title="新規追加"
                     >
-                      {currentView === 'map' ? <Shield className="w-5 h-5" /> : <MapIcon className="w-5 h-5" />}
+                      <Plus className="w-7 h-7" />
                     </button>
+
+                    {/* Current Location Button */}
+                    <button
+                      onClick={() => {
+                        locateMe();
+                        setIsMenuExpanded(false);
+                      }}
+                      className="bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
+                      title="現在地へ移動"
+                    >
+                      <Navigation className="w-6 h-6" />
+                    </button>
+
+                    {/* Notification Bell */}
+                    <NotificationPanel userId={user?.uid ?? null} />
+
+                    {userRole === 'admin' && (
+                      <button
+                        onClick={() => {
+                          setCurrentView(currentView === 'map' ? 'admin' : 'map');
+                          setIsMenuExpanded(false);
+                        }}
+                        className={`${currentView === 'admin' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300'} p-3.5 rounded-full shadow-lg hover:bg-opacity-90 transition-colors flex items-center justify-center`}
+                        title={currentView === 'map' ? "管理パネルへ" : "マップへ戻る"}
+                      >
+                        {currentView === 'map' ? <Shield className="w-5 h-5" /> : <MapIcon className="w-5 h-5" />}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setIsMenuExpanded(false);
+                      }}
+                      className="bg-white dark:bg-zinc-800 p-3.5 rounded-full shadow-lg hover:bg-gray-50 flex items-center justify-center transition-colors"
+                      title="ログアウト"
+                    >
+                      <LogOut className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                    </button>
+                  </div>
+
+                  {/* 2列目: CSV機能 (管理者のみ) */}
+                  {userRole === 'admin' && currentView === 'map' && (
+                    <CsvActions posters={posters} setPosters={setPosters} onImportSuccess={handleImportSuccess} />
                   )}
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      setIsMenuExpanded(false);
-                    }}
-                    className="bg-white dark:bg-zinc-800 p-3.5 rounded-full shadow-lg hover:bg-gray-50 flex items-center justify-center transition-colors"
-                    title="ログアウト"
-                  >
-                    <LogOut className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                  </button>
                 </div>
 
                 {/* メニュー展開トリガー（歯車ボタン） */}
@@ -461,10 +469,6 @@ function App() {
                   {isMenuExpanded ? <X className="w-6 h-6" /> : <Settings className="w-6 h-6" />}
                 </button>
               </div>
-
-              {userRole === 'admin' && currentView === 'map' && (
-                <CsvActions posters={posters} setPosters={setPosters} onImportSuccess={handleImportSuccess} />
-              )}
 
               {/* ポスター枚数ウィジェット（全ユーザー） */}
               <PosterCountWidget posters={posters} activityLogs={activityLogs} />
