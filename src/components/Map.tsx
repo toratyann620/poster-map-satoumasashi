@@ -34,7 +34,7 @@ const render = (status: Status): React.ReactElement => {
 function buildDomMarker(poster: PosterPin, isFloating: boolean): HTMLElement {
     const statuses: string[] = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
     const isTemp = poster.id === 'temp-marker-id' || statuses.includes('仮ピン');
-    const hexColor = isTemp ? '#EF4444' : (PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280');
+    const hexColor = isTemp ? '#EA4335' : (PERSON_COLORS[poster.type as keyof typeof PERSON_COLORS] || '#6B7280');
 
     const isUninstalled = statuses.includes('未設置');
     const isReplacement = statuses.includes('張替え予定');
@@ -398,6 +398,18 @@ const MapInner: React.FC<MapComponentProps> = ({
                 title: '新規追加プレイス',
                 content: domEl,
                 zIndex: 1500, // 通常のピンよりも最前面に表示
+            });
+
+            // 仮ピンのクリックイベント：親の onMarkerClick を呼び出す
+            marker.element?.addEventListener('gmp-click', () => {
+                if (onMarkerClickRef.current) {
+                    onMarkerClickRef.current(dummyPoster);
+                }
+            });
+            marker.addListener('click', () => {
+                if (onMarkerClickRef.current) {
+                    onMarkerClickRef.current(dummyPoster);
+                }
             });
 
             markersRef.current.push(marker);

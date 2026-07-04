@@ -100,23 +100,10 @@ function App() {
   const handlePlaceSelect = (lat: number, lng: number) => {
     setMapCenter({ lat, lng });
 
-    // 選択された緯度経度から逆ジオコーディングで住所を取得して、新規ポスター登録フォームを開く
-    if (window.google) {
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-        let addressStr = '';
-        if (status === 'OK' && results && results[0]) {
-          addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
-        }
-        setSelectedPoster({ lat, lng, address: addressStr, type: '佐藤まさし' });
-        setInitialViewMode(false); // 編集・登録モード
-        setIsSheetOpen(true); // 新規追加フォームを開く
-      });
-    } else {
-      setSelectedPoster({ lat, lng, type: '佐藤まさし' });
-      setInitialViewMode(false);
-      setIsSheetOpen(true);
-    }
+    // 検索した場所には仮のピン（赤い跳ねるピン）を置くだけにする（この時点ではシートを開かない）
+    setSelectedPoster({ lat, lng, type: '佐藤まさし', status: ['仮ピン'] });
+    setInitialViewMode(false);
+    setIsSheetOpen(false);
   };
 
   const handleImportSuccess = (imported: PosterPin[]) => {
@@ -147,6 +134,13 @@ function App() {
       return;
     }
 
+    // すでに仮ピンが立っている状態で、別のマップ領域をクリックした場合は、新規作成をキャンセルして仮ピンを消去
+    if (selectedPoster && !selectedPoster.id) {
+      setSelectedPoster(null);
+      setIsSheetOpen(false);
+      return;
+    }
+
     // 通常モード: 新規ピン追加フォームを開く
     if (window.google) {
       const geocoder = new window.google.maps.Geocoder();
@@ -168,8 +162,32 @@ function App() {
 
   const handleMarkerClick = (poster: PosterPin) => {
     setSelectedPoster(poster);
-    setInitialViewMode(true);
-    setIsSheetOpen(true);
+    
+    // 仮ピン（保存前の検索ピン）がクリックされた場合
+    const isTemp = poster.id === 'temp-marker-id' || (Array.isArray(poster.status) && poster.status.includes('仮ピン'));
+    
+    if (isTemp) {
+      setInitialViewMode(false); // 新規登録（編集）モード
+      
+      // 住所が未取得の場合はこのタイミングで逆ジオコーディングをかける
+      if (window.google && !poster.address) {
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ location: { lat: poster.lat, lng: poster.lng } }, (results, status) => {
+          let addressStr = '';
+          if (status === 'OK' && results && results[0]) {
+            addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+          }
+          setSelectedPoster(prev => ({ ...prev, address: addressStr }));
+          setIsSheetOpen(true);
+        });
+      } else {
+        setIsSheetOpen(true);
+      }
+    } else {
+      // 既存のピン：閲覧モードで開く
+      setInitialViewMode(true);
+      setIsSheetOpen(true);
+    }
   };
 
   const handleSave = (posterData: Partial<PosterPin>) => {
