@@ -190,10 +190,15 @@ const MapInner: React.FC<MapComponentProps> = ({
                 zoom: 14,
                 disableDefaultUI: true,
                 zoomControl: true,
-                gestureHandling: 'greedy',
+                rotateControl: true,
+                tiltControl: true,
+                gestureHandling: 'cooperative',
+                isFractionalZoomEnabled: true,
                 mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたマップIDを設定
                 renderingType: google.maps.RenderingType.VECTOR, // 明示的にベクトル(WebGL)モードを指定して回転を可能にする
-            });
+            } as any);
+
+            (window as any).map = newMap; // デバッグ用にグローバル露出
 
             newMap.addListener('click', (e: google.maps.MapMouseEvent) => {
                 if (e.latLng) {
@@ -346,7 +351,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 <button
                     onClick={handleResetHeading}
                     disabled={heading === 0}
-                    className={`absolute bottom-32 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
+                    className={`absolute top-4 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
                         heading === 0 ? 'opacity-40 cursor-default' : 'hover:scale-105 active:scale-95 cursor-pointer'
                     }`}
                     title={heading === 0 ? '北向き' : '北を上にする'}
