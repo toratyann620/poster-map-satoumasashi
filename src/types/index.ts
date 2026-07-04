@@ -38,6 +38,7 @@ export interface PosterPin {
     imageUrl: string;        // 写真 (Base64またはStorage URL、互換性用)
     imageUrls?: string[];    // 複数写真 (Storage URL配列)
     tags?: string[];         // カスタムタグ (複数指定可能)
+    removed?: boolean;       // 撤去フラグ（trueの場合マップ非表示、DBにデータは残る）
     createdAt: number;       // 作成日時 (timestamp)
     updatedAt: number;       // 更新日時 (timestamp)
     createdBy: string;       // 登録者
