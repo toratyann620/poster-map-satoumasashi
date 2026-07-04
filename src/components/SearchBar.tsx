@@ -12,6 +12,42 @@ interface SearchBarProps {
 export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect }) => {
     const placeInputRef = useRef<HTMLInputElement>(null);
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            const value = placeInputRef.current?.value;
+            if (value && value.trim()) {
+                e.preventDefault();
+                geocodeAndSelect(value.trim());
+            }
+        }
+    };
+
+    const geocodeAndSelect = (address: string) => {
+        if (!window.google) return;
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ address: address, componentRestrictions: { country: 'jp' } }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+                const loc = results[0].geometry.location;
+                const lat = loc.lat();
+                const lng = loc.lng();
+                const name = address;
+                const formattedAddress = results[0].formatted_address.replace(/^日本、/, '');
+                const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+                
+                onPlaceSelect(lat, lng, name, formattedAddress, url);
+                
+                placeInputRef.current?.blur();
+                const pacContainers = document.querySelectorAll('.pac-container');
+                pacContainers.forEach((el: any) => {
+                    el.style.display = 'none';
+                });
+            } else {
+                console.warn('Geocoding failed for address:', address, 'status:', status);
+                alert('入力された住所の場所が見つかりませんでした。');
+            }
+        });
+    };
+
     useEffect(() => {
         if (!placeInputRef.current) return;
         const initAutocomplete = () => {
@@ -73,6 +109,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                     ref={placeInputRef}
                     type="text"
                     placeholder="マップを住所や施設名で移動..."
+                    onKeyDown={handleKeyDown}
                     className="flex-1 bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-500 border-none focus:ring-0 text-base"
                 />
             </div>
