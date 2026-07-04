@@ -51,7 +51,7 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
         flex-direction: column;
         align-items: center;
         cursor: pointer;
-        opacity: ${poster.removed ? '0.35' : (isUninstalled ? '0.5' : '1')};
+        opacity: ${poster.removed ? '0.6' : (isUninstalled ? '0.5' : '1')};
         transform: ${isFloating ? 'scale(1.4) translateY(-8px)' : 'scale(1)'};
         transition: transform 0.2s;
         filter: ${poster.removed ? 'grayscale(80%)' : ''} ${isFloating ? 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))'};
@@ -244,12 +244,14 @@ const MapInner: React.FC<MapComponentProps> = ({
         };
     }, [map]);
 
-    // モバイル端末での2本指の回転ジェスチャ（ねじり）を自前で実装する
+    // モバイル端末での2本指の回転ジェスチャ（ねじり）と拡大縮小（ピンチ）を実装する
     useEffect(() => {
         if (!map || !ref.current) return;
 
         let touchStartAngle = 0;
+        let touchStartDist = 0;
         let initialHeading = 0;
+        let initialZoom = 14;
         let isRotating = false;
 
         const getAngle = (t1: Touch, t2: Touch) => {
@@ -258,27 +260,42 @@ const MapInner: React.FC<MapComponentProps> = ({
             return Math.atan2(dy, dx) * (180 / Math.PI); // ラジアンから度に変換
         };
 
+        const getDistance = (t1: Touch, t2: Touch) => {
+            const dx = t2.clientX - t1.clientX;
+            const dy = t2.clientY - t1.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        };
+
         const handleTouchStart = (e: TouchEvent) => {
             if (e.touches.length === 2) {
                 isRotating = true;
                 touchStartAngle = getAngle(e.touches[0], e.touches[1]);
+                touchStartDist = getDistance(e.touches[0], e.touches[1]);
                 initialHeading = map.getHeading() || 0;
+                initialZoom = map.getZoom() || 14;
             }
         };
 
         const handleTouchMove = (e: TouchEvent) => {
             if (isRotating && e.touches.length === 2) {
-                // デフォルトのスクロールやズームジェスチャとの干渉を防ぐ
+                // デフォルトのスクロールやブラウザの拡大縮小を防ぐ
                 e.preventDefault();
 
+                // 1. 回転
                 const currentAngle = getAngle(e.touches[0], e.touches[1]);
                 const deltaAngle = currentAngle - touchStartAngle;
-                
-                // 新しい方位角を計算（0〜360度に収める）
                 let newHeading = (initialHeading - deltaAngle) % 360;
                 if (newHeading < 0) newHeading += 360;
-
                 map.setHeading(newHeading);
+
+                // 2. ズーム
+                const currentDist = getDistance(e.touches[0], e.touches[1]);
+                if (touchStartDist > 0) {
+                    const ratio = currentDist / touchStartDist;
+                    const zoomChange = Math.log2(ratio);
+                    const newZoom = Math.max(0, Math.min(21, initialZoom + zoomChange));
+                    map.setZoom(newZoom);
+                }
             }
         };
 

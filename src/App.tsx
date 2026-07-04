@@ -70,6 +70,12 @@ function App() {
     });
   }, [filteredPosters, showRemovedPins]);
 
+  // 選択中のポスターの最新データをリアルタイム同期しているリストから取得（早期リターン前に宣言）
+  const activePoster = useMemo(() => {
+    if (!selectedPoster || !selectedPoster.id) return selectedPoster;
+    return posters.find(p => p.id === selectedPoster.id) || selectedPoster;
+  }, [selectedPoster, posters]);
+
 
   // 初回ロード時に現在地を取得してジャンプする
   useEffect(() => {
@@ -327,6 +333,7 @@ function App() {
           onClose={() => setCurrentView('map')}
           showRemovedPins={showRemovedPins}
           onToggleShowRemoved={handleToggleShowRemoved}
+          pinTypes={pinTypes}
         />
       ) : (
         <>
@@ -433,7 +440,7 @@ function App() {
           <PinBottomSheet
             isOpen={isSheetOpen && currentView === 'map' && !isRelocating}
             onClose={() => setIsSheetOpen(false)}
-            poster={selectedPoster}
+            poster={activePoster}
             initialViewMode={initialViewMode}
             allTags={allTags}
             pinTypes={pinTypes}

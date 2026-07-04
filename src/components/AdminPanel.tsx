@@ -17,6 +17,7 @@ interface AdminPanelProps {
     onClose: () => void;
     showRemovedPins: boolean;
     onToggleShowRemoved: (val: boolean) => void;
+    pinTypes?: { name: string, color: string }[];
 }
 
 type Tab = 'users' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog' | 'settings';
@@ -27,7 +28,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
     '削除': { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-400', label: '削除', Icon: XCircle },
 };
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [] }) => {
     const { users, loading: usersLoading, createUser, removeUser } = useUsers();
     const { logs, loading: logsLoading } = useActivityLogs(200);
     const { userRole, posters } = usePosterData();
@@ -202,7 +203,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
 
                 {/* ===== ダッシュボードタブ ===== */}
                 {activeTab === 'dashboard' && (
-                    <DashboardTab posters={posters} />
+                    <DashboardTab posters={posters} pinTypes={pinTypes} />
                 )}
 
                 {/* ===== ユーザー分析タブ ===== */}

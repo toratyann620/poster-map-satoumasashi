@@ -8,6 +8,7 @@ import { useDashboardData } from '../hooks/useDashboardData';
 
 interface DashboardTabProps {
     posters: PosterPin[];
+    pinTypes?: { name: string, color: string }[];
 }
 
 // ──────────────────────────────────────────────────────────
@@ -313,19 +314,36 @@ const getCityCategory = (address: string): '厚木市' | '海老名市' | '伊�
 // ──────────────────────────────────────────────────────────
 // メインコンポーネント
 // ──────────────────────────────────────────────────────────
-export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
+export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = [] }) => {
     const [dateFromStr, setDateFromStr] = useState(toInputDate(getDefault30DaysAgo()));
     const [dateToStr, setDateToStr] = useState(toInputDate(new Date()));
     const [statusFilter, setStatusFilter] = useState<string[]>([...POSTER_STATUS_OPTIONS]);
     const [selectedCity, setSelectedCity] = useState<CityCategory>('全体');
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
     const { logs, loading } = useDashboardData(dateFromStr, dateToStr);
 
+    // 全ポスターから使用されているユニークなタグ一覧を生成
+    const allTags = useMemo(() => {
+        const tagSet = new Set<string>();
+        posters.forEach(p => (p.tags || []).forEach(t => tagSet.add(t)));
+        return Array.from(tagSet).sort();
+    }, [posters]);
+
+    // タグで絞り込まれたポスターのベース
+    const taggedBasePosters = useMemo(() => {
+        if (selectedTags.length === 0) return posters;
+        return posters.filter(p => {
+            const pTags = p.tags || [];
+            return selectedTags.some(t => pTags.includes(t));
+        });
+    }, [posters, selectedTags]);
+
     // ──── 市区町村別フィルタリング ────
     const filteredPostersByCity = useMemo(() => {
-        if (selectedCity === '全体') return posters;
-        return posters.filter(p => getCityCategory(p.address) === selectedCity);
-    }, [posters, selectedCity]);
+        if (selectedCity === '全体') return taggedBasePosters;
+        return taggedBasePosters.filter(p => getCityCategory(p.address) === selectedCity);
+    }, [taggedBasePosters, selectedCity]);
 
     const filteredLogsByCity = useMemo(() => {
         if (selectedCity === '全体') return logs;
@@ -336,7 +354,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     const satoQtyByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const postersInCity = posters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const postersInCity = taggedBasePosters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
             const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
             
             const filteredInCity = postersInCity.filter(p => {
@@ -361,7 +379,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
     const satoInstallRateByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const postersInCity = posters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const postersInCity = taggedBasePosters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
             const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
             const installedQty = postersInCity.filter(p => {
                 const statuses = Array.isArray(p.status) ? p.status : [p.status];
@@ -370,7 +388,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
             const rate = totalQty > 0 ? Math.round((installedQty / totalQty) * 100) : 0;
             return { city, totalQty, installedQty, rate };
         });
-    }, [posters]);
+    }, [taggedBasePosters]);
 
     const actionsByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
@@ -498,9 +516,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
         return maxCount > 0 ? days[counts.indexOf(maxCount)] : null;
     }, [filteredLogsByCity]);
 
+    const activeTypes = useMemo(() => {
+        if (pinTypes && pinTypes.length > 0) {
+            return pinTypes.map(pt => pt.name);
+        }
+        return [...POSTER_PERSONS];
+    }, [pinTypes]);
+
     // ──── 種類別サマリー ────
     const typeSummary = useMemo(() =>
-        POSTER_PERSONS.map(type => {
+        activeTypes.map(type => {
             const allOfType = filteredPostersByCity.filter(p => p.type === type);
             const filteredOfType = filteredPosters.filter(p => p.type === type);
 
@@ -701,6 +726,38 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters }) => {
                             </label>
                         ))}
                     </div>
+
+                    {/* タグフィルター */}
+                    {allTags.length > 0 && (
+                        <div className="flex items-center gap-3 flex-wrap w-full border-t border-gray-100 dark:border-zinc-800 pt-3">
+                            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">タグ</span>
+                            <div className="flex flex-wrap gap-1.5">
+                                {allTags.map(tag => {
+                                    const active = selectedTags.includes(tag);
+                                    return (
+                                        <button
+                                            key={tag}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedTags(prev =>
+                                                    prev.includes(tag)
+                                                        ? prev.filter(t => t !== tag)
+                                                        : [...prev, tag]
+                                                );
+                                            }}
+                                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                                                active
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                                    : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-gray-50 dark:bg-zinc-800/50'
+                                            }`}
+                                        >
+                                            #{tag}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
