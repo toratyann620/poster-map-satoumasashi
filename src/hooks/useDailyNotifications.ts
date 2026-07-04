@@ -12,27 +12,27 @@ import {
     getDoc,
 } from 'firebase/firestore';
 
-// JST で「昨日」の 0:00 〜 23:59:59.999 のタイムスタンプ（ms）を返す
-const getYesterdayRange = (): { start: number; end: number; dateStr: string } => {
+// 指定された offsetDays（今日からの日数差。昨日なら -1、今日なら 0）の 0:00 〜 23:59:59.999 のタイムスタンプ（ms）を返す
+const getDayRange = (offsetDays: number): { start: number; end: number; dateStr: string } => {
     const now = new Date();
     // JST = UTC+9
     const jstOffset = 9 * 60 * 60 * 1000;
     const jstNow = new Date(now.getTime() + jstOffset);
 
-    // 昨日の日付（JST）
-    const jstYesterday = new Date(jstNow);
-    jstYesterday.setUTCDate(jstYesterday.getUTCDate() - 1);
+    // 対象の日付（JST）
+    const targetDate = new Date(jstNow);
+    targetDate.setUTCDate(targetDate.getUTCDate() + offsetDays);
 
-    const year = jstYesterday.getUTCFullYear();
-    const month = String(jstYesterday.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(jstYesterday.getUTCDate()).padStart(2, '0');
+    const year = targetDate.getUTCFullYear();
+    const month = String(targetDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getUTCDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
 
-    // JST 昨日 0:00:00.000 を UTC ms に変換
-    const startJst = Date.UTC(year, jstYesterday.getUTCMonth(), jstYesterday.getUTCDate(), 0, 0, 0, 0);
+    // JST 対象日 0:00:00.000 を UTC ms に変換
+    const startJst = Date.UTC(year, targetDate.getUTCMonth(), targetDate.getUTCDate(), 0, 0, 0, 0);
     const start = startJst - jstOffset;
 
-    // JST 昨日 23:59:59.999 を UTC ms に変換
+    // JST 対象日 23:59:59.999 を UTC ms に変換
     const end = start + 24 * 60 * 60 * 1000 - 1;
 
     return { start, end, dateStr };
@@ -44,19 +44,20 @@ export interface DailyNotificationLog extends ActivityLog {
     posterStatus?: string[];
 }
 
-export const useDailyNotifications = (userId: string | null) => {
+export const useDailyNotifications = (userId: string | null, offsetDays: number) => {
     const [logs, setLogs] = useState<DailyNotificationLog[]>([]);
     const [isUnread, setIsUnread] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [yesterdayDateStr, setYesterdayDateStr] = useState('');
+    const [targetDateStr, setTargetDateStr] = useState('');
 
-    // 昨日の範囲を一度計算してメモ
-    const range = getYesterdayRange();
+    // 対象の範囲を計算
+    const range = getDayRange(offsetDays);
 
     useEffect(() => {
-        setYesterdayDateStr(range.dateStr);
+        setTargetDateStr(range.dateStr);
+        setLoading(true);
 
-        // activityLogs から昨日分を取得
+        // activityLogs から指定日分を取得
         const q = query(
             collection(db, 'activityLogs'),
             where('changedAt', '>=', range.start),
@@ -90,7 +91,7 @@ export const useDailyNotifications = (userId: string | null) => {
         });
 
         return () => unsubscribe();
-    }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+    }, [offsetDays, range.start, range.end, range.dateStr]);
 
     // 既読状態を確認
     useEffect(() => {
@@ -109,7 +110,7 @@ export const useDailyNotifications = (userId: string | null) => {
         };
 
         checkRead();
-    }, [userId, range.dateStr]);
+    }, [userId, range.dateStr, offsetDays]);
 
     // 既読にする
     const markAsRead = useCallback(async () => {
@@ -126,7 +127,7 @@ export const useDailyNotifications = (userId: string | null) => {
         }
     }, [userId, range.dateStr]);
 
-    // 昨日のログのうち「要修理」または「新規登録」の件数
+    // 対象ログのうち「要修理」または「新規登録」の件数
     const urgentCount = logs.filter(l => l.isNeedsRepair || l.isNewRegistration).length;
 
     return {
@@ -135,6 +136,6 @@ export const useDailyNotifications = (userId: string | null) => {
         urgentCount,
         loading,
         markAsRead,
-        yesterdayDateStr,
+        targetDateStr,
     };
 };
