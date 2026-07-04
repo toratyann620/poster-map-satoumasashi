@@ -47,6 +47,13 @@ function App() {
   const [fitBounds, setFitBounds] = useState<{ southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
 
+  // 全ポスターから使用されているユニークなタグ一覧を生成（早期リターン前に宣言する必要あり）
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    posters.forEach(p => (p.tags || []).forEach(t => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [posters]);
+
   // 初回ロード時に現在地を取得してジャンプする
   useEffect(() => {
     if (navigator.geolocation) {
@@ -275,13 +282,6 @@ function App() {
     setSelectedPoster(null);
     setIsSheetOpen(false);
   };
-
-  // 全ポスターから使用されているユニークなタグ一覧を生成
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    posters.forEach(p => (p.tags || []).forEach(t => tagSet.add(t)));
-    return Array.from(tagSet).sort();
-  }, [posters]);
 
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
