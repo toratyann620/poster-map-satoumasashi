@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Save, Edit2, Upload, Camera, PackageOpen } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
@@ -440,18 +440,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 <div className="flex justify-between items-end mb-2">
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">写真</label>
                                     {imageUrls.length > 0 && (
-                                        <div className="flex gap-2">
-                                            <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
-                                                <Camera className="w-3.5 h-3.5 mr-1" />
-                                                撮影
-                                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                            </label>
-                                            <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
-                                                <Upload className="w-3.5 h-3.5 mr-1" />
-                                                ライブラリ
-                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                            </label>
-                                        </div>
+                                        <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
+                                            <Upload className="w-3.5 h-3.5 mr-1" />
+                                            写真を追加
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                        </label>
                                     )}
                                 </div>
 
@@ -489,15 +482,10 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                             </div>
                                         )}
                                         <img src={imageUrl} alt="ポスタープレビュー" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
-                                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs shadow flex items-center hover:bg-gray-50">
-                                                <Camera className="w-3.5 h-3.5 mr-1" />
-                                                撮影
-                                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                            </label>
-                                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs shadow flex items-center hover:bg-gray-50">
-                                                <Upload className="w-3.5 h-3.5 mr-1" />
-                                                選択
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg font-medium text-sm shadow flex items-center hover:bg-gray-50">
+                                                <Upload className="w-4 h-4 mr-2" />
+                                                写真を変更・追加
                                                 <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
                                             </label>
                                         </div>
@@ -513,18 +501,12 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                                 <span className="text-sm font-medium">アップロード中...</span>
                                             </div>
                                         ) : (
-                                            <div className="w-full flex gap-3">
-                                                <label className="flex-1 h-24 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors shadow-sm text-center px-2">
-                                                    <Camera className="w-6 h-6 mb-1.5 text-indigo-500" />
-                                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">カメラで撮影</span>
-                                                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
-                                                </label>
-                                                <label className="flex-1 h-24 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors shadow-sm text-center px-2">
-                                                    <Upload className="w-6 h-6 mb-1.5 text-indigo-500" />
-                                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">写真を選択 (複数選択可)</span>
-                                                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                                                </label>
-                                            </div>
+                                            <label className="w-full h-24 flex flex-col items-center justify-center cursor-pointer transition-colors">
+                                                <Upload className="w-6 h-6 mb-1.5 text-indigo-500" />
+                                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">写真を選択・撮影する</span>
+                                                <span className="text-xs text-gray-400 mt-0.5">複数選択可</span>
+                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                                            </label>
                                         )}
                                     </div>
                                 )}
