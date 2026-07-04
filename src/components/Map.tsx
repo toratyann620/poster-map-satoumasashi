@@ -238,7 +238,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 zoomControl: true,
                 rotateControl: true,
                 tiltControl: true,
-                gestureHandling: 'cooperative',
+                gestureHandling: 'greedy',
                 isFractionalZoomEnabled: true,
                 mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたマップIDを設定
                 renderingType: google.maps.RenderingType.VECTOR, // 明示的にベクトル(WebGL)モードを指定して回転を可能にする
