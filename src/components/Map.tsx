@@ -346,7 +346,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 <button
                     onClick={handleResetHeading}
                     disabled={heading === 0}
-                    className={`absolute bottom-32 right-4 z-10 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
+                    className={`absolute bottom-32 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all flex items-center justify-center w-10 h-10 ${
                         heading === 0 ? 'opacity-40 cursor-default' : 'hover:scale-105 active:scale-95 cursor-pointer'
                     }`}
                     title={heading === 0 ? '北向き' : '北を上にする'}
