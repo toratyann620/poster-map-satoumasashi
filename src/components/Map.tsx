@@ -222,6 +222,62 @@ const MapInner: React.FC<MapComponentProps> = ({
         };
     }, [map]);
 
+    // モバイル端末での2本指の回転ジェスチャ（ねじり）を自前で実装する
+    useEffect(() => {
+        if (!map || !ref.current) return;
+
+        let touchStartAngle = 0;
+        let initialHeading = 0;
+        let isRotating = false;
+
+        const getAngle = (t1: Touch, t2: Touch) => {
+            const dx = t2.clientX - t1.clientX;
+            const dy = t2.clientY - t1.clientY;
+            return Math.atan2(dy, dx) * (180 / Math.PI); // ラジアンから度に変換
+        };
+
+        const handleTouchStart = (e: TouchEvent) => {
+            if (e.touches.length === 2) {
+                isRotating = true;
+                touchStartAngle = getAngle(e.touches[0], e.touches[1]);
+                initialHeading = map.getHeading() || 0;
+            }
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (isRotating && e.touches.length === 2) {
+                // デフォルトのスクロールやズームジェスチャとの干渉を防ぐ
+                e.preventDefault();
+
+                const currentAngle = getAngle(e.touches[0], e.touches[1]);
+                const deltaAngle = currentAngle - touchStartAngle;
+                
+                // 新しい方位角を計算（0〜360度に収める）
+                let newHeading = (initialHeading - deltaAngle) % 360;
+                if (newHeading < 0) newHeading += 360;
+
+                map.setHeading(newHeading);
+            }
+        };
+
+        const handleTouchEnd = () => {
+            isRotating = false;
+        };
+
+        const mapEl = ref.current;
+        mapEl.addEventListener('touchstart', handleTouchStart, { passive: false });
+        mapEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+        mapEl.addEventListener('touchend', handleTouchEnd);
+        mapEl.addEventListener('touchcancel', handleTouchEnd);
+
+        return () => {
+            mapEl.removeEventListener('touchstart', handleTouchStart);
+            mapEl.removeEventListener('touchmove', handleTouchMove);
+            mapEl.removeEventListener('touchend', handleTouchEnd);
+            mapEl.removeEventListener('touchcancel', handleTouchEnd);
+        };
+    }, [map]);
+
     const handleResetHeading = () => {
         if (map) {
             map.setHeading(0);
@@ -346,7 +402,7 @@ const MapInner: React.FC<MapComponentProps> = ({
 
     return (
         <div className="w-full h-full relative">
-            <div ref={ref} className="w-full h-full" />
+            <div ref={ref} id="map-container" className="w-full h-full" />
             {map && (
                 <button
                     onClick={handleResetHeading}
