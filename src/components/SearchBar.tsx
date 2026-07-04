@@ -212,6 +212,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                                         '張替え予定': '#F59E0B',
                                         '未設置': '#6B7280',
                                         '挨拶済': '#06B6D4',
+                                        '要修理': '#EF4444',
                                         'その他': '#a855f7',
                                     };
                                     const col = colorMap[opt] || '#6B7280';

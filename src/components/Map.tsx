@@ -42,6 +42,7 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     const isReplacement = statuses.includes('張替え予定');
     const isInstalled = statuses.includes('設置済');
     const isGreeted = statuses.includes('挨拶済');
+    const isNeedsRepair = statuses.includes('要修理');
 
     // コンテナ
     const container = document.createElement('div');
@@ -104,7 +105,7 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     `;
 
     // バッジエリア（ピンの右下外側）
-    if (isInstalled || isGreeted || isReplacement) {
+    if (isInstalled || isGreeted || isReplacement || isNeedsRepair) {
         const badges = document.createElement('div');
         badges.style.cssText = `
             position: absolute;
@@ -156,8 +157,31 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
             badges.appendChild(b);
         }
 
+        if (isNeedsRepair) {
+            const b = document.createElement('div');
+            b.textContent = '🚨';
+            b.style.cssText = `
+                width: 16px; height: 16px;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 14px;
+            `;
+            badges.appendChild(b);
+        }
+
         pin.style.position = 'relative';
         pin.appendChild(badges);
+    }
+
+    if (isNeedsRepair) {
+        const pulseRing = document.createElement('div');
+        pulseRing.className = 'animate-ping absolute rounded-full border-4 border-red-500';
+        pulseRing.style.cssText = `
+            top: 0px; left: 0px;
+            width: ${pinSize}px; height: ${pinSize}px;
+            pointer-events: none;
+            opacity: 0.75;
+        `;
+        pin.appendChild(pulseRing);
     }
 
     container.appendChild(pin);

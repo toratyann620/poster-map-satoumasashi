@@ -154,12 +154,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     };
 
     const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
 
         setIsUploading(true);
         try {
-            // Options for compression
             const options = { 
                 maxSizeMB: 0.5, 
                 maxWidthOrHeight: 1200, 
@@ -167,37 +166,32 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                 initialQuality: 0.7 
             };
             
-            // Compress the image
-            const compressedFile = await imageCompression(file, options);
-            
-            // Generate a unique filename using timestamp and random string
-            const timestamp = Date.now();
-            const randomStr = Math.random().toString(36).substring(2, 9);
-            const filename = `${timestamp}_${randomStr}.jpg`;
-            
-            // Use a folder that doesn't rely solely on poster.id for new items
-            // If poster.id is missing, use 'uploads' folder as a fallback
-            const folderId = poster?.id || 'new_entry';
-            const storagePath = `posters/${folderId}/${filename}`;
-            const storageRef = ref(storage, storagePath);
-            
-            // Upload current blob (compressed file) directly instead of base64 string
-            const snapshot = await uploadBytes(storageRef, compressedFile);
-            const url = await getDownloadURL(snapshot.ref);
+            const uploadPromises = Array.from(files).map(async (file) => {
+                const compressedFile = await imageCompression(file, options);
+                const timestamp = Date.now();
+                const randomStr = Math.random().toString(36).substring(2, 9);
+                const filename = `${timestamp}_${randomStr}.jpg`;
+                const folderId = poster?.id || 'new_entry';
+                const storagePath = `posters/${folderId}/${filename}`;
+                const storageRef = ref(storage, storagePath);
+                const snapshot = await uploadBytes(storageRef, compressedFile);
+                return await getDownloadURL(snapshot.ref);
+            });
+
+            const urls = await Promise.all(uploadPromises);
 
             setImageUrls(prev => {
-                const newArr = [...prev, url];
-                // For direct legacy support, always keep the first URL in imageUrl
-                if (newArr.length === 1) setImageUrl(url);
+                const newArr = [...prev, ...urls];
+                if (newArr.length > 0 && !imageUrl) {
+                    setImageUrl(newArr[0]);
+                }
                 return newArr;
             });
         } catch (error) {
             console.error('Error uploading image:', error);
-            // Alert user with specific message if possible
             alert('画像のアップロードに失敗しました。ファイル形式や接続を確認してください。');
         } finally {
             setIsUploading(false);
-            // Reset input so the same file can be selected again if needed
             event.target.value = '';
         }
     };
@@ -308,7 +302,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 </span>
                             )}
                             {status.map(s => {
-                                const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' : s === '張替え予定' ? 'bg-amber-100 text-amber-700' : s === '未設置' ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-700';
+                                const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' : s === '張替え予定' ? 'bg-amber-100 text-amber-700' : s === '未設置' ? 'bg-gray-100 text-gray-600' : s === '要修理' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-semibold animate-pulse border border-red-200 dark:border-red-900/50' : 'bg-purple-100 text-purple-700';
                                 return <span key={s} className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{s}</span>;
                             })}
                             {tags && tags.slice(0, 3).map(t => (
@@ -366,7 +360,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                                 const colorClass = s === '設置済' ? 'bg-green-100 text-green-700' :
                                                     s === '張替え予定' ? 'bg-amber-100 text-amber-700' :
                                                         s === '未設置' ? 'bg-gray-100 text-gray-600' :
-                                                            'bg-purple-100 text-purple-700';
+                                                            s === '要修理' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-semibold animate-pulse border border-red-200 dark:border-red-900/50' :
+                                                                'bg-purple-100 text-purple-700';
                                                 return <span key={s} className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{s}</span>;
                                             })}
                                         </div>
@@ -445,11 +440,18 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 <div className="flex justify-between items-end mb-2">
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">写真</label>
                                     {imageUrls.length > 0 && (
-                                        <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
-                                            <Camera className="w-3.5 h-3.5 mr-1.5" />
-                                            写真を追加
-                                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                        </label>
+                                        <div className="flex gap-2">
+                                            <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
+                                                <Camera className="w-3.5 h-3.5 mr-1" />
+                                                撮影
+                                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                            </label>
+                                            <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
+                                                <Upload className="w-3.5 h-3.5 mr-1" />
+                                                ライブラリ
+                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                            </label>
+                                        </div>
                                     )}
                                 </div>
 
@@ -487,11 +489,16 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                             </div>
                                         )}
                                         <img src={imageUrl} alt="ポスタープレビュー" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg font-medium text-sm shadow flex items-center">
-                                                <Camera className="w-4 h-4 mr-2" />
-                                                写真を変更
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
+                                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs shadow flex items-center hover:bg-gray-50">
+                                                <Camera className="w-3.5 h-3.5 mr-1" />
+                                                撮影
                                                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                            </label>
+                                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs shadow flex items-center hover:bg-gray-50">
+                                                <Upload className="w-3.5 h-3.5 mr-1" />
+                                                選択
+                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
                                             </label>
                                         </div>
                                         <button onClick={() => setImageUrl('')} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow hover:bg-red-600">
@@ -499,15 +506,27 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                         </button>
                                     </div>
                                 ) : (
-                                    <label className={`w-full h-32 border-2 border-dashed border-gray-300 dark:border-zinc-700 rounded-xl flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors mb-4 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    <div className="w-full border-2 border-dashed border-gray-300 dark:border-zinc-700 rounded-xl p-4 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 mb-4 bg-gray-50/50 dark:bg-zinc-900/30">
                                         {isUploading ? (
-                                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-indigo-500 border-t-transparent mb-2"></div>
+                                            <div className="flex flex-col items-center py-4">
+                                                <div className="animate-spin rounded-full h-6 w-6 border-2 border-indigo-500 border-t-transparent mb-2"></div>
+                                                <span className="text-sm font-medium">アップロード中...</span>
+                                            </div>
                                         ) : (
-                                            <Upload className="w-6 h-6 mb-2" />
+                                            <div className="w-full flex gap-3">
+                                                <label className="flex-1 h-24 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors shadow-sm text-center px-2">
+                                                    <Camera className="w-6 h-6 mb-1.5 text-indigo-500" />
+                                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">カメラで撮影</span>
+                                                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
+                                                </label>
+                                                <label className="flex-1 h-24 border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700/50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors shadow-sm text-center px-2">
+                                                    <Upload className="w-6 h-6 mb-1.5 text-indigo-500" />
+                                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">写真を選択 (複数選択可)</span>
+                                                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                                                </label>
+                                            </div>
                                         )}
-                                        <span className="text-sm font-medium">{isUploading ? 'アップロード中...' : '写真をアップロード'}</span>
-                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                    </label>
+                                    </div>
                                 )}
                             </div>
 
