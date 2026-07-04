@@ -23,9 +23,12 @@ const writeActivityLog = async (
     posterAddress: string,
     changedBy: string,
     diff?: string,
-    posterType?: string  // B案: 種類情報を含める（ダッシュボード集計用）
+    posterType?: string,
+    posterStatus?: string[],
 ) => {
     try {
+        const isNeedsRepair = Array.isArray(posterStatus) && posterStatus.includes('要修理');
+        const isNewRegistration = action === '追加';
         await addDoc(collection(db, 'activityLogs'), {
             action,
             posterId,
@@ -34,6 +37,9 @@ const writeActivityLog = async (
             changedAt: Date.now(),
             diff: diff || '',
             posterType: posterType || '',
+            posterStatus: posterStatus || [],
+            isNeedsRepair,
+            isNewRegistration,
         });
     } catch (e) {
         console.warn('Failed to write activity log:', e);
@@ -186,7 +192,7 @@ export const usePosterData = () => {
                 updatedBy: userName
             });
             const diff = `枚数: ${posterData.quantity || 1}枚`;
-            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, diff, posterData.type || '');
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
         } catch (e) {
             console.error('Error adding document: ', e);
             alert('データの保存に失敗しました。');
@@ -211,7 +217,8 @@ export const usePosterData = () => {
                 updatedAt: Date.now(),
                 updatedBy: userName
             });
-            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType);
+            const newStatus = updates.status || currentPoster?.status || [];
+            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType, Array.isArray(newStatus) ? newStatus : [newStatus]);
         } catch (e) {
             console.error('Error updating document: ', e);
             alert('データの更新に失敗しました。');

@@ -6,6 +6,7 @@ import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
+import { NotificationPanel } from './components/NotificationPanel';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import type { PosterPin } from './types';
@@ -408,6 +409,9 @@ function App() {
                 >
                   <Navigation className="w-6 h-6" />
                 </button>
+
+                {/* Notification Bell */}
+                <NotificationPanel userId={user?.uid ?? null} />
 
                 {userRole === 'admin' && (
                   <button

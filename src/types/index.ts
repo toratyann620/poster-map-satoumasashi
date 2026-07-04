@@ -58,8 +58,11 @@ export interface ActivityLog {
     action: '追加' | '更新' | '削除';
     posterId: string;
     posterAddress: string;
-    posterType?: string; // ポスターの種類（例: 佐藤まさし）※B案: 今後のログから含まれる
+    posterType?: string;          // ポスターの種類（例: 佐藤まさし）
     changedBy: string;
     changedAt: number;
-    diff?: string;  // 変更サマリー（例: "ステータス: 未設置→設置済"）
+    diff?: string;                // 変更サマリー（例: "ステータス: 未設置→設置済"）
+    posterStatus?: string[];      // 更新後のステータス配列
+    isNeedsRepair?: boolean;      // 要修理フラグ（通知強調表示用）
+    isNewRegistration?: boolean;  // 新規登録フラグ（通知強調表示用）
 }
