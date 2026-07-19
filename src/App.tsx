@@ -10,7 +10,7 @@ import { NotificationPanel } from './components/NotificationPanel';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import type { PosterPin } from './types';
-import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Navigation, Settings } from 'lucide-react';
+import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
@@ -49,6 +49,8 @@ function App() {
   const [mapCenter, setMapCenter] = useState<{ lat: number, lng: number } | null>(null);
   const [fitBounds, setFitBounds] = useState<{ southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
+  // 住所修正に伴い位置を再設定したピン（マーカーのドロップインエフェクト用、一時的に保持）
+  const [justDroppedPinId, setJustDroppedPinId] = useState<string | null>(null);
   // 撤去ピンの表示設定（localStorageで端末ごとに持続）
   const [showRemovedPins, setShowRemovedPins] = useState<boolean>(
     () => localStorage.getItem('showRemovedPins') === 'true'
@@ -242,27 +244,49 @@ function App() {
     }
   };
 
-  const handleSave = (posterData: Partial<PosterPin>) => {
-    if (!posterData.id && !posterData.lat && posterData.address && window.google) {
+  const handleSave = (posterData: Partial<PosterPin>, recalcLatLng?: boolean) => {
+    const isExisting = !!posterData.id;
+
+    // 新規ピン(住所のみ入力・座標未確定)、または既存ピンで「緯度経度も修正する」が
+    // チェックされている場合のみ、住所から緯度経度を自動判定する
+    const shouldGeocode = window.google && !!posterData.address && (
+      (!isExisting && !posterData.lat) ||
+      (isExisting && recalcLatLng)
+    );
+
+    if (shouldGeocode) {
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ address: posterData.address }, (results, status) => {
         if (status === 'OK' && results && results[0]) {
           posterData.lat = results[0].geometry.location.lat();
           posterData.lng = results[0].geometry.location.lng();
+          finishSave(posterData, isExisting);
         } else {
-          posterData.lat = 35.4385;
-          posterData.lng = 139.3620;
+          if (isExisting) {
+            // 既存ピン: ジオコーディングに失敗した場合は位置を変更しない
+            alert('入力された住所から位置情報を取得できませんでした。ピンの位置は変更されません。');
+          } else {
+            posterData.lat = 35.4385;
+            posterData.lng = 139.3620;
+          }
+          finishSave(posterData, false);
         }
-        finishSave(posterData);
       });
     } else {
-      finishSave(posterData);
+      finishSave(posterData, false);
     }
   };
 
-  const finishSave = (posterData: Partial<PosterPin>) => {
+  const finishSave = (posterData: Partial<PosterPin>, didReposition: boolean) => {
     if (posterData.id) {
       updatePoster(posterData.id, posterData);
+      if (didReposition && posterData.lat && posterData.lng) {
+        // 位置が変わったことをわかりやすくするため、新しい位置へ画面を遷移させ、
+        // ピンが新しく立つドロップインエフェクトを実行する
+        setMapCenter({ lat: posterData.lat, lng: posterData.lng });
+        setJustDroppedPinId(posterData.id);
+        setTimeout(() => setJustDroppedPinId(null), 1600);
+      }
     } else {
       if (!posterData.lat || !posterData.lng) {
         posterData.lat = 35.4385;
@@ -352,6 +376,8 @@ function App() {
             fitBounds={fitBounds}
             currentLocation={currentLocation}
             pinTypes={pinTypes}
+            onLocateMe={locateMe}
+            justDroppedPinId={justDroppedPinId}
           />
 
           {/* ======  移動モード用UI  ====== */}
@@ -409,18 +435,6 @@ function App() {
                       title="新規追加"
                     >
                       <Plus className="w-7 h-7" />
-                    </button>
-
-                    {/* Current Location Button */}
-                    <button
-                      onClick={() => {
-                        locateMe();
-                        setIsMenuExpanded(false);
-                      }}
-                      className="bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all"
-                      title="現在地へ移動"
-                    >
-                      <Navigation className="w-6 h-6" />
                     </button>
 
                     {/* Notification Bell */}

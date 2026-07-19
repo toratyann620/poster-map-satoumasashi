@@ -1,6 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 import { Wrapper, Status } from '@googlemaps/react-wrapper';
+import { Navigation } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
 
@@ -19,6 +20,8 @@ interface MapComponentProps {
     fitBounds?: { southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null;
     currentLocation?: { lat: number, lng: number } | null;
     pinTypes?: { name: string, color: string }[];
+    onLocateMe?: () => void;
+    justDroppedPinId?: string | null;
 }
 
 const render = (status: Status): React.ReactElement => {
@@ -201,7 +204,9 @@ const MapInner: React.FC<MapComponentProps> = ({
     centerLocation,
     fitBounds,
     currentLocation,
-    pinTypes = []
+    pinTypes = [],
+    onLocateMe,
+    justDroppedPinId
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map>();
@@ -385,6 +390,10 @@ const MapInner: React.FC<MapComponentProps> = ({
             const isFloating = relocatingPoster?.id === poster.id;
             const domEl = buildDomMarker(poster, isFloating, colorsMap);
 
+            if (poster.id === justDroppedPinId) {
+                domEl.classList.add('pin-drop-animate');
+            }
+
             const marker = new AdvancedMarkerElement({
                 position: { lat: poster.lat, lng: poster.lng },
                 map,
@@ -565,7 +574,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 infoWindowRef.current = null;
             }
         }
-    }, [map, posters, relocatingPoster, selectedPoster]);
+    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId]);
 
     // Current Location Marker
     useEffect(() => {
@@ -599,21 +608,32 @@ const MapInner: React.FC<MapComponentProps> = ({
         <div className="w-full h-full relative">
             <div ref={ref} id="map-container" className="w-full h-full" />
             {map && (
-                <button
-                    onClick={handleResetHeading}
-                    className="absolute top-1/2 -translate-y-1/2 right-4 z-50 p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
-                    title="北を上にする"
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        className="w-6 h-6"
-                        style={{ transform: `rotate(${-heading}deg)`, transition: 'transform 0.1s ease-out' }}
+                <div className="absolute top-1/2 -translate-y-1/2 right-4 z-50 flex flex-col gap-2">
+                    <button
+                        onClick={handleResetHeading}
+                        className="p-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
+                        title="北を上にする"
                     >
-                        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-20" />
-                        <path d="M12,2 L16,12 L12,9.5 L8,12 Z" fill="#EF4444" />
-                        <path d="M12,22 L16,12 L12,9.5 L8,12 Z" fill="#9CA3AF" />
-                    </svg>
-                </button>
+                        <svg
+                            viewBox="0 0 24 24"
+                            className="w-6 h-6"
+                            style={{ transform: `rotate(${-heading}deg)`, transition: 'transform 0.1s ease-out' }}
+                        >
+                            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-20" />
+                            <path d="M12,2 L16,12 L12,9.5 L8,12 Z" fill="#EF4444" />
+                            <path d="M12,22 L16,12 L12,9.5 L8,12 Z" fill="#9CA3AF" />
+                        </svg>
+                    </button>
+                    {onLocateMe && (
+                        <button
+                            onClick={onLocateMe}
+                            className="p-2 bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
+                            title="現在地へ移動"
+                        >
+                            <Navigation className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
             )}
         </div>
     );

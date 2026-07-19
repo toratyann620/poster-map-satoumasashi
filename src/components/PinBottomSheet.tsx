@@ -13,7 +13,7 @@ interface PinBottomSheetProps {
     initialViewMode?: boolean;
     allTags?: string[];
     pinTypes?: { name: string, color: string }[];
-    onSave: (posterData: Partial<PosterPin>) => void;
+    onSave: (posterData: Partial<PosterPin>, recalcLatLng?: boolean) => void;
     onDelete?: (id: string) => void;
     onRemove?: (id: string) => void;
 }
@@ -52,6 +52,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     const [newTagInput, setNewTagInput] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [selectedImgIdx, setSelectedImgIdx] = useState(0);
+    const [recalcLatLng, setRecalcLatLng] = useState(false);
 
     useEffect(() => {
         if (poster && isOpen) {
@@ -76,6 +77,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             setTags(poster.tags || []);
             setNewTagInput('');
             setSelectedImgIdx(0);
+            setRecalcLatLng(false);
 
             // Set initial sheet state
             setSheetState((!poster.id || !initialViewMode) ? 'expanded' : 'peek');
@@ -97,6 +99,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                 setTags([]);
                 setNewTagInput('');
                 setSelectedImgIdx(0);
+                setRecalcLatLng(false);
             }, 300);
         }
     }, [poster, isOpen, initialViewMode]);
@@ -208,6 +211,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
         setTags(prev => prev.filter(t => t !== tagToRemove));
     };
 
+    const isNew = !poster?.id;
+
     const handleSave = () => {
         let finalTags = [...tags];
         const trimmed = newTagInput.trim();
@@ -228,10 +233,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             imageUrl: imageUrls.length > 0 ? imageUrls[0] : imageUrl,
             imageUrls,
             tags: finalTags
-        });
+        }, !isNew && recalcLatLng);
     };
-
-    const isNew = !poster?.id;
 
     const formatDate = (ts?: number) => {
         if (!ts) return '-';
@@ -633,6 +636,20 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                             <div className="mt-4">
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">所在地</label>
                                 <input type="text" className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="例: 神奈川県厚木市..." />
+                                {!isNew && (
+                                    <label className="flex items-center gap-2 mt-2.5 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={recalcLatLng}
+                                            onChange={(e) => setRecalcLatLng(e.target.checked)}
+                                            className="w-4 h-4 rounded border-gray-300 dark:border-zinc-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                                            緯度経度も修正する
+                                            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">（保存時に住所からピンの位置を再設定します）</span>
+                                        </span>
+                                    </label>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 mt-4">
