@@ -133,3 +133,13 @@
   * `git push origin main` を実行し `origin/main` に反映。
   * `npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_9rWftjWdmYwip9hxTJ9nyC6RdBwq`, readyState: `READY`）。
 * **次のステップ**: 本番URLでCSVインポートの「列が無い項目は維持」「列はあるが空欄の項目はクリア」の実機動作確認。
+
+### 2026-07-20 (Claude Code) その11
+* **タスク**: ピンの種類（`type`）一覧から「党員募集」を削除（ユーザー依頼、コード変更なし）
+* **内容**:
+  * ピンの種類一覧は `settings/pinTypes` というFirestoreドキュメントで管理されており（[usePinTypes.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/hooks/usePinTypes.ts)）、管理パネルの「ピンの種類管理」（[SettingsTab.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/SettingsTab.tsx)）から追加・削除できる。
+  * 確認したところ `settings/pinTypes` ドキュメントはまだ一度も作成されておらず、アプリはコード内のデフォルト値（[src/types/index.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/types/index.ts) の `POSTER_PERSONS`／`PERSON_COLORS`、「党員募集」を含む12種類）にフォールバックしている状態だった。
+  * ユーザー提供のログイン情報を用いて、管理パネルの削除機能（`removePinType`）と全く同じロジック（デフォルト一覧から対象を除いて `settings/pinTypes` を新規作成）をスクリプト（プロジェクト外のスクラッチパッド、実行後削除）で実行し、「党員募集」を除いた11種類で `settings/pinTypes` ドキュメントを新規作成。
+  * 既存の `posters` コレクションで `type` が「党員募集」のデータは **0件** であることを確認済み（削除による既存データへの影響なし）。
+  * コードの変更は無いため、デプロイは不要（Firestoreの設定データのみの変更、即時に全ユーザーへ反映済み）。
+* **次のステップ**: なし（完了）。
