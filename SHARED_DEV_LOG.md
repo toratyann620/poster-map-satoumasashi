@@ -20,10 +20,10 @@
 
 ## 2. タスク管理 (TODO)
 
-- [ ] **🚨 Vercel本番環境でのGoogle Maps背景タイルグレーアウト問題の解決** (優先度: 高)
+- [x] **🚨 Vercel本番環境でのGoogle Maps背景タイルグレーアウト問題の解決** (優先度: 高) — 2026-07-20 ユーザー確認により解決済み
   - 現象: `https://poster-map-app.vercel.app/` で背景タイルがグレーアウトし、CORSエラー/`net::ERR_BLOCKED_BY_ORB` が発生する。
   - 切り分け: ローカル環境 (`localhost:3062`) では正常表示。APIキーのリファラー制限や、課金ステータスが原因と推測される。
-  - 次のステップ: GCP管理画面側でのリファラー制限設定の確認・見直し。
+  - 対応: GCP Console側のAPIキー制限設定（詳細はClaude Codeの調査ログ参照）の見直しにより解消。ユーザーより本番環境での解決を確認済み。
 - [ ] **その他新規機能・改善タスク** (ユーザーからの指示待ち)
 
 ---
@@ -78,3 +78,30 @@
   * 実行後に再集計し、`type`「高市早苗」の残存が0件であること、`tags`に「高市」を持つポスターが70件（今回の65件 + 元々別ユーザーが個別に付与していた既存5件、いずれもtypeは元から「佐藤まさし」で整合性に問題なし）であることを検証済み。
   * ログイン情報はチャット上で受け取ったが、コードやリポジトリには一切保存していない（スクリプトは環境変数経由で受け渡し、使用後に削除）。
 * **次のステップ**: 特になし（完了）。管理パネルの「変更履歴」タブから今回の一括更新ログ（65件分、`changedBy`=ユーザー名）を確認可能。
+
+### 2026-07-20 (Claude Code) その5
+* **タスク**: これまでのコード修正（現在地ボタン常時表示化 / ピン位置と住所の分離仕様）を本番環境へデプロイ
+* **内容**:
+  * `npm run build`（`tsc -b && vite build`）でビルドエラーがないことを確認済み。
+  * `src/App.tsx`, `src/components/Map.tsx`, `src/components/PinBottomSheet.tsx`, `src/index.css` の変更、および新規作成した `CLAUDE.md` / `SHARED_DEV_LOG.md` をコミット（`9315ba9`）。
+  * ユーザーの承認を得た上で `git push origin main` を実行し `origin/main` (`https://github.com/toratyann620/poster-map-satoumasashi.git`) に反映。
+  * `npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_A8R5vikd3BzEbd43v5VpbohrDvPu`, readyState: `READY`）。
+  * 注意: これは既知の「🚨 Vercel本番環境でのGoogle Maps背景タイルグレーアウト問題」（GCP APIキーのリファラー制限が原因と推測、上記「その1」参照）を解決するデプロイではない。その問題はGCP Console側の設定修正がまだ完了していないため、依然として残存している可能性が高い。
+* **次のステップ**: 本番URL (`https://poster-map-app.vercel.app`) で「現在地ボタンの表示位置」「住所修正時の緯度経度チェックボックス挙動」を実機確認。GCPタイルグレーアウト問題は別途対応が必要。
+
+### 2026-07-20 (Claude Code) その6
+* **タスク**: 🚨 Vercel本番環境でのGoogle Maps背景タイルグレーアウト問題 — 解決確認
+* **内容**: ユーザーより、本問題は既に解決済みであるとの報告を受けた。「2. タスク管理」のチェックを完了に更新。解決に至った具体的なGCP側の設定変更内容の詳細は本セッションでは共有されていないため、次回同種の問題が発生した場合は、以前の調査ログ（「その1」参照：APIキーのリファラー制限パターンの書式、Vercel Production環境変数の設定漏れ、課金ステータス等）を出発点に再調査すること。
+* **次のステップ**: なし（解決済み）。
+
+### 2026-07-20 (Claude Code) その7
+* **タスク**: CSVインポート処理の仕様確認・修正（ID照合、項目別の部分上書き、確認ダイアログ、結果表示）
+* **内容**: ユーザーからの仕様確認依頼を受け、[CsvActions.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/CsvActions.tsx) の `handleImport` を全面改修。
+  * **不具合の発見・修正**: 従来はCSVの列が空欄でも `status`（デフォルト`['設置済']`）や `type`（デフォルト`'佐藤まさし'`）等に強制的にデフォルト値を補完しており、既存データの更新時に「CSVに存在しない項目」まで意図せず上書きしてしまう不具合があった。今回、更新行（idが既存データと一致する場合）についてはCSVに値がある項目のみを部分オブジェクトとして構築し、`usePosterData.ts` の `setPostersBulk` が内部で使う `batch.set(ref, p, {merge:true})` の部分マージ機能を活かして「値がない項目は上書きしない」仕様を実現。
+  * **ID照合ロジック**: `id` が空欄→新規登録 / `id` が現在のFirestore `posters` コレクションに存在→更新（部分上書き） / `id` が存在しない→エラー（インポート対象外）、の3分類を実装。IDの存在確認は基本的に `posters` prop（リアルタイム同期データ）を使用し、空の場合は `handleExport` と同様に `getDocs` で直接取得するフォールバックを追加。
+  * **確認ダイアログ**: CSVパース後、`react-dom` の `createPortal`（[NotificationPanel.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/NotificationPanel.tsx) と同じPortalパターン。FABメニューの親要素にTailwindのtransformクラスが付与されており、position:fixedの子要素が正しく最前面に表示されない問題を回避するため）で `document.body` 直下にモーダルを表示。新規/更新/エラーの件数と、エラー行のID・理由一覧を表示し、「実行する」「キャンセル」ボタンを配置。
+  * **既存ピンの緯度経度**: 更新行では `lat`/`lng` が両方ともCSVに有効な数値で入っている場合のみ座標を上書きし、住所のみ変更された場合は座標を変更しない（直近実装した「住所修正時は緯度経度も修正する」チェックボックスと同じ思想を踏襲）。新規行は従来通り、緯度経度が無ければ住所から自動ジオコーディング。
+  * **実行結果の表示**: 「実行する」押下時に `setPosters`（`usePosterData.ts` の `setPostersBulk`）を呼び出し、成功時は新規/更新の件数、失敗時はエラー詳細（`e.message`等）をポップアップで表示。
+  * `usePosterData.ts` の `setPostersBulk` を修正: (1) Firestoreのバッチ上限(500件)を超える大量インポートに備え400件ごとにチャンク分割してコミット、(2) 従来は内部で `alert` してエラーを握りつぶしていたが、呼び出し元（CsvActions）で詳細なエラー内容を表示できるよう、エラーを外側にそのまま伝播させる形に変更（この関数の呼び出し元は `CsvActions.tsx` のみのため影響範囲は限定的）。
+  * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラーなし（既存の `no-explicit-any` パターンに準拠）を確認済み。ポート3062使用中のため実ブラウザでの動作確認は未実施。
+* **次のステップ**: 実機で「①新規行のみのCSV」「②既存IDへの部分項目更新（一部列を空欄にして上書きされないこと）」「③存在しないIDを含むCSV（エラー表示・除外）」の3パターンを一通りインポートして確認する。動作確認後、必要であれば本番デプロイ。

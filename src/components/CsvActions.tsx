@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Papa from 'papaparse';
 import { Download, Upload, FileText, Loader2 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
@@ -11,10 +12,52 @@ interface CsvActionsProps {
     onImportSuccess?: (importedPosters: PosterPin[]) => void;
 }
 
+const LEGACY_TYPE_MAP: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
+
+const parseTypeValue = (raw: string): string => {
+    const first = String(raw).split(';')[0].trim();
+    return LEGACY_TYPE_MAP[first] || first || '佐藤まさし';
+};
+
+const parseStatusValue = (raw: string): string[] => {
+    const arr = String(raw).split(';').map(s => s.trim()).filter(Boolean);
+    return arr.length > 0 ? arr : ['設置済'];
+};
+
+// CSVのセルに実質的な値が入っているか（列が存在しない／空欄の場合は「入力なし」として扱う）
+const hasValue = (v: unknown): v is string => v !== undefined && v !== null && String(v).trim() !== '';
+
+interface ImportErrorRow {
+    id: string;
+    reason: string;
+}
+
+interface ImportPreview {
+    newRows: Partial<PosterPin>[];
+    updateRows: { id: string; data: Partial<PosterPin> }[];
+    errors: ImportErrorRow[];
+}
+
+interface ImportResult {
+    success: boolean;
+    newCount: number;
+    updateCount: number;
+    errorDetail?: string;
+}
+
 export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onImportSuccess }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [preview, setPreview] = useState<ImportPreview | null>(null);
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [result, setResult] = useState<ImportResult | null>(null);
+
+    const resetFileInput = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
 
     const downloadCsv = (csvText: string, filename: string) => {
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvText], { type: 'text/csv;charset=utf-8;' });
@@ -124,90 +167,293 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
             skipEmptyLines: true,
             complete: async (results) => {
                 try {
-                    const validPosters: PosterPin[] = [];
                     const geocoder = window.google ? new window.google.maps.Geocoder() : null;
 
+                    // ID照合用に、現在データベースに存在するIDの一覧を取得
+                    let idSource: { id: string }[] = posters;
+                    if (idSource.length === 0) {
+                        try {
+                            const snapshot = await getDocs(collection(db, 'posters'));
+                            const fetched: { id: string }[] = [];
+                            snapshot.forEach(d => fetched.push({ id: d.id }));
+                            idSource = fetched;
+                        } catch (e) {
+                            console.warn('Failed to fetch posters for ID verification', e);
+                        }
+                    }
+                    const existingIds = new Set(idSource.map(p => p.id));
+
+                    const errors: ImportErrorRow[] = [];
+                    const newRows: Partial<PosterPin>[] = [];
+                    const updateRows: { id: string; data: Partial<PosterPin> }[] = [];
+
                     for (const row of results.data) {
-                        // Skip completely empty lines or the sample line if user forgot to delete it
-                        if (!row.type && !row.address && !row.lat) continue;
+                        // 完全な空行やテンプレートのサンプル行はスキップ
+                        if (!row.type && !row.address && !row.lat && !row.id) continue;
                         if (row.memo?.includes('テンプレート用のサンプル行')) continue;
 
-                        let lat = parseFloat(row.lat);
-                        let lng = parseFloat(row.lng);
+                        const idVal = (row.id || '').toString().trim();
 
-                        // If we are missing lat/lng but have an address, look it up via Google Maps API
-                        if ((isNaN(lat) || isNaN(lng)) && row.address && geocoder) {
-                            try {
-                                const geoRes = await geocoder.geocode({ address: row.address });
-                                if (geoRes.results && geoRes.results[0]) {
-                                    lat = geoRes.results[0].geometry.location.lat();
-                                    lng = geoRes.results[0].geometry.location.lng();
-                                    // Rate limiting delay (throttle)
-                                    await new Promise(resolve => setTimeout(resolve, 250));
+                        if (idVal) {
+                            // ID指定あり: データベースに一致するIDが存在するかを照合
+                            if (!existingIds.has(idVal)) {
+                                errors.push({ id: idVal, reason: 'データベースに一致するIDが見つかりません' });
+                                continue;
+                            }
+
+                            // 既存データの更新: CSVに値が入っている項目のみを上書き対象にする
+                            // （空欄・列自体が無い項目は既存の値を維持し、上書きしない）
+                            const data: Partial<PosterPin> = {};
+                            if (hasValue(row.type)) data.type = parseTypeValue(row.type);
+                            if (hasValue(row.status)) data.status = parseStatusValue(row.status);
+                            if (hasValue(row.address)) data.address = row.address;
+                            if (hasValue(row.placement)) data.placement = row.placement;
+                            if (hasValue(row.quantity)) {
+                                const q = parseInt(row.quantity, 10);
+                                if (!isNaN(q)) data.quantity = q;
+                            }
+                            if (hasValue(row.owner)) data.owner = row.owner;
+                            if (hasValue(row.contact)) data.contact = row.contact;
+                            if (hasValue(row.memo)) data.memo = row.memo;
+                            if (hasValue(row.specialNote)) data.specialNote = row.specialNote;
+                            if (hasValue(row.imageUrl)) data.imageUrl = row.imageUrl;
+
+                            // 緯度経度: 両方とも有効な数値として指定されている場合のみ上書き
+                            // （住所だけ変更された場合はピンの位置を自動では動かさない）
+                            if (hasValue(row.lat) && hasValue(row.lng)) {
+                                const latNum = parseFloat(row.lat);
+                                const lngNum = parseFloat(row.lng);
+                                if (!isNaN(latNum) && !isNaN(lngNum)) {
+                                    data.lat = latNum;
+                                    data.lng = lngNum;
                                 }
-                            } catch (e) {
-                                console.warn('Geocoding failed for row', row.address);
-                            }
-                        }
-
-                        // If after all attempt, it has lat and lng, it's valid to be inserted
-                        if (!isNaN(lat) && !isNaN(lng)) {
-                            // typeが文字列か旧形式sato/goto→日本語名に変換して単一文字列に
-                            const legacyMap: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
-                            let typeVal: string = '佐藤まさし';
-                            if (row.type) {
-                                // セミコロン区切りの場合は最初の要素だけ使用
-                                const firstType = String(row.type).split(';')[0].trim();
-                                typeVal = legacyMap[firstType] || firstType || '佐藤まさし';
                             }
 
-                            let statusArr: string[] = [];
-                            if (row.status) {
-                                statusArr = String(row.status).split(';').map(s => s.trim()).filter(Boolean);
-                            }
-                            if (statusArr.length === 0) statusArr = ['設置済'];
+                            data.updatedAt = hasValue(row.updatedAt) ? new Date(row.updatedAt).getTime() : Date.now();
+                            data.updatedBy = hasValue(row.updatedBy) ? row.updatedBy : 'CSV Import';
 
-                            validPosters.push({
-                                id: row.id || '', // idが空の時は新規作成、ある場合は上書き(upsert)
+                            updateRows.push({ id: idVal, data });
+                        } else {
+                            // ID未指定: 新規登録。緯度経度が無ければ住所から自動判定する
+                            let lat = parseFloat(row.lat);
+                            let lng = parseFloat(row.lng);
+
+                            if ((isNaN(lat) || isNaN(lng)) && row.address && geocoder) {
+                                try {
+                                    const geoRes = await geocoder.geocode({ address: row.address });
+                                    if (geoRes.results && geoRes.results[0]) {
+                                        lat = geoRes.results[0].geometry.location.lat();
+                                        lng = geoRes.results[0].geometry.location.lng();
+                                        // Rate limiting delay (throttle)
+                                        await new Promise(resolve => setTimeout(resolve, 250));
+                                    }
+                                } catch (e) {
+                                    console.warn('Geocoding failed for row', row.address, e);
+                                }
+                            }
+
+                            if (isNaN(lat) || isNaN(lng)) {
+                                errors.push({
+                                    id: `新規行（住所: ${row.address || '未入力'}）`,
+                                    reason: '緯度経度を特定できませんでした（住所またはlat/lngをご確認ください）'
+                                });
+                                continue;
+                            }
+
+                            newRows.push({
                                 lat,
                                 lng,
-                                type: typeVal,
-                                status: statusArr,
+                                type: hasValue(row.type) ? parseTypeValue(row.type) : '佐藤まさし',
+                                status: hasValue(row.status) ? parseStatusValue(row.status) : ['設置済'],
                                 address: row.address || '',
                                 placement: row.placement || '',
-                                quantity: parseInt(row.quantity, 10) || 1,
+                                quantity: hasValue(row.quantity) ? (parseInt(row.quantity, 10) || 1) : 1,
                                 memo: row.memo || '',
                                 specialNote: row.specialNote || '',
                                 owner: row.owner || '',
                                 contact: row.contact || '',
                                 imageUrl: row.imageUrl || '',
-                                createdAt: row.createdAt ? new Date(row.createdAt).getTime() : Date.now(),
-                                updatedAt: row.updatedAt ? new Date(row.updatedAt).getTime() : Date.now(),
-                                createdBy: row.createdBy || 'Batch Import',
-                                updatedBy: row.updatedBy || 'Batch Import',
+                                createdAt: hasValue(row.createdAt) ? new Date(row.createdAt).getTime() : Date.now(),
+                                updatedAt: hasValue(row.updatedAt) ? new Date(row.updatedAt).getTime() : Date.now(),
+                                createdBy: row.createdBy || 'CSV Import',
+                                updatedBy: row.updatedBy || 'CSV Import',
                             });
                         }
                     }
 
-                    if (validPosters.length > 0) {
-                        await setPosters(validPosters);
-                        if (onImportSuccess) onImportSuccess(validPosters);
-                        alert(`${validPosters.length}件のポスター情報をデータベースに反映しました！（住所のみのデータは自動で緯度経度に自動変換されました）`);
-                    } else {
-                        alert('インポートできる有効なデータがありませんでした。\n\n【よくある原因】\n・「住所」や「緯度経度」が空欄になっている\n・Excel等で保存した際「CSV UTF-8」フォーマットになっておらず文字化けしている（名前を付けて保存からUTF-8を選択してください）\n・Googleマップで存在しない住所になっている');
+                    if (newRows.length + updateRows.length + errors.length === 0) {
+                        alert('インポートできる有効なデータがありませんでした。\n\n【よくある原因】\n・「住所」や「緯度経度」が空欄になっている\n・Excel等で保存した際「CSV UTF-8」フォーマットになっておらず文字化けしている（名前を付けて保存からUTF-8を選択してください）');
+                        resetFileInput();
+                        return;
                     }
+
+                    setPreview({ newRows, updateRows, errors });
                 } catch (e) {
-                    console.error('Import error', e);
-                    alert('CSVの読み込み・保存中にエラーが発生しました。');
+                    console.error('Import parse error', e);
+                    alert('CSVの読み込み中にエラーが発生しました。');
+                    resetFileInput();
                 } finally {
                     setIsImporting(false);
-                    if (fileInputRef.current) {
-                        fileInputRef.current.value = '';
-                    }
                 }
             },
         });
     };
+
+    const handleCancelImport = () => {
+        if (isExecuting) return;
+        setPreview(null);
+        resetFileInput();
+    };
+
+    const handleExecuteImport = async () => {
+        if (!preview) return;
+        setIsExecuting(true);
+
+        try {
+            const combined = [
+                ...preview.newRows.map(r => ({ id: '', ...r })),
+                ...preview.updateRows.map(r => ({ id: r.id, ...r.data })),
+            ] as PosterPin[];
+
+            await setPosters(combined);
+
+            if (onImportSuccess) {
+                const withCoords = combined.filter(p => typeof p.lat === 'number' && typeof p.lng === 'number');
+                if (withCoords.length > 0) onImportSuccess(withCoords);
+            }
+
+            setResult({
+                success: true,
+                newCount: preview.newRows.length,
+                updateCount: preview.updateRows.length,
+            });
+        } catch (e: any) {
+            console.error('Import execution failed', e);
+            setResult({
+                success: false,
+                newCount: 0,
+                updateCount: 0,
+                errorDetail: e?.message || e?.code || String(e),
+            });
+        } finally {
+            setIsExecuting(false);
+            setPreview(null);
+            resetFileInput();
+        }
+    };
+
+    const previewModal = preview && createPortal(
+        <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50"
+            onClick={handleCancelImport}
+        >
+            <div
+                className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="p-5 border-b border-gray-100 dark:border-zinc-800 shrink-0">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">CSVインポートの確認</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">内容を確認し、「実行する」を押すとデータベースに反映されます。</p>
+                </div>
+
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3">
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{preview.newRows.length}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">新規</p>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
+                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{preview.updateRows.length}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">更新</p>
+                        </div>
+                        <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3">
+                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{preview.errors.length}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">エラー</p>
+                        </div>
+                    </div>
+
+                    {preview.errors.length > 0 && (
+                        <div>
+                            <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-1.5">
+                                エラー内容（{preview.errors.length}件はインポートされません）
+                            </p>
+                            <div className="max-h-40 overflow-y-auto rounded-lg border border-red-100 dark:border-red-900/40 divide-y divide-red-100 dark:divide-red-900/40">
+                                {preview.errors.map((err, i) => (
+                                    <div key={i} className="px-3 py-2 text-xs">
+                                        <p className="font-mono text-gray-700 dark:text-gray-300 break-all">{err.id}</p>
+                                        <p className="text-red-500 dark:text-red-400">{err.reason}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {preview.newRows.length + preview.updateRows.length === 0 && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">実行可能なデータがありません。</p>
+                    )}
+                </div>
+
+                <div className="p-5 border-t border-gray-100 dark:border-zinc-800 flex gap-3 shrink-0">
+                    <button
+                        onClick={handleCancelImport}
+                        disabled={isExecuting}
+                        className="flex-1 px-4 py-3 border border-gray-300 dark:border-zinc-600 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                    >
+                        キャンセル
+                    </button>
+                    <button
+                        onClick={handleExecuteImport}
+                        disabled={isExecuting || (preview.newRows.length + preview.updateRows.length === 0)}
+                        className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isExecuting && <Loader2 className="w-4 h-4 animate-spin" />}
+                        実行する
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+
+    const resultModal = result && createPortal(
+        <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setResult(null)}
+        >
+            <div
+                className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="p-5 border-b border-gray-100 dark:border-zinc-800">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                        {result.success ? 'インポート完了' : 'インポート失敗'}
+                    </h3>
+                </div>
+                <div className="p-5 space-y-2">
+                    {result.success ? (
+                        <>
+                            <p className="text-gray-700 dark:text-gray-300">新規登録: <span className="font-bold">{result.newCount}件</span></p>
+                            <p className="text-gray-700 dark:text-gray-300">更新: <span className="font-bold">{result.updateCount}件</span></p>
+                        </>
+                    ) : (
+                        <div className="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap break-all">
+                            データベースへの反映中にエラーが発生しました。<br />
+                            {result.errorDetail}
+                        </div>
+                    )}
+                </div>
+                <div className="p-5 pt-0">
+                    <button
+                        onClick={() => setResult(null)}
+                        className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
+                    >
+                        閉じる
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
 
     return (
         <div className="flex flex-col gap-3">
@@ -245,6 +491,9 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                 onChange={handleImport}
                 className="hidden"
             />
+
+            {previewModal}
+            {resultModal}
         </div>
     );
 };

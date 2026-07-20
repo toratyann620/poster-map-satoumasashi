@@ -239,10 +239,16 @@ export const usePosterData = () => {
         }
     };
 
+    // Firestoreのバッチ書き込みは1回あたり最大500件までのため、余裕を持って分割コミットする
+    const BULK_WRITE_CHUNK_SIZE = 400;
+
     const setPostersBulk = async (newPosters: PosterPin[]) => {
-        try {
+        // 呼び出し元（CSVインポート確認画面など）で詳細なエラー内容を表示できるよう、
+        // ここではエラーを握りつぶさずそのまま呼び出し元に伝播させる
+        for (let i = 0; i < newPosters.length; i += BULK_WRITE_CHUNK_SIZE) {
+            const chunk = newPosters.slice(i, i + BULK_WRITE_CHUNK_SIZE);
             const batch = writeBatch(db);
-            newPosters.forEach(p => {
+            chunk.forEach(p => {
                 if (p.id) {
                     const ref = doc(db, 'posters', p.id);
                     batch.set(ref, p, { merge: true });
@@ -259,9 +265,6 @@ export const usePosterData = () => {
                 }
             });
             await batch.commit();
-        } catch (e) {
-            console.error("Error bulk uploading array: ", e);
-            alert('一括インポートに失敗しました。');
         }
     };
 
