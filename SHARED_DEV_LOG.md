@@ -104,4 +104,24 @@
   * **実行結果の表示**: 「実行する」押下時に `setPosters`（`usePosterData.ts` の `setPostersBulk`）を呼び出し、成功時は新規/更新の件数、失敗時はエラー詳細（`e.message`等）をポップアップで表示。
   * `usePosterData.ts` の `setPostersBulk` を修正: (1) Firestoreのバッチ上限(500件)を超える大量インポートに備え400件ごとにチャンク分割してコミット、(2) 従来は内部で `alert` してエラーを握りつぶしていたが、呼び出し元（CsvActions）で詳細なエラー内容を表示できるよう、エラーを外側にそのまま伝播させる形に変更（この関数の呼び出し元は `CsvActions.tsx` のみのため影響範囲は限定的）。
   * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラーなし（既存の `no-explicit-any` パターンに準拠）を確認済み。ポート3062使用中のため実ブラウザでの動作確認は未実施。
-* **次のステップ**: 実機で「①新規行のみのCSV」「②既存IDへの部分項目更新（一部列を空欄にして上書きされないこと）」「③存在しないIDを含むCSV（エラー表示・除外）」の3パターンを一通りインポートして確認する。動作確認後、必要であれば本番デプロイ。
+* **次のステップ**: 実機で「①新規行のみのCSV」「②既存IDへの部分項目更新（一部列を空欄にして上書きされないこと）」「③存在しないIDを含むCSV（エラー表示・除外）」の3パターンを一通りインポートして確認する。
+
+### 2026-07-20 (Claude Code) その8
+* **タスク**: CSVインポート修正（コミット `2f3ad06`）を本番環境へデプロイ
+* **内容**:
+  * `npm run build` でビルド成功を再確認後、`SHARED_DEV_LOG.md` / `src/components/CsvActions.tsx` / `src/hooks/usePosterData.ts` をコミット（`2f3ad06`）。
+  * `git push origin main` を実行し `origin/main` に反映。
+  * `npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_9kZBRjqyZxqH4Yf2Sxx1hdvhMdtx`, readyState: `READY`）。
+* **次のステップ**: 本番URLでCSVインポートの新規/更新/エラー確認ダイアログの実機動作確認。
+
+### 2026-07-20 (Claude Code) その9
+* **タスク**: CSVインポートの部分上書き判定を「値の空欄」ではなく「フィールド(列)の存在有無」に修正
+* **内容**: ユーザーより「値が空欄かどうかではなく、CSVにそのフィールド(列)自体が存在するかどうかで上書き可否を判定すべき」との訂正を受け、[CsvActions.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/CsvActions.tsx) の更新行（id一致）のフィールド判定ロジックを修正。
+  * `hasColumn(row, key)`（`Object.prototype.hasOwnProperty` でCSVヘッダーにその列が存在するかを判定）を追加。Papaparseの `header:true` では、列さえあれば値が空欄でもキー自体は各行オブジェクトに存在する挙動を利用。
+  * `type` / `status` / `address` / `placement` / `owner` / `contact` / `memo` / `specialNote` / `imageUrl` の9項目について、列が無ければ既存値を維持、列があれば値が空欄でもその空欄で上書き（＝クリア）するよう変更。
+  * 例外としてユーザーの承認を得た上で以下2点を維持:
+    1. `quantity`（数値型）: 列があるが値が空欄の場合は `0` として上書き（数値型のため「空欄のまま」を保存できないため）。
+    2. `lat`/`lng`（緯度経度）: 他項目と異なり「両方とも有効な数値が入力されている場合のみ」上書きする特別扱いを維持（ピンの位置が消えて地図に表示できなくなることを防ぐため）。
+  * `type`/`status`の値パース関数を「新規行用（空欄はデフォルト値を補完: type→佐藤まさし、status→['設置済']）」と「更新行用（空欄はそのまま空欄・空配列として書き込む、デフォルト補完なし）」に分離（`parseTypeForNewRow` / `parseStatusForNewRow` / `parseTypeValueRaw` / `parseStatusValueRaw`）。
+  * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラーなし（既存の `no-explicit-any` パターンに準拠）を確認済み。
+* **次のステップ**: 本番デプロイ後、実機で「列自体が無い項目は上書きされない」「列はあるが空欄の項目はクリアされる」の両パターンを確認する。

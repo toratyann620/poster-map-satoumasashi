@@ -14,18 +14,29 @@ interface CsvActionsProps {
 
 const LEGACY_TYPE_MAP: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
 
-const parseTypeValue = (raw: string): string => {
+// 値そのものをパースする（空欄なら空欄のまま返す。デフォルト値の補完は行わない）
+const parseTypeValueRaw = (raw: string): string => {
     const first = String(raw).split(';')[0].trim();
-    return LEGACY_TYPE_MAP[first] || first || '佐藤まさし';
+    return LEGACY_TYPE_MAP[first] || first;
+};
+const parseStatusValueRaw = (raw: string): string[] => {
+    return String(raw).split(';').map(s => s.trim()).filter(Boolean);
 };
 
-const parseStatusValue = (raw: string): string[] => {
-    const arr = String(raw).split(';').map(s => s.trim()).filter(Boolean);
+// 新規登録用: 値が空欄の場合はデフォルト値を補完する
+const parseTypeForNewRow = (raw: string): string => hasValue(raw) ? (parseTypeValueRaw(raw) || '佐藤まさし') : '佐藤まさし';
+const parseStatusForNewRow = (raw: string): string[] => {
+    const arr = hasValue(raw) ? parseStatusValueRaw(raw) : [];
     return arr.length > 0 ? arr : ['設置済'];
 };
 
-// CSVのセルに実質的な値が入っているか（列が存在しない／空欄の場合は「入力なし」として扱う）
+// 値（セルの中身）が空欄かどうか
 const hasValue = (v: unknown): v is string => v !== undefined && v !== null && String(v).trim() !== '';
+
+// フィールド（CSVの列）自体が存在するかどうか（列が無ければキー自体が存在しない）
+// ※ 空欄セルであっても列さえあればキーは存在する（Papaparseの header:true 挙動）
+const hasColumn = (row: Record<string, unknown>, key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(row, key);
 
 interface ImportErrorRow {
     id: string;
@@ -201,25 +212,28 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                                 continue;
                             }
 
-                            // 既存データの更新: CSVに値が入っている項目のみを上書き対象にする
-                            // （空欄・列自体が無い項目は既存の値を維持し、上書きしない）
+                            // 既存データの更新: CSVに「その列（フィールド）自体が存在するか」で上書き可否を判定する。
+                            // 列が無ければ既存の値を維持（触らない）。列があれば、セルが空欄でもその空欄の値で上書きする
+                            // （例: typeの列はあるが値が空欄 → typeを空欄に更新／status列自体が無い → statusは変更しない）
                             const data: Partial<PosterPin> = {};
-                            if (hasValue(row.type)) data.type = parseTypeValue(row.type);
-                            if (hasValue(row.status)) data.status = parseStatusValue(row.status);
-                            if (hasValue(row.address)) data.address = row.address;
-                            if (hasValue(row.placement)) data.placement = row.placement;
-                            if (hasValue(row.quantity)) {
+                            if (hasColumn(row, 'type')) data.type = parseTypeValueRaw(row.type || '');
+                            if (hasColumn(row, 'status')) data.status = parseStatusValueRaw(row.status || '');
+                            if (hasColumn(row, 'address')) data.address = row.address || '';
+                            if (hasColumn(row, 'placement')) data.placement = row.placement || '';
+                            if (hasColumn(row, 'quantity')) {
+                                // 数量は数値型のため、空欄セルは 0 として扱う
                                 const q = parseInt(row.quantity, 10);
-                                if (!isNaN(q)) data.quantity = q;
+                                data.quantity = hasValue(row.quantity) && !isNaN(q) ? q : 0;
                             }
-                            if (hasValue(row.owner)) data.owner = row.owner;
-                            if (hasValue(row.contact)) data.contact = row.contact;
-                            if (hasValue(row.memo)) data.memo = row.memo;
-                            if (hasValue(row.specialNote)) data.specialNote = row.specialNote;
-                            if (hasValue(row.imageUrl)) data.imageUrl = row.imageUrl;
+                            if (hasColumn(row, 'owner')) data.owner = row.owner || '';
+                            if (hasColumn(row, 'contact')) data.contact = row.contact || '';
+                            if (hasColumn(row, 'memo')) data.memo = row.memo || '';
+                            if (hasColumn(row, 'specialNote')) data.specialNote = row.specialNote || '';
+                            if (hasColumn(row, 'imageUrl')) data.imageUrl = row.imageUrl || '';
 
-                            // 緯度経度: 両方とも有効な数値として指定されている場合のみ上書き
-                            // （住所だけ変更された場合はピンの位置を自動では動かさない）
+                            // 緯度経度: ピンの位置が消えてしまわないよう、他の項目とは異なり
+                            // 「両方とも有効な数値が入力されている場合のみ」上書きする特別扱いとする
+                            // （住所だけ変更された場合や、lat/lngの列が空欄の場合はピンの位置を自動では動かさない）
                             if (hasValue(row.lat) && hasValue(row.lng)) {
                                 const latNum = parseFloat(row.lat);
                                 const lngNum = parseFloat(row.lng);
@@ -263,8 +277,8 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                             newRows.push({
                                 lat,
                                 lng,
-                                type: hasValue(row.type) ? parseTypeValue(row.type) : '佐藤まさし',
-                                status: hasValue(row.status) ? parseStatusValue(row.status) : ['設置済'],
+                                type: parseTypeForNewRow(row.type || ''),
+                                status: parseStatusForNewRow(row.status || ''),
                                 address: row.address || '',
                                 placement: row.placement || '',
                                 quantity: hasValue(row.quantity) ? (parseInt(row.quantity, 10) || 1) : 1,
