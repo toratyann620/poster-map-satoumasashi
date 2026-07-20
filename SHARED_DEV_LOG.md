@@ -125,3 +125,11 @@
   * `type`/`status`の値パース関数を「新規行用（空欄はデフォルト値を補完: type→佐藤まさし、status→['設置済']）」と「更新行用（空欄はそのまま空欄・空配列として書き込む、デフォルト補完なし）」に分離（`parseTypeForNewRow` / `parseStatusForNewRow` / `parseTypeValueRaw` / `parseStatusValueRaw`）。
   * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラーなし（既存の `no-explicit-any` パターンに準拠）を確認済み。
 * **次のステップ**: 本番デプロイ後、実機で「列自体が無い項目は上書きされない」「列はあるが空欄の項目はクリアされる」の両パターンを確認する。
+
+### 2026-07-20 (Claude Code) その10
+* **タスク**: CSVインポート列存在判定の修正（コミット `495f12e`）を本番環境へデプロイ
+* **内容**:
+  * `npm run build` でビルド成功を再確認後、`SHARED_DEV_LOG.md` / `src/components/CsvActions.tsx` をコミット（`495f12e`）。
+  * `git push origin main` を実行し `origin/main` に反映。
+  * `npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_9rWftjWdmYwip9hxTJ9nyC6RdBwq`, readyState: `READY`）。
+* **次のステップ**: 本番URLでCSVインポートの「列が無い項目は維持」「列はあるが空欄の項目はクリア」の実機動作確認。
