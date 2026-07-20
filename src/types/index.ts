@@ -65,4 +65,7 @@ export interface ActivityLog {
     posterStatus?: string[];      // 更新後のステータス配列
     isNeedsRepair?: boolean;      // 要修理フラグ（通知強調表示用）
     isNewRegistration?: boolean;  // 新規登録フラグ（通知強調表示用）
+    statusAdded?: string[];       // この更新で新たに付いたステータス（日次レポート集計用）
+    statusRemoved?: string[];     // この更新で新たに外れたステータス（日次レポート集計用）
+    removedChangedTo?: boolean | null; // 撤去フラグが変化した場合の変化後の値（変化していなければnull、日次レポート集計用）
 }

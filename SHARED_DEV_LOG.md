@@ -143,3 +143,19 @@
   * 既存の `posters` コレクションで `type` が「党員募集」のデータは **0件** であることを確認済み（削除による既存データへの影響なし）。
   * コードの変更は無いため、デプロイは不要（Firestoreの設定データのみの変更、即時に全ユーザーへ反映済み）。
 * **次のステップ**: なし（完了）。
+
+### 2026-07-20 (Claude Code) その12
+* **タスク**: Slack Webhookによる日次報告（毎日18時、集計範囲: 前日18時〜当日18時）の新規実装
+* **内容**:
+  * **データモデル拡張**: [usePosterData.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/hooks/usePosterData.ts) の `updatePoster` を修正し、更新のたびに変更前後のステータス配列を比較して「新たに付いたフラグ」「新たに外れたフラグ」（`statusAdded`/`statusRemoved`）と、撤去フラグが変化した場合の変化後の値（`removedChangedTo`）を `activityLogs` に構造化して記録するよう拡張（[types/index.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/types/index.ts) の `ActivityLog` 型にも同フィールドを追加）。従来の `diff` 文字列だけでは「ステータスが何から何に変わったか」「撤去フラグが変化したか」を判別できず、日次集計に必要な情報が失われていたための対応。
+  * **Cloud Functions新規導入**: `functions/` ディレクトリを新規作成し、`dailyPosterReport` という2nd Gen Cloud Function（Node.js 20, リージョン `asia-northeast1`）を実装。Cloud Scheduler（`0 18 * * *`, タイムゾーン `Asia/Tokyo`）で毎日18時に自動実行され、直近24時間（前日18時〜当日18時）の `posters`/`activityLogs` を集計してSlack Webhookへ投稿する。
+    * 新規: `createdAt` が範囲内のポスター件数
+    * 撤去: `activityLogs.removedChangedTo === true` の件数
+    * 張替え解除・修理解除: `activityLogs.statusRemoved` にそれぞれ「張替え予定」「要修理」を含む件数
+    * 住所は「都道府県」と「丁目・番地以降」を正規表現で除去し、市区町村＋町名レベルまで短縮（例: 神奈川県厚木市妻田南1-22-47 → 厚木市妻田南）
+    * 設置率は既存の [DashboardTab.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/DashboardTab.tsx) の算出方法（佐藤まさし、市区町村別、設置済枚数／全体枚数）をそのまま踏襲し、厚木市・伊勢原市・海老名市の内訳を表示。
+  * **基盤整備**: `firebase.json` / `.firebaserc` を新規作成し、プロジェクト `satoumasashi-poster-map` と紐付け。Firebase CLI（`firebase-tools`）が未ログインだったため、ユーザーにブラウザでの対話的ログインを依頼して完了。Slack Webhook URLはソースコードに含めず、Firebase Secret Manager（`functions:secrets:set SLACK_WEBHOOK_URL`）に安全に登録。
+  * **デプロイ時のトラブルシューティング**: 初回デプロイ時に `iam.serviceaccounts.actAs` 権限エラーが発生（新規プロジェクトでデフォルトのComputeサービスアカウントが作成された直後のIAM反映待ちが原因の典型的な一時エラー）。90秒待って再実行したところ成功。また、Artifact Registryのコンテナイメージ自動削除ポリシーが未設定だった警告に対し、`firebase functions:artifacts:setpolicy --location asia-northeast1 --days 7 --force` で7日保持のクリーンアップポリシーを設定（不要なストレージ課金の蓄積を防止）。
+  * **動作確認**: `gcloud scheduler jobs run` でCloud Schedulerジョブを手動トリガーしてテスト実行。Cloud Functionのログにエラー・警告が一切ないことを確認し、Slackへの送信成功を確認。ユーザーからも実際のSlackメッセージで「新規」件数が正しく表示されたことを確認済み。
+  * **既知の制約（要フォローアップ）**: テスト実行の時点では、上記のデータモデル拡張（`usePosterData.ts` の変更）がまだVercel本番環境にデプロイされておらず、実際にアプリ上で行われた更新操作が旧コードでログされていたため、「撤去」「張替え」「修理」がいずれも0件と表示された。この日次レポート機能を実用に足るものにするには、`usePosterData.ts` / `types/index.ts` の変更を本番デプロイする必要がある（本セッションで続けて対応）。
+* **次のステップ**: `usePosterData.ts` / `types/index.ts` の変更を本番Vercel環境へデプロイし、以降のポスター更新操作から正しく「撤去」「張替え解除」「修理解除」が集計されることを、翌日以降の実際の18時配信、または再度の手動テスト実行で確認する。

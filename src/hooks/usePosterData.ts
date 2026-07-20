@@ -25,6 +25,13 @@ const writeActivityLog = async (
     diff?: string,
     posterType?: string,
     posterStatus?: string[],
+    // 日次レポート等の集計用: この更新で「新たに付いた」「新たに外れた」ステータス、
+    // および撤去フラグが変化した場合はその変化後の値（変化していなければ null）
+    changeDetail?: {
+        statusAdded?: string[];
+        statusRemoved?: string[];
+        removedChangedTo?: boolean | null;
+    },
 ) => {
     try {
         const isNeedsRepair = Array.isArray(posterStatus) && posterStatus.includes('要修理');
@@ -40,6 +47,9 @@ const writeActivityLog = async (
             posterStatus: posterStatus || [],
             isNeedsRepair,
             isNewRegistration,
+            statusAdded: changeDetail?.statusAdded || [],
+            statusRemoved: changeDetail?.statusRemoved || [],
+            removedChangedTo: changeDetail?.removedChangedTo ?? null,
         });
     } catch (e) {
         console.warn('Failed to write activity log:', e);
@@ -211,14 +221,33 @@ export const usePosterData = () => {
             if (updates.address) diffParts.push(`住所: ${updates.address}`);
             if (updates.type) diffParts.push(`種類: ${updates.type}`);
             if (updates.quantity !== undefined) diffParts.push(`枚数: ${updates.quantity}枚`);
+            if (updates.removed !== undefined) diffParts.push(updates.removed ? '撤去' : '撤去解除');
             const diff = diffParts.length > 0 ? diffParts.join(' / ') : '内容を更新';
+
+            // 日次レポート等の集計用: 変更前後のステータスを比較し、新たに付いた／外れたフラグを記録する
+            const prevStatus: string[] = Array.isArray(currentPoster?.status)
+                ? currentPoster!.status
+                : (currentPoster?.status ? [currentPoster.status as unknown as string] : []);
+            const nextStatusArr: string[] | undefined = updates.status
+                ? (Array.isArray(updates.status) ? updates.status : [updates.status as unknown as string])
+                : undefined;
+            const statusAdded = nextStatusArr ? nextStatusArr.filter(s => !prevStatus.includes(s)) : [];
+            const statusRemoved = nextStatusArr ? prevStatus.filter(s => !nextStatusArr.includes(s)) : [];
+            const removedChangedTo = (updates.removed !== undefined && updates.removed !== currentPoster?.removed)
+                ? updates.removed
+                : null;
+
             await updateDoc(posterRef, {
                 ...updates,
                 updatedAt: Date.now(),
                 updatedBy: userName
             });
             const newStatus = updates.status || currentPoster?.status || [];
-            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType, Array.isArray(newStatus) ? newStatus : [newStatus]);
+            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType, Array.isArray(newStatus) ? newStatus : [newStatus], {
+                statusAdded,
+                statusRemoved,
+                removedChangedTo,
+            });
         } catch (e) {
             console.error('Error updating document: ', e);
             alert('データの更新に失敗しました。');
