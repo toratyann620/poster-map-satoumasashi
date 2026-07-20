@@ -159,3 +159,11 @@
   * **動作確認**: `gcloud scheduler jobs run` でCloud Schedulerジョブを手動トリガーしてテスト実行。Cloud Functionのログにエラー・警告が一切ないことを確認し、Slackへの送信成功を確認。ユーザーからも実際のSlackメッセージで「新規」件数が正しく表示されたことを確認済み。
   * **既知の制約（要フォローアップ）**: テスト実行の時点では、上記のデータモデル拡張（`usePosterData.ts` の変更）がまだVercel本番環境にデプロイされておらず、実際にアプリ上で行われた更新操作が旧コードでログされていたため、「撤去」「張替え」「修理」がいずれも0件と表示された。この日次レポート機能を実用に足るものにするには、`usePosterData.ts` / `types/index.ts` の変更を本番デプロイする必要がある（本セッションで続けて対応）。
 * **次のステップ**: `usePosterData.ts` / `types/index.ts` の変更を本番Vercel環境へデプロイし、以降のポスター更新操作から正しく「撤去」「張替え解除」「修理解除」が集計されることを、翌日以降の実際の18時配信、または再度の手動テスト実行で確認する。
+
+### 2026-07-20 (Claude Code) その13
+* **タスク**: activityLogs拡張（コミット `1860f58`）を本番環境へデプロイ
+* **内容**:
+  * `npm run build` でビルド成功を確認後、`git push origin main` を実行し `origin/main` に反映。
+  * `npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_AYsoLNZcoH9WQ3EGAK1SgKTFYrCG`, readyState: `READY`）。
+  * これにより、本番デプロイ以降にアプリ上で行われたポスター更新（ステータス変更・撤去操作）から、`statusAdded`/`statusRemoved`/`removedChangedTo` が正しく `activityLogs` に記録されるようになった。
+* **次のステップ**: デプロイ後に実際に「撤去」「張替え予定の解除」「要修理の解除」操作を行い、翌日18時の自動配信（または手動テスト実行）で件数が正しくカウントされることを確認する。
