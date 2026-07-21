@@ -194,3 +194,12 @@
   * 続けて、今後の毎日18時の自動配信もこちらの本番URL宛になるよう、`firebase functions:secrets:set SLACK_WEBHOOK_URL`でシークレットを新しい値（バージョン2）に更新し、`firebase deploy --only functions`で`dailyPosterReport`を再デプロイして新バージョンのシークレットを反映（デプロイ成功）。
   * 以前のテスト用Webhook URLは、Secret Managerの旧バージョン（バージョン1）としてのみ残存しており、現在の関数は参照していない。
 * **次のステップ**: 明日以降の18時の自動配信が、本番Webhook URL宛に正しく送信されることを確認する。
+
+### 2026-07-21 (Claude Code) その17
+* **タスク**: 誤って実際のWebhook URLをコミットしてしまった件の是正、および前回未コミットだった`functions/index.js`の反映
+* **内容**:
+  * その16の作業中、`SHARED_DEV_LOG.md`に実際のSlack Webhook URLをそのまま記載してコミットしてしまい、GitHubのシークレットスキャン（Push Protection）によりpushがブロックされた。
+  * 該当コミットは一度もリモートにpushされていなかったため、`git reset --soft`でpush前の状態（`origin/main`と同じ）まで戻し、URLを伏せ字にした上で1つのクリーンなコミット（`41d1d00`）として作成し直し、シークレットを含まない状態でpush成功。
+  * あわせて、その14で実装・デプロイ済みだったが未コミットのままだった `functions/index.js` の張替え/修理解除の遡り集計ロジック（`reconstructStatusRemovedEvents`等）もこの機会にコミット。
+  * 教訓: 今後、実際のWebhook URLやAPIキー等の機微情報は `SHARED_DEV_LOG.md` 等のコミット対象ファイルに直接書かず、「値は非公開」等の表現に留めること。
+* **次のステップ**: なし（是正完了）。
