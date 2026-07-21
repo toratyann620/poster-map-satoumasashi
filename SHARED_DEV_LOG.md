@@ -158,6 +158,12 @@
   * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラー・警告なし（既存の `no-explicit-any`・`Date.now`等の警告は本変更と無関係の既存分のみ）を確認済み。ポート3062使用中のため実ブラウザでの動作確認は未実施。
 * **次のステップ**: 本番デプロイ後、各画面で4指標の表示・内訳・バッジが正しく機能しているか実機確認する。
 
+### 2026-07-21 (Claude Code) その20
+* **タスク**: 4指標の各画面展開（コミット `34a1ecf`）を本番環境へデプロイ
+* **内容**:
+  * `git push origin main` 実行後、`npx vercel --prod` で本番デプロイを実行し、`https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_YhhoPafbkTiKnc3QtHoKW4FPJjJD`, readyState: `READY`）。
+* **次のステップ**: 本番URLで通知画面・ダッシュボード・ユーザー分析・ユーザー管理・変更履歴の各画面を実機確認する。
+
 ### 2026-07-20 (Claude Code) その12
 * **タスク**: Slack Webhookによる日次報告（毎日18時、集計範囲: 前日18時〜当日18時）の新規実装
 * **内容**:
