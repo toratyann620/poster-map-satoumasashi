@@ -15,11 +15,6 @@ const CITY_LABELS = [
     { match: '海老名市', label: '海老名市' },
 ];
 
-const getCityMatch = (address) => {
-    if (!address) return null;
-    return CITY_LABELS.find(c => address.includes(c.match)) || null;
-};
-
 // 住所を「市区町村＋町名」レベルまで短縮する（都道府県、丁目・番地以降を省略）
 // 例: "神奈川県厚木市妻田南1-22-47" → "厚木市妻田南"
 const shortenAddress = (address) => {
@@ -48,38 +43,82 @@ const formatSection = (title, breakdown) => {
     return `・${title}\n` + breakdown.map(([addr, count]) => `${addr}　${count}箇所`).join('\n');
 };
 
+// 張替え予定／要修理フラグが「外れた」イベントを、ポスターごとの時系列ログから再構築する。
+// 2026-07-20のusePosterData.ts改修より前のログにはstatusRemovedが記録されていないため、
+// その場合は直前のログのposterStatus（更新後のステータス配列）と比較して差分を推定する。
+const reconstructStatusRemovedEvents = (allLogsAsc) => {
+    const logsByPoster = new Map();
+    allLogsAsc.forEach(l => {
+        if (!l.posterId) return;
+        if (!logsByPoster.has(l.posterId)) logsByPoster.set(l.posterId, []);
+        logsByPoster.get(l.posterId).push(l);
+    });
+
+    const replaceCancelEvents = [];
+    const repairCancelEvents = [];
+
+    logsByPoster.forEach((logsForPoster) => {
+        let prevStatus = null; // このポスターの直前の既知ステータス（まだ無ければnull）
+        logsForPoster.forEach((log) => {
+            if (Array.isArray(log.statusRemoved)) {
+                // 新方式: 記録済みの差分をそのまま利用
+                if (log.statusRemoved.includes('張替え予定')) {
+                    replaceCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                }
+                if (log.statusRemoved.includes('要修理')) {
+                    repairCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                }
+            } else if (prevStatus !== null && Array.isArray(log.posterStatus)) {
+                // 旧方式（statusRemoved未記録）: 直前のposterStatusとの差分から推定
+                if (prevStatus.includes('張替え予定') && !log.posterStatus.includes('張替え予定')) {
+                    replaceCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                }
+                if (prevStatus.includes('要修理') && !log.posterStatus.includes('要修理')) {
+                    repairCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                }
+            }
+            if (Array.isArray(log.posterStatus)) prevStatus = log.posterStatus;
+        });
+    });
+
+    return { replaceCancelEvents, repairCancelEvents };
+};
+
 async function buildReport() {
     const rangeEnd = Date.now();
     const rangeStart = rangeEnd - 24 * 60 * 60 * 1000;
 
-    const [postersSnap, logsSnap] = await Promise.all([
+    // 張替え解除・修理解除の過去分再構築には、対象ポスターの過去の全履歴が必要なため、
+    // activityLogsは全件を時系列順に取得する
+    const [postersSnap, allLogsSnap] = await Promise.all([
         db.collection('posters').get(),
-        db.collection('activityLogs')
-            .where('changedAt', '>=', rangeStart)
-            .where('changedAt', '<', rangeEnd)
-            .get(),
+        db.collection('activityLogs').orderBy('changedAt', 'asc').get(),
     ]);
 
     const posters = [];
     postersSnap.forEach(d => posters.push({ id: d.id, ...d.data() }));
 
-    const logs = [];
-    logsSnap.forEach(d => logs.push({ id: d.id, ...d.data() }));
+    const allLogsAsc = [];
+    allLogsSnap.forEach(d => allLogsAsc.push({ id: d.id, ...d.data() }));
+
+    const logsInRange = allLogsAsc.filter(l => l.changedAt >= rangeStart && l.changedAt < rangeEnd);
 
     // 新規: この期間に作成されたポスター（種類は問わない）
     const newPosters = posters.filter(p => typeof p.createdAt === 'number' && p.createdAt >= rangeStart && p.createdAt < rangeEnd);
 
     // 撤去: この期間に撤去フラグがONになった更新（usePosterData.ts の updatePoster が記録する removedChangedTo を利用）
-    const removedLogs = logs.filter(l => l.removedChangedTo === true);
+    // ※ removedフィールドは2026-07-20の改修以前は記録されておらず、過去分の再構築はできない
+    const removedLogs = logsInRange.filter(l => l.removedChangedTo === true);
 
-    // 張替え解除・修理解除: この期間の更新でステータスから該当フラグが外れたもの
-    const replaceCancelLogs = logs.filter(l => Array.isArray(l.statusRemoved) && l.statusRemoved.includes('張替え予定'));
-    const repairCancelLogs = logs.filter(l => Array.isArray(l.statusRemoved) && l.statusRemoved.includes('要修理'));
+    // 張替え解除・修理解除: 過去分も含めて時系列から再構築し、期間内のイベントのみ抽出
+    const { replaceCancelEvents, repairCancelEvents } = reconstructStatusRemovedEvents(allLogsAsc);
+    const replaceCancelLogs = replaceCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd);
+    const repairCancelLogs = repairCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd);
 
     const newBreakdown = tally(newPosters, p => p.address);
     const removedBreakdown = tally(removedLogs, l => l.posterAddress);
-    const replaceCancelBreakdown = tally(replaceCancelLogs, l => l.posterAddress);
-    const repairCancelBreakdown = tally(repairCancelLogs, l => l.posterAddress);
+    const replaceCancelBreakdown = tally(replaceCancelLogs, e => e.posterAddress);
+    const repairCancelBreakdown = tally(repairCancelLogs, e => e.posterAddress);
 
     // 設置率（佐藤まさし、市区町村別・既存ダッシュボードと同じ算出方法: 設置済枚数 / 全体枚数）
     const satoPosters = posters.filter(p => p.type === '佐藤まさし');
