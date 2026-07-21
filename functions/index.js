@@ -160,7 +160,10 @@ async function buildReport() {
         `設置率：${overallRate}%(${cityRates.map(c => `${c.label}${c.rate}%`).join('/')})`,
     ].join('\n');
 
-    return message;
+    // 新規・撤去・張替え・修理のいずれも該当が無ければ通知不要と判定する
+    const totalCount = newPosters.length + removedLogs.length + replaceCancelLogs.length + repairCancelLogs.length;
+
+    return { message, totalCount };
 }
 
 async function postToSlack(text) {
@@ -182,7 +185,11 @@ exports.dailyPosterReport = onSchedule({
     region: 'asia-northeast1',
     secrets: [SLACK_WEBHOOK_URL],
 }, async () => {
-    const message = await buildReport();
+    const { message, totalCount } = await buildReport();
+    if (totalCount === 0) {
+        logger.info('Daily poster report skipped: no activity in range');
+        return;
+    }
     logger.info('Daily poster report generated', { message });
     await postToSlack(message);
 });

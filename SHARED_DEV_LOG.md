@@ -203,3 +203,10 @@
   * あわせて、その14で実装・デプロイ済みだったが未コミットのままだった `functions/index.js` の張替え/修理解除の遡り集計ロジック（`reconstructStatusRemovedEvents`等）もこの機会にコミット。
   * 教訓: 今後、実際のWebhook URLやAPIキー等の機微情報は `SHARED_DEV_LOG.md` 等のコミット対象ファイルに直接書かず、「値は非公開」等の表現に留めること。
 * **次のステップ**: なし（是正完了）。
+
+### 2026-07-21 (Claude Code) その18
+* **タスク**: 全項目0件の場合はSlack通知を送信しない仕様に変更
+* **内容**:
+  * ユーザー依頼により、[functions/index.js](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/functions/index.js) の `buildReport` が新規/撤去/張替え/修理の合計件数（`totalCount`）も返すように変更し、`dailyPosterReport` 側で `totalCount === 0` の場合はSlackへの投稿をスキップ（ログのみ出力）するよう修正。
+  * `node -c index.js` で構文チェックOK、`firebase deploy --only functions` でデプロイ成功。
+* **次のステップ**: なし（完了）。
