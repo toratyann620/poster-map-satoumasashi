@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import type { ActivityLog } from '../types';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
-export const useActivityLogs = (maxCount = 100) => {
-    const [logs, setLogs] = useState<ActivityLog[]>([]);
+/**
+ * activityLogs の全件を時系列昇順（古い→新しい）でリアルタイム取得するフック。
+ * 「新規／撤去／張替え解除／修理解除」の指標算出（[posterMetrics.ts](../lib/posterMetrics.ts) の
+ * computePosterMetrics）は、対象期間より前の履歴も含めて比較する必要があるため、
+ * 表示件数を絞らず全件を保持する。
+ */
+export const useAllActivityLogs = () => {
+    const [logsAsc, setLogsAsc] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const q = query(
-            collection(db, 'activityLogs'),
-            orderBy('changedAt', 'desc'),
-            limit(maxCount)
-        );
+        const q = query(collection(db, 'activityLogs'), orderBy('changedAt', 'asc'));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data: ActivityLog[] = [];
@@ -35,15 +37,15 @@ export const useActivityLogs = (maxCount = 100) => {
                     removedChangedTo: d.removedChangedTo ?? null,
                 });
             });
-            setLogs(data);
+            setLogsAsc(data);
             setLoading(false);
         }, (error) => {
-            console.error('Failed to fetch activity logs:', error);
+            console.error('Failed to fetch all activity logs:', error);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [maxCount]);
+    }, []);
 
-    return { logs, loading };
+    return { logsAsc, loading };
 };

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useUsers } from '../hooks/useUsers';
 import type { UserData } from '../hooks/useUsers';
 import { useActivityLogs } from '../hooks/useActivityLogs';
+import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
 import { usePosterData } from '../hooks/usePosterData';
+import { computePosterMetrics } from '../lib/posterMetrics';
 import { DashboardTab } from './DashboardTab';
 import { UserAnalyticsTab } from './UserAnalyticsTab';
 import { SpecTab } from './SpecTab';
@@ -10,7 +12,7 @@ import { ChangelogTab } from './ChangelogTab';
 import { SettingsTab } from './SettingsTab';
 import {
     UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle,
-    LayoutDashboard, Users, BookOpen, ClipboardList, Settings,
+    LayoutDashboard, Users, BookOpen, ClipboardList, Settings, PackageOpen, RefreshCcw, Wrench,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -33,6 +35,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
     const { logs, loading: logsLoading } = useActivityLogs(200);
     const { userRole, posters } = usePosterData();
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+
+    // 新規／撤去／張替え解除／修理解除の4指標（全期間、全履歴から再構築するため activityLogs 全件を取得）
+    const { logsAsc: allLogsAsc } = useAllActivityLogs();
+    const posterMetrics = useMemo(
+        () => computePosterMetrics(posters, allLogsAsc, 0, Date.now() + 1),
+        [posters, allLogsAsc]
+    );
+
+    // ユーザー名ごとの新規／撤去／張替え解除／修理解除 件数
+    const metricsByUser = useMemo(() => {
+        const map = new Map<string, { newCount: number; removedCount: number; replaceCancelCount: number; repairCancelCount: number }>();
+        const get = (name: string) => {
+            if (!map.has(name)) map.set(name, { newCount: 0, removedCount: 0, replaceCancelCount: 0, repairCancelCount: 0 });
+            return map.get(name)!;
+        };
+        posterMetrics.newPosters.forEach(p => { if (p.createdBy) get(p.createdBy).newCount++; });
+        posterMetrics.removedLogs.forEach(l => { if (l.changedBy) get(l.changedBy).removedCount++; });
+        posterMetrics.replaceCancelEvents.forEach(e => { if (e.changedBy) get(e.changedBy).replaceCancelCount++; });
+        posterMetrics.repairCancelEvents.forEach(e => { if (e.changedBy) get(e.changedBy).repairCancelCount++; });
+        return map;
+    }, [posterMetrics]);
+
+    // 変更履歴タブでのバッジ表示用: 該当ログIDの集合
+    const removedLogIds = useMemo(() => new Set(posterMetrics.removedLogs.map(l => l.id)), [posterMetrics]);
+    const replaceCancelLogIds = useMemo(() => new Set(posterMetrics.replaceCancelEvents.map(e => e.id)), [posterMetrics]);
+    const repairCancelLogIds = useMemo(() => new Set(posterMetrics.repairCancelEvents.map(e => e.id)), [posterMetrics]);
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -318,6 +346,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                 <User className="w-5 h-5 text-indigo-500" />
                                 登録済みユーザー一覧
                             </h2>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2 mb-4">
+                                新規／撤去／張替え／修理は全期間の累計件数です。「撤去」は2026-07-20の記録開始以降のみ集計可能です。
+                            </p>
 
                             {usersLoading ? (
                                 <div className="animate-pulse flex flex-col gap-3">
@@ -333,18 +364,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                 <th className="p-4 font-medium">名前</th>
                                                 <th className="p-4 font-medium">メールアドレス</th>
                                                 <th className="p-4 font-medium">権限</th>
+                                                <th className="p-4 font-medium text-right">新規</th>
+                                                <th className="p-4 font-medium text-right">撤去</th>
+                                                <th className="p-4 font-medium text-right">張替え</th>
+                                                <th className="p-4 font-medium text-right">修理</th>
                                                 <th className="p-4 font-medium text-right">操作</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                                             {users.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={4} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                                                    <td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400">
                                                         ユーザーデータがありません。
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                users.map(user => (
+                                                users.map(user => {
+                                                    const m = metricsByUser.get(user.name) || { newCount: 0, removedCount: 0, replaceCancelCount: 0, repairCancelCount: 0 };
+                                                    return (
                                                     <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
                                                         <td className="p-4 text-gray-900 dark:text-white font-medium">{user.name}</td>
                                                         <td className="p-4 text-gray-600 dark:text-gray-400">{user.email}</td>
@@ -353,6 +390,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                                 {user.role === 'admin' ? '管理者' : '一般'}
                                                             </span>
                                                         </td>
+                                                        <td className="p-4 text-right text-emerald-600 dark:text-emerald-400 font-semibold">{m.newCount || '-'}</td>
+                                                        <td className="p-4 text-right text-orange-600 dark:text-orange-400 font-semibold">{m.removedCount || '-'}</td>
+                                                        <td className="p-4 text-right text-amber-600 dark:text-amber-400 font-semibold">{m.replaceCancelCount || '-'}</td>
+                                                        <td className="p-4 text-right text-red-600 dark:text-red-400 font-semibold">{m.repairCancelCount || '-'}</td>
                                                         <td className="p-4 text-right">
                                                             <button
                                                                 onClick={() => handleDeleteUser(user)}
@@ -363,7 +404,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                             </button>
                                                         </td>
                                                     </tr>
-                                                ))
+                                                    );
+                                                })
                                             )}
                                         </tbody>
                                     </table>
@@ -380,6 +422,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                             <History className="w-5 h-5 text-indigo-500" />
                             変更履歴（最新200件）
                         </h2>
+
+                        {/* 新規／撤去／張替え解除／修理解除（全期間累計） */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+                            <div className="text-center bg-emerald-50 dark:bg-emerald-900/20 rounded-xl py-2.5">
+                                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{posterMetrics.newCount}</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">新規（累計）</p>
+                            </div>
+                            <div className="text-center bg-orange-50 dark:bg-orange-900/20 rounded-xl py-2.5">
+                                <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{posterMetrics.removedCount}</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">撤去（累計）</p>
+                            </div>
+                            <div className="text-center bg-amber-50 dark:bg-amber-900/20 rounded-xl py-2.5">
+                                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{posterMetrics.replaceCancelCount}</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">張替え（累計）</p>
+                            </div>
+                            <div className="text-center bg-red-50 dark:bg-red-900/20 rounded-xl py-2.5">
+                                <p className="text-lg font-bold text-red-600 dark:text-red-400">{posterMetrics.repairCancelCount}</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">修理（累計）</p>
+                            </div>
+                        </div>
 
                         {logsLoading ? (
                             <div className="animate-pulse flex flex-col gap-3">
@@ -418,6 +480,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                                                         {log.diff}
                                                     </p>
+                                                )}
+                                                {(removedLogIds.has(log.id) || replaceCancelLogIds.has(log.id) || repairCancelLogIds.has(log.id)) && (
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {removedLogIds.has(log.id) && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 text-[10px] font-semibold">
+                                                                <PackageOpen className="w-2.5 h-2.5" />撤去
+                                                            </span>
+                                                        )}
+                                                        {replaceCancelLogIds.has(log.id) && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
+                                                                <RefreshCcw className="w-2.5 h-2.5" />張替え解除
+                                                            </span>
+                                                        )}
+                                                        {repairCancelLogIds.has(log.id) && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-[10px] font-semibold">
+                                                                <Wrench className="w-2.5 h-2.5" />修理解除
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
 

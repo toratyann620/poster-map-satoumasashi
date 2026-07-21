@@ -438,7 +438,7 @@ function App() {
                     </button>
 
                     {/* Notification Bell */}
-                    <NotificationPanel userId={user?.uid ?? null} />
+                    <NotificationPanel userId={user?.uid ?? null} posters={posters} />
 
                     {userRole === 'admin' && (
                       <button

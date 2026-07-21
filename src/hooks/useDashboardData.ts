@@ -44,6 +44,12 @@ export const useDashboardData = (dateFromStr: string, dateToStr: string) => {
                     changedBy: d.changedBy || '',
                     changedAt: d.changedAt || 0,
                     diff: d.diff || '',
+                    posterStatus: d.posterStatus || [],
+                    isNeedsRepair: !!d.isNeedsRepair,
+                    isNewRegistration: !!d.isNewRegistration,
+                    statusAdded: d.statusAdded || [],
+                    statusRemoved: d.statusRemoved || [],
+                    removedChangedTo: d.removedChangedTo ?? null,
                 };
             });
             setLogs(data);

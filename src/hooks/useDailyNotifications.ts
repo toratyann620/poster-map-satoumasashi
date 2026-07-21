@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 
 // 指定された offsetDays（今日からの日数差。昨日なら -1、今日なら 0）の 0:00 〜 23:59:59.999 のタイムスタンプ（ms）を返す
-const getDayRange = (offsetDays: number): { start: number; end: number; dateStr: string } => {
+export const getDayRange = (offsetDays: number): { start: number; end: number; dateStr: string } => {
     const now = new Date();
     // JST = UTC+9
     const jstOffset = 9 * 60 * 60 * 1000;
@@ -81,6 +81,9 @@ export const useDailyNotifications = (userId: string | null, offsetDays: number)
                     posterStatus: d.posterStatus || [],
                     isNeedsRepair: !!d.isNeedsRepair,
                     isNewRegistration: !!d.isNewRegistration,
+                    statusAdded: d.statusAdded || [],
+                    statusRemoved: d.statusRemoved || [],
+                    removedChangedTo: d.removedChangedTo ?? null,
                 });
             });
             setLogs(data);

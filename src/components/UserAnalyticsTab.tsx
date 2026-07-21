@@ -4,6 +4,8 @@ import type { PosterPin } from '../types';
 import type { UserData } from '../hooks/useUsers';
 import { PERSON_COLORS } from '../types';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
+import { computePosterMetrics } from '../lib/posterMetrics';
 
 interface UserAnalyticsTabProps {
     posters: PosterPin[];
@@ -65,6 +67,14 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
 
     const { logs, loading } = useDashboardData(dateFromStr, dateToStr);
 
+    // 新規／撤去／張替え解除／修理解除の4指標（全履歴から再構築するため activityLogs 全件を取得）
+    const { logsAsc: allLogsAsc } = useAllActivityLogs();
+    const posterMetrics = useMemo(() => {
+        const rangeStart = new Date(dateFromStr + 'T00:00:00').getTime();
+        const rangeEnd = new Date(dateToStr + 'T23:59:59').getTime() + 1;
+        return computePosterMetrics(posters, allLogsAsc, rangeStart, rangeEnd);
+    }, [posters, allLogsAsc, dateFromStr, dateToStr]);
+
     // ──── ユーザー別集計 ────
     const userStats = useMemo(() => {
         // ログ上のユーザー名 + 登録ユーザー名 を合算してユニーク化
@@ -94,9 +104,18 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
             const ownedPosters = posters.filter(p => p.createdBy === name).reduce((sum, p) => sum + (p.quantity || 1), 0);
             const lastActivity = userLogs.length > 0 ? userLogs[0].changedAt : null;
 
-            return { name, added, updated, deleted, totalActions: added + updated + deleted, ownedPosters, lastActivity, topType };
+            // 新規／撤去／張替え解除／修理解除（箇所数ベース）
+            const newCount = posterMetrics.newPosters.filter(p => p.createdBy === name).length;
+            const removedCount = posterMetrics.removedLogs.filter(l => l.changedBy === name).length;
+            const replaceCancelCount = posterMetrics.replaceCancelEvents.filter(e => e.changedBy === name).length;
+            const repairCancelCount = posterMetrics.repairCancelEvents.filter(e => e.changedBy === name).length;
+
+            return {
+                name, added, updated, deleted, totalActions: added + updated + deleted, ownedPosters, lastActivity, topType,
+                newCount, removedCount, replaceCancelCount, repairCancelCount,
+            };
         }).sort((a, b) => b.totalActions - a.totalActions);
-    }, [logs, users, posters]);
+    }, [logs, users, posters, posterMetrics]);
 
     const maxActions = Math.max(...userStats.map(u => u.totalActions), 1);
 
@@ -257,7 +276,7 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                                                         <span className="text-red-500 dark:text-red-400 font-medium">−{u.deleted}枚 削除</span>
                                                     )}
                                                     {u.ownedPosters > 0 && (
-                                                        <span className="ml-auto text-gray-400">登録ポスター {u.ownedPosters}枚</span>
+                                                        <span className="text-gray-400">登録ポスター {u.ownedPosters}枚</span>
                                                     )}
                                                     {u.topType && (
                                                         <span className="flex items-center gap-1">
@@ -269,6 +288,24 @@ export const UserAnalyticsTab: React.FC<UserAnalyticsTabProps> = ({ posters, use
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* 新規／撤去／張替え解除／修理解除 バッジ群 */}
+                                                {(u.newCount > 0 || u.removedCount > 0 || u.replaceCancelCount > 0 || u.repairCancelCount > 0) && (
+                                                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                                        {u.newCount > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">新規 {u.newCount}箇所</span>
+                                                        )}
+                                                        {u.removedCount > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 text-[10px] font-semibold">撤去 {u.removedCount}箇所</span>
+                                                        )}
+                                                        {u.replaceCancelCount > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">張替え {u.replaceCancelCount}箇所</span>
+                                                        )}
+                                                        {u.repairCancelCount > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-[10px] font-semibold">修理 {u.repairCancelCount}箇所</span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </button>

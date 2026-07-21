@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useDailyNotifications } from '../hooks/useDailyNotifications';
+import { useDailyNotifications, getDayRange } from '../hooks/useDailyNotifications';
 import type { DailyNotificationLog } from '../hooks/useDailyNotifications';
+import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
+import { computePosterMetrics } from '../lib/posterMetrics';
+import type { PosterPin } from '../types';
 
 interface Props {
     userId: string | null;
+    posters: PosterPin[];
 }
 
 const formatTime = (ts: number) => {
@@ -84,7 +88,7 @@ const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
     );
 };
 
-export const NotificationPanel: React.FC<Props> = ({ userId }) => {
+export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [offsetDays, setOffsetDays] = useState(-1); // 初期値は昨日
     const panelRef = useRef<HTMLDivElement>(null);
@@ -97,6 +101,13 @@ export const NotificationPanel: React.FC<Props> = ({ userId }) => {
 
     // パネル表示用
     const { logs, isUnread, urgentCount, loading, markAsRead, targetDateStr } = useDailyNotifications(userId, offsetDays);
+
+    // 新規／撤去／張替え解除／修理解除の日次指標（表示中の日付分）
+    const { logsAsc: allLogsAsc } = useAllActivityLogs();
+    const dayMetrics = useMemo(() => {
+        const range = getDayRange(offsetDays);
+        return computePosterMetrics(posters, allLogsAsc, range.start, range.end + 1);
+    }, [posters, allLogsAsc, offsetDays]);
 
     // パネル外クリックで閉じる
     useEffect(() => {
@@ -226,6 +237,26 @@ export const NotificationPanel: React.FC<Props> = ({ userId }) => {
                         1日後
                         <ChevronRight className="w-4 h-4" />
                     </button>
+                </div>
+
+                {/* 新規／撤去／張替え解除／修理解除サマリー */}
+                <div className="grid grid-cols-4 gap-1.5 px-4 pt-3">
+                    <div className="text-center bg-emerald-50 dark:bg-emerald-900/20 rounded-lg py-1.5">
+                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{dayMetrics.newCount}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">新規</p>
+                    </div>
+                    <div className="text-center bg-orange-50 dark:bg-orange-900/20 rounded-lg py-1.5">
+                        <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{dayMetrics.removedCount}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">撤去</p>
+                    </div>
+                    <div className="text-center bg-amber-50 dark:bg-amber-900/20 rounded-lg py-1.5">
+                        <p className="text-sm font-bold text-amber-600 dark:text-amber-400">{dayMetrics.replaceCancelCount}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">張替え</p>
+                    </div>
+                    <div className="text-center bg-red-50 dark:bg-red-900/20 rounded-lg py-1.5">
+                        <p className="text-sm font-bold text-red-600 dark:text-red-400">{dayMetrics.repairCancelCount}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">修理</p>
+                    </div>
                 </div>
 
                 {/* コンテンツ */}

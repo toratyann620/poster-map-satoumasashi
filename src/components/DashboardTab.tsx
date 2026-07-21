@@ -1,10 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import {
     TrendingUp, TrendingDown, MapPin, CheckCircle, Activity, Clock, AlertTriangle,
+    PlusCircle, PackageOpen, RefreshCcw, Wrench,
 } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
+import { computePosterMetrics } from '../lib/posterMetrics';
 
 interface DashboardTabProps {
     posters: PosterPin[];
@@ -322,6 +325,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
     const { logs, loading } = useDashboardData(dateFromStr, dateToStr);
+
+    // 新規／撤去／張替え解除／修理解除の4指標（全履歴から再構築するため activityLogs 全件を取得）
+    const { logsAsc: allLogsAsc } = useAllActivityLogs();
+    const posterMetrics = useMemo(() => {
+        const rangeStart = new Date(dateFromStr + 'T00:00:00').getTime();
+        const rangeEnd = new Date(dateToStr + 'T23:59:59').getTime() + 1;
+        return computePosterMetrics(posters, allLogsAsc, rangeStart, rangeEnd);
+    }, [posters, allLogsAsc, dateFromStr, dateToStr]);
 
     // 全ポスターから使用されているユニークなタグ一覧を生成
     const allTags = useMemo(() => {
@@ -918,6 +929,46 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                 </div>
                             )}
                         </div>
+                    </div>
+
+                    {/* ───── 新規／撤去／張替え解除／修理解除（重要指標） ───── */}
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+                        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide mb-4">
+                            期間内の作業成果（新規・撤去・張替え・修理）
+                        </h3>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[
+                                { label: '新規', count: posterMetrics.newCount, breakdown: posterMetrics.newBreakdown, Icon: PlusCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                                { label: '撤去', count: posterMetrics.removedCount, breakdown: posterMetrics.removedBreakdown, Icon: PackageOpen, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
+                                { label: '張替え', count: posterMetrics.replaceCancelCount, breakdown: posterMetrics.replaceCancelBreakdown, Icon: RefreshCcw, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+                                { label: '修理', count: posterMetrics.repairCancelCount, breakdown: posterMetrics.repairCancelBreakdown, Icon: Wrench, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
+                            ].map(item => (
+                                <div key={item.label} className={`relative group rounded-xl p-4 ${item.bg}`}>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <span className={`text-xs font-semibold uppercase tracking-wide ${item.color}`}>{item.label}</span>
+                                        <item.Icon className={`w-4 h-4 ${item.color}`} />
+                                    </div>
+                                    <div className={`text-2xl font-bold ${item.color}`}>{item.count.toLocaleString()}<span className="text-sm font-normal ml-1">箇所</span></div>
+
+                                    {item.breakdown.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150 max-h-56 overflow-y-auto">
+                                            <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">内訳（住所別）</p>
+                                            <div className="space-y-1">
+                                                {item.breakdown.map(([addr, count]) => (
+                                                    <div key={addr} className="flex justify-between items-center gap-3">
+                                                        <span className="text-zinc-400 truncate">{addr}</span>
+                                                        <span className="font-medium shrink-0">{count}箇所</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+                            「撤去」は2026-07-20の記録開始以降のみ集計可能です。それより前の期間を選択した場合は実際より少なく表示される場合があります。
+                        </p>
                     </div>
 
                     {/* ───── 種類別ピン数 折れ線グラフ ───── */}
