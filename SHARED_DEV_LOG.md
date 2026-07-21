@@ -144,6 +144,20 @@
   * コードの変更は無いため、デプロイは不要（Firestoreの設定データのみの変更、即時に全ユーザーへ反映済み）。
 * **次のステップ**: なし（完了）。
 
+### 2026-07-21 (Claude Code) その19
+* **タスク**: 「新規／撤去／張替え解除／修理解除」の4指標を、通知画面・ダッシュボード・ユーザー分析・ユーザー管理・変更履歴の各画面にも表示する仕様見直し
+* **内容**: ユーザーより「今後の重要指標になる」との方針を受け、Slack日次レポート（[functions/index.js](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/functions/index.js)）で使っている集計ロジックをアプリのクライアント側にも共通化して展開。
+  * **共有ロジックの新規作成**: [src/lib/posterMetrics.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/lib/posterMetrics.ts) に `reconstructStatusRemovedEvents`（張替え予定／要修理フラグが外れたイベントをactivityLogsの全履歴から再構築）と `computePosterMetrics`（新規/撤去/張替え解除/修理解除の件数・住所別内訳を算出）を実装。Cloud Functionsのロジックと同一のアルゴリズム。
+  * [src/hooks/useAllActivityLogs.ts](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/hooks/useAllActivityLogs.ts) を新規作成し、activityLogs全件を時系列昇順でリアルタイム取得（再構築の精度確保のため、期間指定クエリではなく全件取得が必要）。既存の `useActivityLogs.ts` / `useDashboardData.ts` / `useDailyNotifications.ts` にも `statusAdded`/`statusRemoved`/`removedChangedTo` フィールドを追加。
+  * **通知画面** ([NotificationPanel.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/NotificationPanel.tsx)): 表示中の日付（スワイプ/ボタンで切替可能）の4指標サマリーをログ一覧の上部に追加。App.tsxから`posters`をpropsとして渡すよう変更。
+  * **ダッシュボード** ([DashboardTab.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/DashboardTab.tsx)): 選択中の期間（日付レンジピッカー）に対する4指標カードを新規セクションとして追加。カードにホバーすると住所別内訳をツールチップ表示。
+  * **ユーザー分析** ([UserAnalyticsTab.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/UserAnalyticsTab.tsx)): ユーザーごとのアクティビティランキングに、4指標のバッジ（新規/撤去/張替え/修理の件数）を追加（`newPosters`は`createdBy`、他3指標は`changedBy`で人別に集計）。
+  * **管理パネル/ユーザー管理** ([AdminPanel.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/AdminPanel.tsx)): ユーザー一覧テーブルに新規/撤去/張替え/修理の4列（全期間累計）を追加。
+  * **管理パネル/変更履歴** (同ファイル): 全期間累計の4指標サマリーをヘッダー下に追加し、各ログ行に該当する場合（撤去/張替え解除/修理解除）のバッジを表示するようにした（該当ログIDの集合をあらかじめ算出してO(1)判定）。
+  * 「撤去」は2026-07-20の記録開始以前は集計不可という制約は、ユーザー管理・ダッシュボードの注記として明記。
+  * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功、`npm run lint` で新規エラー・警告なし（既存の `no-explicit-any`・`Date.now`等の警告は本変更と無関係の既存分のみ）を確認済み。ポート3062使用中のため実ブラウザでの動作確認は未実施。
+* **次のステップ**: 本番デプロイ後、各画面で4指標の表示・内訳・バッジが正しく機能しているか実機確認する。
+
 ### 2026-07-20 (Claude Code) その12
 * **タスク**: Slack Webhookによる日次報告（毎日18時、集計範囲: 前日18時〜当日18時）の新規実装
 * **内容**:
