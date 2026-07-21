@@ -230,3 +230,14 @@
   * ユーザー依頼により、[functions/index.js](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/functions/index.js) の `buildReport` が新規/撤去/張替え/修理の合計件数（`totalCount`）も返すように変更し、`dailyPosterReport` 側で `totalCount === 0` の場合はSlackへの投稿をスキップ（ログのみ出力）するよう修正。
   * `node -c index.js` で構文チェックOK、`firebase deploy --only functions` でデプロイ成功。
 * **次のステップ**: なし（完了）。
+
+（注: 「その19」「その20」はファイル中盤（本エントリより前）に記録されています。日付順の並びが一部前後していますが、内容はすべて残っています。）
+
+### 2026-07-21 (Claude Code) その21
+* **タスク**: 現在地取得を `watchPosition` 方式に変更（移動中に現在地が更新されない問題の修正）
+* **内容**:
+  * ユーザーより「移動中に現在地がなかなか更新されない」との報告を受け、[App.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/App.tsx) の現在地取得ロジックを調査。従来は起動時・現在地ボタン押下時の `getCurrentPosition`（一回きりのスナップショット取得）のみで、移動中に自動更新される仕組みが無いことが原因と判明。ユーザーに仕様を説明し、`watchPosition` 方式への変更を提案・承認を得た。
+  * `App.tsx` の初回ロード用 `useEffect` を `navigator.geolocation.watchPosition` に置き換え、位置が変わるたびに `currentLocation`（青い現在地ドット）を継続的に更新するよう修正。地図の中心・ズーム（`mapCenter`）は「初回の位置取得時」と「現在地ボタン押下時（`locateMe`、変更なし）」のみ更新する設計とし、移動のたびに地図が強制的に再センタリング／ズームリセットされる副作用を避けた。オプションは `{ enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }`。コンポーネントアンマウント時は `clearWatch` でクリーンアップ。
+  * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功。
+  * コミット（`52f5967`）→ `git push` → `npx vercel --prod` で本番デプロイ完了（`https://poster-map-app.vercel.app`、Deployment ID: `dpl_D5CoQFSY6ou3XvDFCBwSyoy5MYHQ`, readyState: `READY`）。
+* **次のステップ**: 実機（スマートフォン等、GPS付きデバイス）で実際に移動しながら現在地ドットがリアルタイムに追従するか確認する。バッテリー消費が体感で許容範囲か合わせて確認するとなお良い。
