@@ -81,20 +81,31 @@ function App() {
   }, [selectedPoster, posters]);
 
 
-  // 初回ロード時に現在地を取得してジャンプする
+  // 初回ロード時に現在地を取得して地図をジャンプさせ、以降は watchPosition で
+  // 移動中も現在地ドットをリアルタイムに追従させる（地図の中心・ズームは初回ジャンプ時と
+  // 現在地ボタン押下時のみ更新し、移動のたびに地図が勝手に再センタリングされないようにする）
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-          setCurrentLocation(pos);
+    if (!navigator.geolocation) return;
+
+    let hasCenteredOnce = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setCurrentLocation(pos);
+        if (!hasCenteredOnce) {
+          hasCenteredOnce = true;
           setMapCenter(pos);
-        },
-        () => {
-          console.warn('Geolocation permission denied or failed on load.');
         }
-      );
-    }
+      },
+      () => {
+        console.warn('Geolocation permission denied or failed.');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
   }, []);
 
   const locateMe = () => {
