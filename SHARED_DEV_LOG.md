@@ -241,3 +241,13 @@
   * `npx tsc -b` 型チェックOK、`npm run build` ビルド成功。
   * コミット（`52f5967`）→ `git push` → `npx vercel --prod` で本番デプロイ完了（`https://poster-map-app.vercel.app`、Deployment ID: `dpl_D5CoQFSY6ou3XvDFCBwSyoy5MYHQ`, readyState: `READY`）。
 * **次のステップ**: 実機（スマートフォン等、GPS付きデバイス）で実際に移動しながら現在地ドットがリアルタイムに追従するか確認する。バッテリー消費が体感で許容範囲か合わせて確認するとなお良い。
+
+### 2026-07-21 (Claude Code) その22
+* **タスク**: Slack日次報告（新規/撤去/張替え/修理）の集計対象を「佐藤まさし」のポスターのみに限定
+* **内容**:
+  * ユーザー依頼により、[functions/index.js](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/functions/index.js) の `buildReport` を修正。従来は「新規」「撤去」「張替え解除」「修理解除」の4指標が全ての `type` を対象としていた（設置率のみ既存仕様で「佐藤まさし」限定だった）のに対し、4指標すべてを `type === '佐藤まさし'` のポスターのみに絞り込むよう変更。
+    * 「新規」: `posters` フィルタに `p.type === '佐藤まさし'` を追加。
+    * 「撤去」「張替え解除」「修理解除」: 現在 `type` が「佐藤まさし」であるポスターIDの集合（`satoPosterIds`）を作成し、`activityLogs` 由来のイベントを `posterId` で絞り込み。`reconstructStatusRemovedEvents` が返すイベントオブジェクトに `posterId` を追加してフィルタ可能にした。
+  * 過去3日間のデータで変更前後の件数を比較検証（新規: 2→1件「ごとう祐一」1件除外、張替え: 12→10件、撤去・修理は該当なしのため変化なし）し、意図通りに絞り込まれていることを確認。
+  * `node -c index.js` で構文チェックOK、`firebase deploy --only functions` でデプロイ成功。
+* **次のステップ**: なし（完了）。次回の18時配信、または手動テストで実際のSlack投稿内容を確認するとより確実。

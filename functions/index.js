@@ -57,24 +57,24 @@ const reconstructStatusRemovedEvents = (allLogsAsc) => {
     const replaceCancelEvents = [];
     const repairCancelEvents = [];
 
-    logsByPoster.forEach((logsForPoster) => {
+    logsByPoster.forEach((logsForPoster, posterId) => {
         let prevStatus = null; // このポスターの直前の既知ステータス（まだ無ければnull）
         logsForPoster.forEach((log) => {
             if (Array.isArray(log.statusRemoved)) {
                 // 新方式: 記録済みの差分をそのまま利用
                 if (log.statusRemoved.includes('張替え予定')) {
-                    replaceCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                    replaceCancelEvents.push({ posterId, changedAt: log.changedAt, posterAddress: log.posterAddress });
                 }
                 if (log.statusRemoved.includes('要修理')) {
-                    repairCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                    repairCancelEvents.push({ posterId, changedAt: log.changedAt, posterAddress: log.posterAddress });
                 }
             } else if (prevStatus !== null && Array.isArray(log.posterStatus)) {
                 // 旧方式（statusRemoved未記録）: 直前のposterStatusとの差分から推定
                 if (prevStatus.includes('張替え予定') && !log.posterStatus.includes('張替え予定')) {
-                    replaceCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                    replaceCancelEvents.push({ posterId, changedAt: log.changedAt, posterAddress: log.posterAddress });
                 }
                 if (prevStatus.includes('要修理') && !log.posterStatus.includes('要修理')) {
-                    repairCancelEvents.push({ changedAt: log.changedAt, posterAddress: log.posterAddress });
+                    repairCancelEvents.push({ posterId, changedAt: log.changedAt, posterAddress: log.posterAddress });
                 }
             }
             if (Array.isArray(log.posterStatus)) prevStatus = log.posterStatus;
@@ -103,17 +103,21 @@ async function buildReport() {
 
     const logsInRange = allLogsAsc.filter(l => l.changedAt >= rangeStart && l.changedAt < rangeEnd);
 
-    // 新規: この期間に作成されたポスター（種類は問わない）
-    const newPosters = posters.filter(p => typeof p.createdAt === 'number' && p.createdAt >= rangeStart && p.createdAt < rangeEnd);
+    // Slackへのポスター作業成果報告は「佐藤まさし」のポスターのみを対象とする
+    const TARGET_TYPE = '佐藤まさし';
+    const satoPosterIds = new Set(posters.filter(p => p.type === TARGET_TYPE).map(p => p.id));
 
-    // 撤去: この期間に撤去フラグがONになった更新（usePosterData.ts の updatePoster が記録する removedChangedTo を利用）
+    // 新規: この期間に作成された「佐藤まさし」のポスター
+    const newPosters = posters.filter(p => p.type === TARGET_TYPE && typeof p.createdAt === 'number' && p.createdAt >= rangeStart && p.createdAt < rangeEnd);
+
+    // 撤去: この期間に撤去フラグがONになった「佐藤まさし」の更新（usePosterData.ts の updatePoster が記録する removedChangedTo を利用）
     // ※ removedフィールドは2026-07-20の改修以前は記録されておらず、過去分の再構築はできない
-    const removedLogs = logsInRange.filter(l => l.removedChangedTo === true);
+    const removedLogs = logsInRange.filter(l => l.removedChangedTo === true && satoPosterIds.has(l.posterId));
 
-    // 張替え解除・修理解除: 過去分も含めて時系列から再構築し、期間内のイベントのみ抽出
+    // 張替え解除・修理解除: 過去分も含めて時系列から再構築し、期間内かつ「佐藤まさし」のイベントのみ抽出
     const { replaceCancelEvents, repairCancelEvents } = reconstructStatusRemovedEvents(allLogsAsc);
-    const replaceCancelLogs = replaceCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd);
-    const repairCancelLogs = repairCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd);
+    const replaceCancelLogs = replaceCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd && satoPosterIds.has(e.posterId));
+    const repairCancelLogs = repairCancelEvents.filter(e => e.changedAt >= rangeStart && e.changedAt < rangeEnd && satoPosterIds.has(e.posterId));
 
     const newBreakdown = tally(newPosters, p => p.address);
     const removedBreakdown = tally(removedLogs, l => l.posterAddress);
@@ -121,7 +125,7 @@ async function buildReport() {
     const repairCancelBreakdown = tally(repairCancelLogs, e => e.posterAddress);
 
     // 設置率（佐藤まさし、市区町村別・既存ダッシュボードと同じ算出方法: 設置済枚数 / 全体枚数）
-    const satoPosters = posters.filter(p => p.type === '佐藤まさし');
+    const satoPosters = posters.filter(p => p.type === TARGET_TYPE);
     const qtyOf = (p) => (typeof p.quantity === 'number' && p.quantity > 0) ? p.quantity : 1;
     const isInstalled = (p) => (Array.isArray(p.status) ? p.status : [p.status]).includes('設置済');
 
