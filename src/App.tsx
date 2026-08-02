@@ -129,6 +129,20 @@ function App() {
   const [isRelocating, setIsRelocating] = useState(false);
   const [relocatingPin, setRelocatingPin] = useState<PosterPin | null>(null);
 
+  // ---- ナビゲーションモード（単一ピンへの経路案内） ----
+  const [navigationTarget, setNavigationTarget] = useState<PosterPin | null>(null);
+  const [navigationMode, setNavigationMode] = useState<'DRIVING' | 'WALKING' | 'BICYCLING'>('DRIVING');
+
+  const handleStartNavigation = (poster: PosterPin) => {
+    setIsSheetOpen(false);
+    setSelectedPoster(null);
+    setNavigationTarget(poster);
+  };
+
+  const handleEndNavigation = () => {
+    setNavigationTarget(null);
+  };
+
   const handlePinLongPress = (poster: PosterPin) => {
     // BottomSheetが開いていたら閉じる
     setIsSheetOpen(false);
@@ -184,6 +198,9 @@ function App() {
   };
 
   const handleMapClick = (lat: number, lng: number) => {
+    // ナビゲーション中は地図タップでの新規ピン作成等を無効化する
+    if (navigationTarget) return;
+
     // 移動モード中: 座標を確定
     if (isRelocating && relocatingPin) {
       if (relocatingPin.id === 'temp-marker-id') {
@@ -226,6 +243,9 @@ function App() {
   };
 
   const handleMarkerClick = (poster: PosterPin) => {
+    // ナビゲーション中は他のピンのタップを無効化する
+    if (navigationTarget) return;
+
     setSelectedPoster(poster);
     
     // 仮ピン（保存前の検索ピン）がクリックされた場合
@@ -389,6 +409,10 @@ function App() {
             pinTypes={pinTypes}
             onLocateMe={locateMe}
             justDroppedPinId={justDroppedPinId}
+            navigationTarget={navigationTarget}
+            navigationMode={navigationMode}
+            onChangeNavigationMode={setNavigationMode}
+            onExitNavigation={handleEndNavigation}
           />
 
           {/* ======  移動モード用UI  ====== */}
@@ -419,8 +443,8 @@ function App() {
             </>
           )}
 
-          {/* Floating UI Elements（移動モード中は非表示） */}
-          {!isRelocating && (
+          {/* Floating UI Elements（移動モード・ナビゲーション中は非表示） */}
+          {!isRelocating && !navigationTarget && (
             <>
               <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
 
@@ -502,7 +526,7 @@ function App() {
 
           {/* Slide-up Bottom Sheet */}
           <PinBottomSheet
-            isOpen={isSheetOpen && currentView === 'map' && !isRelocating}
+            isOpen={isSheetOpen && currentView === 'map' && !isRelocating && !navigationTarget}
             onClose={() => setIsSheetOpen(false)}
             poster={activePoster}
             initialViewMode={initialViewMode}
@@ -511,6 +535,7 @@ function App() {
             onSave={handleSave}
             onDelete={handleDelete}
             onRemove={handleRemove}
+            onStartNavigation={handleStartNavigation}
           />
         </>
       )}

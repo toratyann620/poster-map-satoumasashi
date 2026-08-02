@@ -1,12 +1,14 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 import { Wrapper, Status } from '@googlemaps/react-wrapper';
-import { Navigation } from 'lucide-react';
+import { Navigation, Car, Footprints, Bike, X } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
 
 // 環境変数から優先して読み込み、設定がない場合は指定された統一キーを使用する
 const MAP_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyDFVt8w4WjvR7U5xJRCA7-_2FY40hIlWdk";
+
+type NavigationMode = 'DRIVING' | 'WALKING' | 'BICYCLING';
 
 interface MapComponentProps {
     posters: PosterPin[];
@@ -22,7 +24,26 @@ interface MapComponentProps {
     pinTypes?: { name: string, color: string }[];
     onLocateMe?: () => void;
     justDroppedPinId?: string | null;
+    navigationTarget?: PosterPin | null;
+    navigationMode?: NavigationMode;
+    onChangeNavigationMode?: (mode: NavigationMode) => void;
+    onExitNavigation?: () => void;
 }
+
+// 2地点間の直線距離（メートル）を算出する（ナビ中の再ルート判定に使用）
+function haversineDistanceMeters(a: { lat: number, lng: number }, b: { lat: number, lng: number }): number {
+    const R = 6371000;
+    const toRad = (deg: number) => deg * Math.PI / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// ナビ案内文からHTMLタグを除去する
+const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '');
 
 const render = (status: Status): React.ReactElement => {
     if (status === Status.LOADING) return <div className="p-4 text-center">Loading Map...</div>;
@@ -206,7 +227,11 @@ const MapInner: React.FC<MapComponentProps> = ({
     currentLocation,
     pinTypes = [],
     onLocateMe,
-    justDroppedPinId
+    justDroppedPinId,
+    navigationTarget,
+    navigationMode = 'DRIVING',
+    onChangeNavigationMode,
+    onExitNavigation
 }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map>();
@@ -604,6 +629,106 @@ const MapInner: React.FC<MapComponentProps> = ({
         };
     }, [map, currentLocation]);
 
+    // ==================== ナビゲーション（単一ピンへの経路案内） ====================
+    const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+    const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+    const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
+    const [navError, setNavError] = useState<string | null>(null);
+    const [isFollowing, setIsFollowing] = useState(true);
+    const lastRouteOriginRef = useRef<{ lat: number, lng: number } | null>(null);
+    const lastRouteTimeRef = useRef(0);
+    const lastRouteKeyRef = useRef<string | null>(null);
+
+    // DirectionsRenderer のセットアップ・ナビ終了時のクリーンアップ
+    useEffect(() => {
+        if (!map) return;
+        if (!directionsRendererRef.current) {
+            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                suppressMarkers: true,
+                preserveViewport: true,
+                polylineOptions: { strokeColor: '#4F46E5', strokeWeight: 6, strokeOpacity: 0.85 },
+            });
+        }
+        if (navigationTarget) {
+            directionsRendererRef.current.setMap(map);
+            setIsFollowing(true);
+            map.setZoom(17);
+        } else {
+            directionsRendererRef.current.setMap(null);
+            setDirectionsResult(null);
+            setNavError(null);
+            lastRouteOriginRef.current = null;
+            lastRouteKeyRef.current = null;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [map, navigationTarget?.id]);
+
+    // 現在地から目的地までの経路を検索・再検索する
+    // （移動手段やナビ対象が変わった際は即座に、それ以外は「一定距離動いた かつ 一定時間経過」で再計算する）
+    useEffect(() => {
+        if (!map || !navigationTarget || !currentLocation) return;
+
+        if (!directionsServiceRef.current) {
+            directionsServiceRef.current = new window.google.maps.DirectionsService();
+        }
+
+        const key = `${navigationTarget.id}-${navigationMode}`;
+        const forceRecompute = lastRouteKeyRef.current !== key;
+
+        const origin = currentLocation;
+        const last = lastRouteOriginRef.current;
+        const now = Date.now();
+        const movedEnough = !last || haversineDistanceMeters(last, origin) > 40;
+        const timeElapsed = now - lastRouteTimeRef.current > 8000;
+
+        if (!forceRecompute && !(movedEnough && timeElapsed)) return;
+
+        lastRouteKeyRef.current = key;
+        lastRouteOriginRef.current = origin;
+        lastRouteTimeRef.current = now;
+
+        directionsServiceRef.current.route({
+            origin,
+            destination: { lat: navigationTarget.lat, lng: navigationTarget.lng },
+            travelMode: window.google.maps.TravelMode[navigationMode],
+            region: 'jp',
+            language: 'ja',
+        }, (result, status) => {
+            if (status === 'OK' && result) {
+                setDirectionsResult(result);
+                setNavError(null);
+                directionsRendererRef.current?.setDirections(result);
+            } else {
+                setNavError('経路を取得できませんでした。しばらくしてから再度お試しください。');
+            }
+        });
+    }, [map, navigationTarget, navigationMode, currentLocation]);
+
+    // ナビ中は現在地に地図を自動追従させる（手動でドラッグされたら追従を止める）
+    useEffect(() => {
+        if (!map || !navigationTarget || !currentLocation || !isFollowing) return;
+        map.panTo(currentLocation);
+    }, [map, navigationTarget, currentLocation, isFollowing]);
+
+    useEffect(() => {
+        if (!map) return;
+        const listener = map.addListener('dragstart', () => {
+            if (navigationTarget) setIsFollowing(false);
+        });
+        return () => {
+            google.maps.event.removeListener(listener);
+        };
+    }, [map, navigationTarget]);
+
+    const handleRecenterNav = () => {
+        setIsFollowing(true);
+        if (currentLocation) map?.panTo(currentLocation);
+    };
+
+    const navLeg = directionsResult?.routes[0]?.legs[0];
+    const navStep = navLeg?.steps[0];
+    const isArrived = !!navLeg?.distance && navLeg.distance.value < 30;
+
     return (
         <div className="w-full h-full relative">
             <div ref={ref} id="map-container" className="w-full h-full" />
@@ -634,6 +759,68 @@ const MapInner: React.FC<MapComponentProps> = ({
                         </button>
                     )}
                 </div>
+            )}
+
+            {/* ナビゲーション案内バナー */}
+            {map && navigationTarget && (
+                <>
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-md">
+                        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-gray-100 dark:border-zinc-800 overflow-hidden">
+                            <div className="flex items-center justify-between px-4 pt-3">
+                                <div className="flex gap-1.5">
+                                    {(['DRIVING', 'WALKING', 'BICYCLING'] as const).map(m => (
+                                        <button
+                                            key={m}
+                                            onClick={() => onChangeNavigationMode?.(m)}
+                                            className={`p-2 rounded-full transition-colors ${navigationMode === m ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400'}`}
+                                            title={m === 'DRIVING' ? '車' : m === 'WALKING' ? '徒歩' : '自転車'}
+                                        >
+                                            {m === 'DRIVING' && <Car className="w-4 h-4" />}
+                                            {m === 'WALKING' && <Footprints className="w-4 h-4" />}
+                                            {m === 'BICYCLING' && <Bike className="w-4 h-4" />}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={onExitNavigation}
+                                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                                    title="ナビ終了"
+                                >
+                                    <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                                </button>
+                            </div>
+
+                            <div className="px-4 pb-4 pt-2">
+                                {navError ? (
+                                    <p className="text-sm text-red-500 dark:text-red-400">{navError}</p>
+                                ) : isArrived ? (
+                                    <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">目的地に到着しました</p>
+                                ) : navStep ? (
+                                    <>
+                                        <p className="text-lg font-bold text-gray-900 dark:text-white leading-snug">
+                                            {stripHtml(navStep.instructions)}
+                                        </p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                            {navStep.distance?.text}先　・　残り{navLeg?.distance?.text} / 約{navLeg?.duration?.text}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">経路を検索中...</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {!isFollowing && (
+                        <button
+                            onClick={handleRecenterNav}
+                            className="absolute bottom-24 right-4 z-40 px-4 py-2.5 bg-white dark:bg-zinc-800 rounded-full shadow-xl border border-gray-200 dark:border-zinc-700 text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"
+                        >
+                            <Navigation className="w-4 h-4" />
+                            現在地に戻る
+                        </button>
+                    )}
+                </>
             )}
         </div>
     );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2 } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
@@ -16,6 +16,7 @@ interface PinBottomSheetProps {
     onSave: (posterData: Partial<PosterPin>, recalcLatLng?: boolean) => void;
     onDelete?: (id: string) => void;
     onRemove?: (id: string) => void;
+    onStartNavigation?: (poster: PosterPin) => void;
 }
 
 export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
@@ -27,7 +28,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     pinTypes = [],
     onSave,
     onDelete,
-    onRemove
+    onRemove,
+    onStartNavigation
 }) => {
     const [isViewMode, setIsViewMode] = useState(initialViewMode);
 
@@ -406,6 +408,15 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     <Edit2 className="w-5 h-5 mr-2" />
                                     修正
                                 </button>
+                                {onStartNavigation && poster?.id && typeof poster.lat === 'number' && typeof poster.lng === 'number' && (
+                                    <button
+                                        onClick={() => onStartNavigation(poster as PosterPin)}
+                                        className="flex-1 flex items-center justify-center px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors"
+                                    >
+                                        <Navigation2 className="w-5 h-5 mr-2" />
+                                        ナビ開始
+                                    </button>
+                                )}
                                 {/* 撤去ボタン or 撤去解除ボタン */}
                                 {onRemove && poster?.id && (
                                     poster.removed ? (

@@ -251,3 +251,26 @@
   * 過去3日間のデータで変更前後の件数を比較検証（新規: 2→1件「ごとう祐一」1件除外、張替え: 12→10件、撤去・修理は該当なしのため変化なし）し、意図通りに絞り込まれていることを確認。
   * `node -c index.js` で構文チェックOK、`firebase deploy --only functions` でデプロイ成功。
 * **次のステップ**: なし（完了）。次回の18時配信、または手動テストで実際のSlack投稿内容を確認するとより確実。
+
+### 2026-07-21 (Claude Code) その23
+* **タスク**: ナビ機能（STEP1: 単一ピンへの経路案内）の実現可能性検討・要件定義・実装
+* **内容**:
+  * ユーザーから「ナビ機能」「巡回最適ルート提案（ピン指定/周辺指定）」の2段階構想について実現可能性の相談を受け、まず要件定義のみ（実装保留）で回答。Directions APIの利用可否・経由地点上限（約25地点）・音声案内やバックグラウンド動作の技術的制約等を整理して提示。
+  * ユーザーより「STEP1（単一ピンへのナビ機能）から実装してほしい」との指示を受け、以下の方針をデフォルトとして実装（音声読み上げなし/テキスト案内のみ、ナビ中も移動手段切替可、手動ドラッグで自動追従を一時停止し「現在地に戻る」ボタンで再開）。
+  * **GCP側の準備**: プロジェクト `satoumasashi-poster-map` で Directions API（`directions-backend.googleapis.com`）を有効化。既存のMaps APIキー（Firebase自動作成の "Browser key"）は「APIの制限」で使用可能なAPIをホワイトリスト化していたため、`gcloud services api-keys update` で `directions-backend.googleapis.com` を許可リストに追加（他の既存許可APIは維持）。実際にDirections APIを呼び出して`status: OK`になることを確認。
+    * 補足: `gcloud services api-keys` 系コマンドは、ローカル環境のADC（Application Default Credentials）のquotaプロジェクトが別の無関係なプロジェクト（`ldp-member-app-kanagawa16`）に紐づいており、`--project`指定だけでは正しいプロジェクトに向かない挙動があった。ADC設定自体の変更は無関係な他プロジェクトに影響するリスクがあるため行わず、`--billing-project`フラグで明示的に迂回した。
+  * **実装内容**:
+    * [PinBottomSheet.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/PinBottomSheet.tsx): 閲覧モードの操作行に「ナビ開始」ボタンを追加（既存ピンかつ緯度経度がある場合のみ表示）。`onStartNavigation`プロパティ経由で親に通知。
+    * [App.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/App.tsx): `navigationTarget`/`navigationMode`ステートを追加。ナビ中は地図タップ・他ピンのタップ・FABメニュー等の通常UIを無効化/非表示にする（既存の移動モードと同様のパターン）。
+    * [Map.tsx](file:///Users/kurokawamutsuo/開発フォルダ/058_【MA】ポスターアプリ(poster-map-satoumasashi)/src/components/Map.tsx): `DirectionsService`/`DirectionsRenderer`（Maps JavaScript APIの標準機能、追加ライブラリ読み込み不要）を用いて経路探索・描画を実装。
+      * 現在地（`watchPosition`で継続取得中の位置）を起点に、40m以上移動 かつ 前回計算から8秒以上経過した場合に自動で経路を再計算（Google純正の「コース逸脱時の自動リルート」相当。単純な距離・時間スロットリングによる簡易実装）。移動手段変更時・ナビ開始時は即座に再計算。
+      * 案内バナーに次の案内文（HTMLタグを除去したテキスト）・次の分岐までの距離・残り距離/所要時間を表示。`language: 'ja', region: 'jp'`を指定し日本語で案内されるようにした。
+      * 車/徒歩/自転車のモード切替アイコン、ナビ終了ボタン、目的地到着時（残り30m未満）の到着表示を実装。
+      * ナビ中は現在地に地図を自動追従（`panTo`のみでズームは強制しない）。地図を手動ドラッグすると追従を一時停止し、「現在地に戻る」ボタンで再開できるようにした。
+  * **動作確認**: `npx tsc -b`型チェックOK、`npm run build`ビルド成功、`npm run lint`で新規エラーなし。ローカルにPlaywright（`npm install --no-save`、`package.json`は変更していない）を導入し、`npm run dev`で起動した実際のアプリをヘッダレスChromiumで操作して検証。
+    * 実際にログインし、地図上の実ピンをクリック→詳細シートに「ナビ開始」ボタンが表示されることを確認。
+    * ボタン押下でDirections APIが呼ばれ、案内バナーに「北東に進む」「0.1 km先・残り0.4 km / 約2分」等、日本語で正しく表示されることを確認（初回テストでは英語表示だったため`language: 'ja'`を追加して修正）。
+    * 徒歩モードへの切替で経路が再計算され、表示内容が更新される（残り距離・所要時間が車と異なる値になる）ことを確認。
+    * 「ナビ終了」ボタンでナビUIが正しく閉じることを確認。
+    * コンソールエラーは、ヘッドレスChromium特有のWebGL非対応によるVector Map→Rasterフォールバック警告（本番の実ブラウザでは発生しない、アプリのバグではない）以外に発生なし。
+* **次のステップ**: STEP1はデプロイ前の実装完了・ローカル動作確認済みの状態。ユーザーの確認を経て本番デプロイを行う。STEP2（ピン指定モード／周辺指定モードの巡回最適ルート）は別途着手。
