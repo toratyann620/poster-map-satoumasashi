@@ -1,6 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 import { Wrapper, Status } from '@googlemaps/react-wrapper';
+import { MarkerClusterer, type Renderer, type Cluster } from '@googlemaps/markerclusterer';
 import { Navigation, Car, Footprints, Bike, X } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
@@ -214,6 +215,39 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     return container;
 }
 
+// ズームアウト時に近接するピンをまとめる「件数バッジ付き集計マーカー」の見た目を作る
+const clusterRenderer: Renderer = {
+    render: (cluster: Cluster) => {
+        const count = cluster.count;
+        const size = count < 10 ? 40 : count < 50 ? 48 : count < 200 ? 56 : 64;
+        const div = document.createElement('div');
+        div.style.cssText = `
+            width: ${size}px;
+            height: ${size}px;
+            background-color: #4F46E5;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: ${count < 100 ? '14px' : '12px'};
+            font-family: -apple-system, sans-serif;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+            cursor: pointer;
+        `;
+        div.textContent = String(count);
+
+        const AdvancedMarkerElement = (window.google.maps as any).marker?.AdvancedMarkerElement;
+        return new AdvancedMarkerElement({
+            position: cluster.position,
+            content: div,
+            zIndex: 900,
+        });
+    },
+};
+
 const MapInner: React.FC<MapComponentProps> = ({
     posters,
     onMapClick,
@@ -237,6 +271,9 @@ const MapInner: React.FC<MapComponentProps> = ({
     const [map, setMap] = useState<google.maps.Map>();
     const [heading, setHeading] = useState(0);
     const markersRef = useRef<any[]>([]);
+    // ポスターピン用: id -> {marker, signature} で保持し、内容が変わったピンだけ作り直す（差分更新）
+    const posterMarkersRef = useRef<Map<string, { marker: any, signature: string }>>(new Map());
+    const clustererRef = useRef<MarkerClusterer | null>(null);
 
     const colorsMap = React.useMemo(() => {
         const m: Record<string, string> = {};
@@ -395,12 +432,11 @@ const MapInner: React.FC<MapComponentProps> = ({
     }, [map, fitBounds]);
 
     // Sync Markers (AdvancedMarkerElement)
+    // ポスター件数が多くなっても軽快に動作するよう、以下の2点を行う:
+    // 1. 内容が変わっていないピンは作り直さず、差分（追加・変更・削除）だけ処理する
+    // 2. MarkerClusterer でズームアウト時に近接ピンを件数バッジへ集約し、描画コストを抑える
     useEffect(() => {
         if (!map) return;
-
-        // 既存マーカーを破棄
-        markersRef.current.forEach(m => { m.map = null; });
-        markersRef.current = [];
 
         // AdvancedMarkerElement が利用可能かチェック
         const AdvancedMarkerElement =
@@ -411,17 +447,46 @@ const MapInner: React.FC<MapComponentProps> = ({
             return;
         }
 
+        if (!clustererRef.current) {
+            clustererRef.current = new MarkerClusterer({ map, renderer: clusterRenderer });
+        }
+
+        const nextIds = new Set(posters.map(p => p.id));
+        const toRemove: any[] = [];
+        const toAdd: any[] = [];
+
+        // データから消えたポスター（削除・フィルタ対象外化）のマーカーを除去
+        posterMarkersRef.current.forEach((entry, id) => {
+            if (!nextIds.has(id)) {
+                toRemove.push(entry.marker);
+                posterMarkersRef.current.delete(id);
+            }
+        });
+
         posters.forEach(poster => {
             const isFloating = relocatingPoster?.id === poster.id;
-            const domEl = buildDomMarker(poster, isFloating, colorsMap);
+            const isDropped = poster.id === justDroppedPinId;
+            // 見た目・振る舞いに影響する項目だけを比較対象にする
+            const signature = JSON.stringify([
+                poster.lat, poster.lng, poster.type, poster.status, poster.removed,
+                poster.address, poster.memo, isFloating, isDropped,
+            ]);
 
-            if (poster.id === justDroppedPinId) {
+            const existing = posterMarkersRef.current.get(poster.id);
+            if (existing && existing.signature === signature) {
+                return; // 変化なし。マーカーはそのまま維持する
+            }
+            if (existing) {
+                toRemove.push(existing.marker);
+            }
+
+            const domEl = buildDomMarker(poster, isFloating, colorsMap);
+            if (isDropped) {
                 domEl.classList.add('pin-drop-animate');
             }
 
             const marker = new AdvancedMarkerElement({
                 position: { lat: poster.lat, lng: poster.lng },
-                map,
                 title: poster.address || poster.memo || '',
                 content: domEl,
                 zIndex: isFloating ? 1000 : undefined,
@@ -465,10 +530,30 @@ const MapInner: React.FC<MapComponentProps> = ({
                 }
             });
 
-            markersRef.current.push(marker);
+            posterMarkersRef.current.set(poster.id, { marker, signature });
+            if (isFloating) {
+                // 移動中のピンはクラスタに埋もれないよう、常に個別マーカーとして直接表示する
+                marker.map = map;
+            } else {
+                toAdd.push(marker);
+            }
         });
 
-        // 新規追加中の「仮ピン」を地図上に描画
+        if (toRemove.length > 0) {
+            toRemove.forEach(m => { m.map = null; });
+            clustererRef.current.removeMarkers(toRemove, true);
+        }
+        if (toAdd.length > 0) {
+            clustererRef.current.addMarkers(toAdd, true);
+        }
+        if (toRemove.length > 0 || toAdd.length > 0) {
+            clustererRef.current.render();
+        }
+
+        // 新規追加中の「仮ピン」を地図上に描画（markersRef は仮ピン専用。毎回作り直すため先に破棄する）
+        markersRef.current.forEach(m => { m.map = null; });
+        markersRef.current = [];
+
         if (selectedPoster && !selectedPoster.id && selectedPoster.lat && selectedPoster.lng) {
             // 既存の仮ピン用 InfoWindow があれば閉じる
             if (infoWindowRef.current) {
