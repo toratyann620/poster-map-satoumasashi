@@ -293,3 +293,12 @@
     * コンソールエラーは、ヘッドレスChromium特有のVector Map→Rasterフォールバック警告以外に発生なし。
     * `npx tsc -b`型チェックOK、`npm run build`ビルド成功、`npm run lint`で新規エラーなし。
 * **次のステップ**: ユーザーの確認を経て本番デプロイ。実際に体感速度が改善したか、実機（特に低スペック端末）でのフィードバックを次回確認する。
+
+### 2026-08-09 (Claude Code) その25
+* **タスク**: マーカー描画パフォーマンス改善（コミット `833248f`）を本番環境へデプロイ
+* **内容**:
+  * `npm run build` でビルド成功を確認後、`npx vercel --prod` を実行。
+  * 初回試行時に `"Not authorized"` エラーが発生（Vercel CLIが `vercel@58.9.0` に自動更新されたタイミングと重なったが、`vercel whoami` ではログイン状態は正常だったため一時的な問題と判断）。再実行したところ成功。
+  * `https://poster-map-app.vercel.app` に反映完了（Deployment ID: `dpl_HxKe3oMU7ZYFTogHBWbXgBgdj1Vo`, readyState: `READY`）。
+  * これにより、STEP1ナビ機能・マーカークラスタリング/差分更新によるパフォーマンス改善の両方が本番環境で利用可能になった。
+* **次のステップ**: 本番URLで「ナビ開始」ボタンの表示、および多数ピン表示時の体感速度改善を実機で確認する。
