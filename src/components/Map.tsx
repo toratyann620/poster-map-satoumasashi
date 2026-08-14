@@ -274,6 +274,9 @@ const MapInner: React.FC<MapComponentProps> = ({
     // ポスターピン用: id -> {marker, signature} で保持し、内容が変わったピンだけ作り直す（差分更新）
     const posterMarkersRef = useRef<Map<string, { marker: any, signature: string }>>(new Map());
     const clustererRef = useRef<MarkerClusterer | null>(null);
+    // 完全に同一座標のピンが重なっている場合の「展開表示」対象グループ（緯度経度キー）。null = どれも展開していない
+    const [spreadGroupKey, setSpreadGroupKey] = useState<string | null>(null);
+    const overlapMarkersRef = useRef<any[]>([]);
 
     const colorsMap = React.useMemo(() => {
         const m: Record<string, string> = {};
@@ -329,6 +332,17 @@ const MapInner: React.FC<MapComponentProps> = ({
         if (!map) return;
         const listener = map.addListener('heading_changed', () => {
             setHeading(map.getHeading() || 0);
+        });
+        return () => {
+            google.maps.event.removeListener(listener);
+        };
+    }, [map]);
+
+    // ズーム操作をしたら、重なりピンの展開表示を自動的に閉じる
+    useEffect(() => {
+        if (!map) return;
+        const listener = map.addListener('zoom_changed', () => {
+            setSpreadGroupKey(null);
         });
         return () => {
             google.maps.event.removeListener(listener);
@@ -451,45 +465,18 @@ const MapInner: React.FC<MapComponentProps> = ({
             clustererRef.current = new MarkerClusterer({ map, renderer: clusterRenderer });
         }
 
-        const nextIds = new Set(posters.map(p => p.id));
-        const toRemove: any[] = [];
-        const toAdd: any[] = [];
-
-        // データから消えたポスター（削除・フィルタ対象外化）のマーカーを除去
-        posterMarkersRef.current.forEach((entry, id) => {
-            if (!nextIds.has(id)) {
-                toRemove.push(entry.marker);
-                posterMarkersRef.current.delete(id);
-            }
-        });
-
-        posters.forEach(poster => {
-            const isFloating = relocatingPoster?.id === poster.id;
-            const isDropped = poster.id === justDroppedPinId;
-            // 見た目・振る舞いに影響する項目だけを比較対象にする
-            const signature = JSON.stringify([
-                poster.lat, poster.lng, poster.type, poster.status, poster.removed,
-                poster.address, poster.memo, isFloating, isDropped,
-            ]);
-
-            const existing = posterMarkersRef.current.get(poster.id);
-            if (existing && existing.signature === signature) {
-                return; // 変化なし。マーカーはそのまま維持する
-            }
-            if (existing) {
-                toRemove.push(existing.marker);
-            }
-
-            const domEl = buildDomMarker(poster, isFloating, colorsMap);
-            if (isDropped) {
-                domEl.classList.add('pin-drop-animate');
-            }
+        // ポスター1件用のマーカーを生成し、長押し・タップのイベントを付与する共通処理
+        // （通常表示・重なり展開表示の両方から利用する）
+        const createPosterMarker = (poster: PosterPin, opts: { isFloating: boolean, isDropped: boolean, extraClass?: string, zIndex?: number }) => {
+            const domEl = buildDomMarker(poster, opts.isFloating, colorsMap);
+            if (opts.isDropped) domEl.classList.add('pin-drop-animate');
+            if (opts.extraClass) domEl.classList.add(opts.extraClass);
 
             const marker = new AdvancedMarkerElement({
                 position: { lat: poster.lat, lng: poster.lng },
                 title: poster.address || poster.memo || '',
                 content: domEl,
-                zIndex: isFloating ? 1000 : undefined,
+                zIndex: opts.zIndex ?? (opts.isFloating ? 1000 : undefined),
             });
 
             // --- 2秒長押しで onPinLongPress 発火 ---
@@ -530,6 +517,63 @@ const MapInner: React.FC<MapComponentProps> = ({
                 }
             });
 
+            return { marker, domEl };
+        };
+
+        // 完全に同一座標（小数点6桁=約10cm精度で丸め）のポスターをグループ化する。
+        // これらはズームインしても画面上で永遠に重なったままになるため、通常のクラスタリングとは別に
+        // 「重なりマーカー（タップで展開）」として特別扱いする。
+        const groupKeyOf = (p: PosterPin) => `${p.lat.toFixed(6)}_${p.lng.toFixed(6)}`;
+        const groupedByPosition = new Map<string, PosterPin[]>();
+        posters.forEach(p => {
+            const key = groupKeyOf(p);
+            if (!groupedByPosition.has(key)) groupedByPosition.set(key, []);
+            groupedByPosition.get(key)!.push(p);
+        });
+
+        const overlapGroupKeys = new Set<string>();
+        groupedByPosition.forEach((group, key) => {
+            if (group.length > 1) overlapGroupKeys.add(key);
+        });
+
+        // 表示中の展開グループが、データ更新で解消された（1件になった等）場合は自動的に閉じる
+        if (spreadGroupKey && !overlapGroupKeys.has(spreadGroupKey)) {
+            setSpreadGroupKey(null);
+        }
+
+        const singlePosters = posters.filter(p => !overlapGroupKeys.has(groupKeyOf(p)));
+
+        const nextIds = new Set(singlePosters.map(p => p.id));
+        const toRemove: any[] = [];
+        const toAdd: any[] = [];
+
+        // データから消えたポスター（削除・フィルタ対象外化・重なりグループへの移行等）のマーカーを除去
+        posterMarkersRef.current.forEach((entry, id) => {
+            if (!nextIds.has(id)) {
+                toRemove.push(entry.marker);
+                posterMarkersRef.current.delete(id);
+            }
+        });
+
+        singlePosters.forEach(poster => {
+            const isFloating = relocatingPoster?.id === poster.id;
+            const isDropped = poster.id === justDroppedPinId;
+            // 見た目・振る舞いに影響する項目だけを比較対象にする
+            const signature = JSON.stringify([
+                poster.lat, poster.lng, poster.type, poster.status, poster.removed,
+                poster.address, poster.memo, isFloating, isDropped,
+            ]);
+
+            const existing = posterMarkersRef.current.get(poster.id);
+            if (existing && existing.signature === signature) {
+                return; // 変化なし。マーカーはそのまま維持する
+            }
+            if (existing) {
+                toRemove.push(existing.marker);
+            }
+
+            const { marker } = createPosterMarker(poster, { isFloating, isDropped });
+
             posterMarkersRef.current.set(poster.id, { marker, signature });
             if (isFloating) {
                 // 移動中のピンはクラスタに埋もれないよう、常に個別マーカーとして直接表示する
@@ -549,6 +593,103 @@ const MapInner: React.FC<MapComponentProps> = ({
         if (toRemove.length > 0 || toAdd.length > 0) {
             clustererRef.current.render();
         }
+
+        // ==================== 完全に同一座標で重なっているピンの表示 ====================
+        // 通常のクラスタリングは画面上のピクセル距離で判定するため、同一座標のピンはズームインしても
+        // 永遠に重なったまま分離できない。そのため専用に「重なりバッジ付きピン（タップで展開）」を描画する。
+        overlapMarkersRef.current.forEach(m => { m.map = null; });
+        overlapMarkersRef.current = [];
+
+        groupedByPosition.forEach((group, key) => {
+            if (group.length < 2) return;
+            const center = { lat: group[0].lat, lng: group[0].lng };
+
+            if (spreadGroupKey === key) {
+                // 展開表示: 中心から円状にオフセットした位置に、ポスターごとの個別マーカーを配置する
+                const zoom = map.getZoom() ?? 16;
+                const metersPerPixel = 156543.03392 * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, zoom);
+                const radiusM = 42 * metersPerPixel; // 画面上で約42px広がるように調整
+
+                group.forEach((poster, i) => {
+                    const angle = (-90 + (360 * i) / group.length) * (Math.PI / 180);
+                    const dLat = (radiusM * Math.sin(angle)) / 111320;
+                    const dLng = (radiusM * Math.cos(angle)) / (111320 * Math.cos(center.lat * Math.PI / 180));
+
+                    const spreadPoster: PosterPin = { ...poster, lat: center.lat + dLat, lng: center.lng + dLng };
+                    const isFloating = relocatingPoster?.id === poster.id;
+                    const isDropped = poster.id === justDroppedPinId;
+                    const { marker } = createPosterMarker(spreadPoster, {
+                        isFloating, isDropped, extraClass: 'pin-spread-animate', zIndex: 1200,
+                    });
+                    marker.map = map;
+                    overlapMarkersRef.current.push(marker);
+                });
+
+                // 中心に「閉じる」ボタンを表示する
+                const closeEl = document.createElement('div');
+                closeEl.style.cssText = `
+                    width: 28px; height: 28px;
+                    background-color: #374151;
+                    border-radius: 50%;
+                    display: flex; align-items: center; justify-content: center;
+                    color: white; font-size: 16px; font-weight: 700;
+                    line-height: 1;
+                    border: 2.5px solid white;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+                    cursor: pointer;
+                `;
+                closeEl.textContent = '×';
+                closeEl.classList.add('pin-spread-animate');
+                const closeMarker = new AdvancedMarkerElement({
+                    position: center,
+                    title: '閉じる',
+                    content: closeEl,
+                    zIndex: 1300,
+                });
+                closeEl.addEventListener('gmp-click', () => setSpreadGroupKey(null));
+                closeMarker.addListener('click', () => setSpreadGroupKey(null));
+                closeMarker.map = map;
+                overlapMarkersRef.current.push(closeMarker);
+            } else {
+                // 重なり表示: 代表ピン1つに「件数バッジ」を重ねて表示し、重なっていることを視覚化する
+                const representative = group[0];
+                const domEl = buildDomMarker(representative, false, colorsMap);
+
+                const badge = document.createElement('div');
+                badge.textContent = `×${group.length}`;
+                badge.style.cssText = `
+                    position: absolute;
+                    top: -6px;
+                    right: -10px;
+                    background-color: #DC2626;
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 700;
+                    min-width: 20px;
+                    height: 20px;
+                    border-radius: 10px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0 4px;
+                    border: 2px solid white;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                    pointer-events: none;
+                `;
+                domEl.appendChild(badge);
+
+                const marker = new AdvancedMarkerElement({
+                    position: center,
+                    title: `${group.length}件のポスターが重なっています（タップで展開）`,
+                    content: domEl,
+                    zIndex: 950,
+                });
+                marker.element?.addEventListener('gmp-click', () => setSpreadGroupKey(key));
+                marker.addListener('click', () => setSpreadGroupKey(key));
+                marker.map = map;
+                overlapMarkersRef.current.push(marker);
+            }
+        });
 
         // 新規追加中の「仮ピン」を地図上に描画（markersRef は仮ピン専用。毎回作り直すため先に破棄する）
         markersRef.current.forEach(m => { m.map = null; });
@@ -684,7 +825,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 infoWindowRef.current = null;
             }
         }
-    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId]);
+    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey]);
 
     // Current Location Marker
     useEffect(() => {
