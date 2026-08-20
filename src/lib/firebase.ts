@@ -1,7 +1,8 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { initializeApp, type FirebaseApp } from "firebase/app";
+import { getAuth, initializeAuth, indexedDBLocalPersistence, type Auth } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { Capacitor } from "@capacitor/core";
 // Analytics は Firebase Installations API / Dynamic Config API を必要とするため、
 // GCP APIキー制限との競合を避けるため無効化しています。
 
@@ -18,7 +19,31 @@ export const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+
+/**
+ * Auth を初期化する。
+ *
+ * ネイティブ（Capacitor）では `getAuth()` を使ってはいけない。`getAuth()` は
+ * ブラウザ用のpopup/redirectリゾルバを組み込むが、これは WebView のオリジンが
+ * `capacitor://...` のようなカスタムスキームだと初期化に失敗し、
+ * **onAuthStateChanged が一度も発火しない**（画面が認証チェックのスピナーのまま固まる）。
+ * iOSシミュレータでの実測でこの事象を確認済み。
+ *
+ * 永続化に IndexedDB を明示指定した `initializeAuth()` を使うと、リゾルバを
+ * 組み込まずに初期化できるため正常に動作する。本アプリの認証は
+ * メール／パスワードのみで、popup/redirect は使わないため機能上の影響はない。
+ */
+export const makeAuth = (targetApp: FirebaseApp): Auth => {
+    if (!Capacitor.isNativePlatform()) return getAuth(targetApp);
+    try {
+        return initializeAuth(targetApp, { persistence: indexedDBLocalPersistence });
+    } catch {
+        // 同じAppに対して既に初期化済みの場合
+        return getAuth(targetApp);
+    }
+};
+
+export const auth = makeAuth(app);
 
 // Initialize Firestore with Long-Polling to bypass corporate firewalls/WebSocket blockers
 let firestoreDb;

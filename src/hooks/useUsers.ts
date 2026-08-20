@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { db, firebaseConfig } from '../lib/firebase';
+import { db, firebaseConfig, makeAuth } from '../lib/firebase';
 
 export interface UserData {
     id: string; // auth uid
@@ -36,7 +36,8 @@ export const useUsers = () => {
     const createUser = async (userData: Omit<UserData, 'id'>, password: string) => {
         // 一時的なセカンダリアプリインスタンスを作成
         const secondaryApp = initializeApp(firebaseConfig, `SecondaryApp_${Date.now()}`);
-        const secondaryAuth = getAuth(secondaryApp);
+        // ネイティブでも動くよう、Web/ネイティブを判別する共通ヘルパーを使う
+        const secondaryAuth = makeAuth(secondaryApp);
 
         try {
             // 新規ユーザーを Auth に作成

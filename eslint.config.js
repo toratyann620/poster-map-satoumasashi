@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // ios / android は Capacitor が生成するネイティブプロジェクト。
+  // Gradle のビルド生成物（native-bridge.js 等）が lint 対象に入るため除外する。
+  globalIgnores(['dist', 'ios', 'android']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
