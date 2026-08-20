@@ -1,3 +1,24 @@
+// ────────────────────────────────────────────────────────────
+// グループ（事務所）
+// ────────────────────────────────────────────────────────────
+
+// 権限判定の対象となる市区町村。ここに無い市区町村のポスターは
+// allowAll のグループ（佐藤まさし事務所）だけが扱える。
+export const TARGET_CITIES = ['厚木市', '海老名市', '伊勢原市'] as const;
+
+/**
+ * グループ定義。Firestore の `groups/{groupId}` に保存する。
+ * コードではなくデータとして持つことで、事務所の追加が
+ * ドキュメント1件の作成だけで完結する（再デプロイ不要）。
+ */
+export interface Group {
+    id: string;          // ドキュメントID = グループID（例: nanba）
+    name: string;        // 表示名（例: 難波事務所）
+    allowAll: boolean;   // true なら全ポスターを閲覧・編集可能（佐藤まさし事務所）
+    cities: string[];    // allowAll=false のときに扱える市区町村
+    types: string[];     // allowAll=false のときに扱えるポスター種別
+}
+
 // ポスターに紐づく「誰のポスターか」の選択肢（複数選択可）
 export const POSTER_PERSONS = ['佐藤まさし', 'ごとう祐一', '堀江県議', '党員募集', '公明党', '中道', '共産党', '難波県議', '渡辺県議', '長田県議', '山口市長', 'その他'] as const;
 export type PosterPerson = typeof POSTER_PERSONS[number];
@@ -29,6 +50,8 @@ export interface PosterPin {
     type: string;            // 誰のポスターか（単一選択）
     status: string[];        // 設置状況（複数選択）
     address: string;         // 所在地
+    city: string;            // 市区町村（例: 厚木市）。グループ権限の判定に使う正規化フィールド。
+                             // 住所文字列の部分一致は権限境界に使えないため、ジオコーディング結果から設定する。
     placement: string;       // 設置方法 (例: 針金, フェンス)
     quantity: number;        // 枚数
     owner: string;           // 所有者
