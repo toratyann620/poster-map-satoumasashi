@@ -380,3 +380,27 @@
   * **テストアカウント4件の削除**: ユーザー承認のもと、対象メールアドレスの許可リストと「`users` ドキュメントを持たないこと」の二重の安全装置を入れたスクリプトで削除を実行。4件すべて削除成功し、**Authアカウント11→7件、`users` ドキュメントを持たないアカウントは0件**になった。
   * **「党員募集」問題の決着**: `settings/pinTypes` ドキュメントの実データを直接確認したところ、**11件（党員募集を含まない）で正しく保存されていた**。つまりその11（2026-07-20）の削除作業自体は成功していたが、`settings` にセキュリティルールが無く既定の拒否になっていたため読み取りが失敗し、`usePinTypes` が無言でコード内デフォルト（党員募集を含む12件）にフォールバックしていた。**今回の `settings` ルール追加により、意図した11件が正しくアプリに反映される**ようになった。
 * **次のステップ**: Phase 1（Capacitor疎通検証）。iOS/Androidプロジェクトを生成し、WebView内でMaps / Geocoding / Places / Directions / Storage / Auth が疎通するかを実機確認する。とくに `capacitor.config.ts` の `server.hostname` を既存ドメインに合わせることでAPIキーのリファラー制限・StorageのCORS・Authの承認済みドメインをまとめて通す方式が成立するかが最大の未知数。本番環境には影響しない作業。
+
+### 2026-08-20 (Claude Code) その31
+* **タスク**: Phase 1（Capacitor疎通検証）完了、Phase 2（グループ基盤）の実装
+* **ユーザー確定事項**: 配信は限定配布（TestFlight内部テスト / Play内部テスト）、閲覧権限は自グループのみ（最厳格）、宇田川事務所の対象種別は「長田県議」で確定、PC管理画面は佐藤まさし事務所の管理者のみ。
+* **内容**:
+  * **Phase 1: Capacitor 8.5 導入と実機検証（完了・コミット `fb01b7e`）**
+    * `capacitor.config.ts` の `server.hostname` を本番ドメインに合わせる方式を実装し、実機で検証。
+      * **Android**: 狙いどおり `origin = https://poster-map-app.vercel.app` になることを確認（画面上の診断表示と、logcat の `Capacitor: Handling local request: https://poster-map-app.vercel.app/vite.svg` の両方で確認）。本番Webと完全に同一オリジンとなるため、リファラー制限・CORS・承認済みドメインが既存設定のまま通る。
+      * **iOS**: `iosScheme: 'https'` は効かず `capacitor://poster-map-app.vercel.app` にフォールバックする。WKWebView が https を予約スキームとして扱い、カスタムスキームハンドラを登録できないため。**Capacitor側の仕様であり回避不可**。
+    * **重大な発見①: Maps APIキーにリファラー制限が一切設定されていない。** `gcloud services api-keys describe` で確認したところ、制限は `apiTargets`（利用可能APIのホワイトリスト）のみ。そのため `capacitor://` オリジンでも地図が表示できてしまった。**キーは現在も本番Webのバンドルから容易に抽出でき、第三者が使用して課金を発生させられる状態**。ネイティブ配布でさらに露出が増えるため、リファラー制限の設定（またはネイティブ用に別キーを発行しバンドルID制限をかける）が別途必要。要ユーザー判断。
+    * **重大な発見②: ネイティブでは `getAuth()` が使えない。** `getAuth()` が組み込むブラウザ用のpopup/redirectリゾルバがカスタムスキーム下で初期化に失敗し、**`onAuthStateChanged` が一度も発火せず、認証チェックのスピナーで永久に固まる**。iOSシミュレータで事象を再現・特定した（IndexedDBは正常に開けており、原因ではないことも確認済み）。`initializeAuth(app, { persistence: indexedDBLocalPersistence })` に変更して解決。`src/lib/firebase.ts` に `makeAuth()` ヘルパーを追加し、`useUsers` の二次App生成も統一。
+    * **iOSシミュレータでの最終確認（iPhone 17）**: 自動ログイン後、地図タイル・ポスターピン・クラスタリング・重なりピンの「×2」バッジ・検索バー・絞り込みUI・コンパス・現在地ボタンがすべて正常表示され、Firestoreのリアルタイム取得も動作。Maps JS API v3.66.1a 読み込み成功、`tilesloaded` 発火、Geocoding OK、Directions OK（2.4km 8分）、Firebase Auth 到達性OKを個別に検証済み。
+    * **Androidの検証範囲**: APKビルド成功（4.4MB、Capacitor 8 は Java 21 必須のため Android Studio 同梱JDKを使用）、オリジンとローカルアセット配信を確認。ただしエミュレータが `adb shell` すら応答しないほど非力（ANR多発、ソフトウェアGPU）で**機能全体の動作確認は未完了**。実機での確認が必要（Phase 6の内部テストで実施可能）。
+    * 検証にあたり `qa.verification@satoumasashi.com`（role: admin）を作成。パスワードはリポジトリ外に保管。**検証完了後に削除予定**。自動ログイン用の一時パッチ（`src/main.tsx`）は検証後に元へ戻しており、コミットには含まれていない。
+    * 参考: iOS のログに `Missing UsageDescription key for requested authorization` が出ており、位置情報の権限文言が未設定であることが実証された（Phase 5の対応項目）。
+  * **Phase 2: グループ基盤（コミット `71a07d8`、コードのみ・データ投入は未実施）**
+    * **環境分離の方式を確定**: 新しいFirebaseプロジェクトは作らず、同一プロジェクト内に `posters_v2` / `activityLogs_v2` / `groups` を並走させる（`src/lib/collections.ts`）。`users`・Storage・Auth は共通のままとすることで、**最終移行で写真の移行もパスワードの移行も不要**になる。ルールはコレクション単位で独立するため、v2のバグが現行 `posters` に影響しない。
+    * **ブランチ分離**: Phase 2以降は `feature/groups-admin` ブランチで作業する。`main` は本番用として維持し、切替時（Phase 7）にマージする。
+    * `PosterPin` に `city` を追加し、`src/lib/city.ts` でジオコーディング結果の `locality` から確定する方式を実装。住所文字列の部分一致（`address.includes('厚木市')`）は権限境界に使えないため（住所を書き換えれば越境でき、「ＲＥＥＶＥＳ」のように市区町村名を含まない住所はどのグループからも触れなくなる）。
+    * セキュリティルールに `posters_v2` / `activityLogs_v2` の範囲判定を実装。**`update` は変更前と変更後の両方が権限範囲内であることを要求**し、`city`/`type` の書き換えによる越境を禁止する。
+    * **権限昇格の穴を発見・対処**: `users` への書き込みが従来の `isAdmin()` のままだと、他事務所の管理者が自分の `groupId` を `admin` に書き換えて全データへ昇格できてしまう。`isSuperAdmin()`（role=admin かつ 所属グループが allowAll）に限定した。
+    * `scripts/seed_groups.mjs` を作成（groups 4件の作成 ＋ 既存ユーザー全員への `groupId: 'admin'` 割り当て）。**実行は未了**（本番Firestoreへの書き込みが自動承認の対象外だったため）。
+* **次のステップ**: (1) `scripts/seed_groups.mjs` の実行（ルールのデプロイより先に必須。未実行のままルールを反映すると superAdmin が0名になり本番管理者がユーザー管理を失う）、(2) ルールのデプロイと権限境界のテスト、(3) Phase 3（アプリのグループ対応：全データ読み込みのグループ単位への書き換え、複合インデックス作成、各集計画面の対応）、(4) Phase 4（PC管理画面）、(5) Phase 5（ネイティブ統合：位置情報・カメラの権限、セーフエリア、強制アップデート）。
+* **未解決の判断事項**: Maps APIキーのリファラー制限（上記の重大な発見①）。現行Webと将来のネイティブアプリの両方に関わるため、方針の確認が必要。
