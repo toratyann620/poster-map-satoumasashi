@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { MapPin, LogIn, UserPlus } from 'lucide-react';
+import { MapPin, LogIn } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [isLogin, setIsLogin] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -16,18 +15,12 @@ export const Login: React.FC = () => {
         setLoading(true);
 
         try {
-            if (isLogin) {
-                await signInWithEmailAndPassword(auth, email, password);
-            } else {
-                await createUserWithEmailAndPassword(auth, email, password);
-            }
+            await signInWithEmailAndPassword(auth, email, password);
         } catch (err: any) {
-            if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
                 setError('メールアドレスまたはパスワードが間違っています。');
-            } else if (err.code === 'auth/email-already-in-use') {
-                setError('このメールアドレスは既に登録されています。');
-            } else if (err.code === 'auth/weak-password') {
-                setError('パスワードは6文字以上で入力してください。');
+            } else if (err.code === 'auth/too-many-requests') {
+                setError('試行回数が上限に達しました。しばらく時間をおいてからお試しください。');
             } else {
                 setError(err.message || '認証エラーが発生しました。');
             }
@@ -91,35 +84,26 @@ export const Login: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between mt-4">
-                            <button
-                                type="button"
-                                className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium"
-                                onClick={() => setIsLogin(!isLogin)}
-                            >
-                                {isLogin ? '新規アカウントを作成' : 'ログイン画面に戻る'}
-                            </button>
-                        </div>
-
                         <div>
                             <button
                                 type="submit"
                                 disabled={loading}
                                 className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {loading ? '処理中...' : isLogin ? (
+                                {loading ? '処理中...' : (
                                     <>
                                         <LogIn className="w-5 h-5 mr-2" />
                                         ログイン
                                     </>
-                                ) : (
-                                    <>
-                                        <UserPlus className="w-5 h-5 mr-2" />
-                                        登録して開始
-                                    </>
                                 )}
                             </button>
                         </div>
+
+                        {/* アカウントは管理者が発行する運用のため、自己登録は提供しない */}
+                        <p className="text-center text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                            アカウントは管理者が発行します。<br />
+                            ログインできない場合は管理者にお問い合わせください。
+                        </p>
                     </form>
                 </div>
             </div>

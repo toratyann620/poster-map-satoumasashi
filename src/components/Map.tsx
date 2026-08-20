@@ -6,8 +6,12 @@ import { Navigation, Car, Footprints, Bike, X } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
 
-// 環境変数から優先して読み込み、設定がない場合は指定された統一キーを使用する
-const MAP_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyDFVt8w4WjvR7U5xJRCA7-_2FY40hIlWdk";
+// APIキー・Map IDは環境変数からのみ読み込む。
+// ネイティブアプリではバンドルが端末上に配布され、直書きした値は抽出可能なうえ、
+// 差し替えにストアの再配信が必要になるため、フォールバック値は持たせない。
+// 未設定の場合は静かに別のキーへ切り替わるのではなく、明示的にエラーを表示する。
+const MAP_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '';
+const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID ?? '';
 
 type NavigationMode = 'DRIVING' | 'WALKING' | 'BICYCLING';
 
@@ -310,7 +314,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 tiltControl: true,
                 gestureHandling: 'greedy',
                 isFractionalZoomEnabled: true,
-                mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '46b8813d0839a93d152e1d01', // 指定されたマップIDを設定
+                mapId: MAP_ID, // AdvancedMarkerElement に必須（環境変数 VITE_GOOGLE_MAPS_MAP_ID）
                 renderingType: google.maps.RenderingType.VECTOR, // 明示的にベクトル(WebGL)モードを指定して回転を可能にする
             } as any);
 
@@ -1053,6 +1057,25 @@ const MapInner: React.FC<MapComponentProps> = ({
 };
 
 export const MapWrapper: React.FC<MapComponentProps> = (props) => {
+    // キーが未設定のまま地図を初期化すると、原因の分かりにくい認証エラーになるため先に弾く
+    if (!MAP_API_KEY || !MAP_ID) {
+        const missing = [
+            !MAP_API_KEY && 'VITE_GOOGLE_MAPS_API_KEY',
+            !MAP_ID && 'VITE_GOOGLE_MAPS_MAP_ID',
+        ].filter(Boolean).join(' / ');
+        return (
+            <div className="w-full h-full relative flex items-center justify-center p-6" style={{ minHeight: 'calc(100dvh - 4rem)' }}>
+                <div className="max-w-sm text-center">
+                    <p className="font-bold text-red-600 dark:text-red-400 mb-2">地図を表示できません</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                        環境変数 {missing} が設定されていません。<br />
+                        ビルド環境の設定を確認してください。
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="w-full h-full relative" style={{ minHeight: 'calc(100dvh - 4rem)' }}>
             <Wrapper apiKey={MAP_API_KEY} render={render} libraries={["places", "marker"]}>

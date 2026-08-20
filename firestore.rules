@@ -1,17 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ログイン中のユーザーが管理者（users/{uid} の role が admin）かを判定するヘルパー
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 「承認済みメンバー」= users/{uid} ドキュメントが存在するアカウント。
+    // Authアカウントを持っているだけでは不十分とすることで、
+    //   (1) 自己登録した第三者がデータに触れられない
+    //   (2) 管理者がユーザーを削除すれば、Authアカウントが残っていても即座に失権する
+    // という2点を同時に担保する。
+    function isMember() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // 管理者判定（users/{uid} の role が admin）
     function isAdmin() {
-      return request.auth != null && 
+      return isSignedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // ログイン中のユーザー本人かを判定するヘルパー
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     // 1. ユーザー情報 (users)
@@ -24,18 +38,28 @@ service cloud.firestore {
 
     // 2. ポスター情報 (posters)
     match /posters/{posterId} {
-      // 閲覧・作成・更新・削除: ログイン済みの全ユーザーに許可
-      allow read, write: if request.auth != null;
+      // 閲覧・作成・更新・削除: 承認済みメンバーのみ許可
+      allow read, write: if isMember();
     }
 
     // 3. 変更履歴 (activityLogs)
     match /activityLogs/{logId} {
-      // 閲覧: 管理者のみ許可
-      allow read: if isAdmin();
-      // 作成: ログイン済みのユーザー全員に許可（ログの書き込みはポスター更新時に行われるため）
-      allow create: if request.auth != null;
+      // 閲覧: 承認済みメンバー全員に許可
+      //（通知画面・4指標の集計が全ユーザーの画面で使われているため。
+      //  従来は管理者のみ許可されており、一般ユーザーでは集計が空になっていた）
+      allow read: if isMember();
+      // 作成: 承認済みメンバー全員に許可（ポスター更新時に自動で書き込まれるため）
+      allow create: if isMember();
       // 更新・削除: 履歴の改ざんを防ぐため、管理者であっても不可
       allow update, delete: if false;
+    }
+
+    // 4. アプリ設定 (settings/pinTypes など)
+    match /settings/{settingId} {
+      // 閲覧: 承認済みメンバー全員（ピンの種類一覧の取得に必要）
+      allow read: if isMember();
+      // 変更: 管理者のみ
+      allow write: if isAdmin();
     }
   }
 }
