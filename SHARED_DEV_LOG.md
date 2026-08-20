@@ -404,3 +404,28 @@
     * `scripts/seed_groups.mjs` を作成（groups 4件の作成 ＋ 既存ユーザー全員への `groupId: 'admin'` 割り当て）。**実行は未了**（本番Firestoreへの書き込みが自動承認の対象外だったため）。
 * **次のステップ**: (1) `scripts/seed_groups.mjs` の実行（ルールのデプロイより先に必須。未実行のままルールを反映すると superAdmin が0名になり本番管理者がユーザー管理を失う）、(2) ルールのデプロイと権限境界のテスト、(3) Phase 3（アプリのグループ対応：全データ読み込みのグループ単位への書き換え、複合インデックス作成、各集計画面の対応）、(4) Phase 4（PC管理画面）、(5) Phase 5（ネイティブ統合：位置情報・カメラの権限、セーフエリア、強制アップデート）。
 * **未解決の判断事項**: Maps APIキーのリファラー制限（上記の重大な発見①）。現行Webと将来のネイティブアプリの両方に関わるため、方針の確認が必要。
+
+### 2026-08-20 (Claude Code) その32
+* **タスク**: Phase 2 完了（グループ基盤の投入・ルール適用・検証）、Maps APIキーの制限設計と適用、Phase 3（アプリのグループ対応）
+* **内容**:
+  * **Phase 2 完了**
+    * `scripts/seed_groups.mjs` を実行し、`groups` 4件（admin/nanba/udagawa/watanabe）を作成、既存ユーザー8名全員に `groupId: 'admin'` を割り当て。superAdmin 相当4名・groupId未設定0名を確認してからルールを反映した（順序を誤ると本番管理者がユーザー管理を失うため）。
+    * **`scripts/test_rules.mjs` を新設**し、Firestoreエミュレータ上で権限境界を検証（`npm run test:rules`、**40件すべて成功**）。他グループの閲覧・更新・削除の拒否、絞り込み無しクエリの拒否、city/type 書き換えによる越境の拒否、他事務所管理者による groupId 昇格の拒否、履歴の改ざん・削除の拒否、現行 posters の動作不変などを網羅。Capacitor 8 と同様、firebase-tools も JDK 21 が必要なため Android Studio 同梱JDKを指定している。
+    * ルールとインデックスを本番へデプロイ。デプロイ後、Playwrightで本番Webに実際にログインし、マーカー504件・タイル描画・ピン種別の表示が正常であることを確認済み（本番への影響なし）。
+    * 副次的に、`notificationReads` コレクションにもルールが無く既定の拒否になっていた（通知の既読管理が機能していなかった）ことが判明し、あわせて修正した。
+  * **Maps APIキーの制限（ユーザー依頼により最適構成を提案・適用）**
+    * **重要な検証結果**: iOSのWebViewオリジン `capacitor://poster-map-app.vercel.app` が、Googleのリファラー制限のパターンとして**実際に機能する**ことをシミュレータ実機で確認した。当初はiOS用に別キー＋クォータ上限で被害を限定する案を想定していたが、**1本のキーで Web・Android・iOS すべてを制限下に置ける**ことが分かったため、より単純な構成を採用した。
+    * 制限が実際に効いていることを両方向で確認: 許可外オリジン（`http://localhost:9999`）からは `RefererNotAllowedMapError` で拒否され、許可済オリジンからは成功する。
+    * **採用した構成**:
+      * 新規キー `Poster Map - Maps (restricted)`: Maps/Geocoding/Places/Directions のみ許可。リファラー制限 `https://poster-map-app.vercel.app/*` / `capacitor://poster-map-app.vercel.app/*` / `http://localhost:3062/*` / `http://localhost:5173/*`。
+      * 既存キーを `Firebase key (Firestore/Auth/Storage only)` に改名し、**Maps系4APIを許可リストから除去**。Firebaseの構成キーは公開前提であり、保護はセキュリティルールが担う。
+    * Vercelの `VITE_GOOGLE_MAPS_API_KEY`（Production/Preview/Development）を新キーに差し替え、`main` から本番デプロイして地図が正常表示されることを確認済み。ローカルの `.env.local` も差し替え済み。
+    * **未完了の確認事項**: 旧キーからの Geocoding REST 呼び出しは `REQUEST_DENIED`（API制限が効いている）になったが、**Maps JavaScript API 経路だけは30分経過後もまだ通ってしまう**。設定自体は正しく反映されているため Google 側の伝播遅延と判断。後日あらためて確認が必要。
+  * **Phase 3: アプリのデータ層をグループ対応（コミット `046eb2e`）**
+    * `src/hooks/useSession.ts` を新設し、認証・ユーザー情報・所属グループの解決を一元化。**グループが確定するまでクエリを投げない**構造にした。ポスター取得には自グループの条件が必須で、条件の無いクエリはFirestoreに丸ごと拒否されるため。従来は各フックが認証を待たずにクエリを投げており、起動直後の permission-denied（本番でも発生していた既存の不具合）の原因でもあった。
+    * `usePosterData` / `useActivityLogs` / `useAllActivityLogs` / `useDashboardData` / `useDailyNotifications` を `posters_v2` / `activityLogs_v2` とグループ絞り込みに対応。
+    * `src/lib/activityLogs.ts` を新設し、4つのフックに書き写されていた同一の変換処理を集約（lintの指摘件数も 42→38 に減少）。
+    * `App.tsx` の3箇所のジオコーディングで `city` を確定させる。グループ未割当てのアカウント向けの説明画面も追加（ルール側で全拒否されるため、原因の分からない白画面を避ける）。
+    * **`scripts/verify_group_isolation.mjs` を新設**し、本番Firestoreに対して各グループの検証用アカウントを作り、アプリと同じクエリを実行して隔離を実証（**18件すべて成功**、実行後にアカウントと検証データは自動削除）。難波事務所には投入した7件中2件（厚木市×佐藤まさし/難波県議）のみが見え、市区町村なしのポスターや対象外種別は一切見えないことを確認。
+    * **この検証で複合インデックス不足（`failed-precondition`）が発覚した。** エミュレータのルールテストでは表面化しない種類の問題で、実データ検証を入れた意義が出た。`firestore.indexes.json` を定義してデプロイし、READY 後に再検証して解消を確認している。
+* **次のステップ**: Phase 4（PC管理画面）、Phase 5（ネイティブ統合：位置情報・カメラの権限文言、セーフエリア、強制アップデート）、Phase 6（内部テスト配信）、Phase 7（データ移行・切替）。あわせて旧キーのMaps JS API制限の反映確認。
