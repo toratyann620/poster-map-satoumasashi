@@ -368,3 +368,15 @@
     * **PC管理画面**: 既存コードベース内の `/admin` ルートとして遅延読み込みで構築（モバイルのバンドルには含めない）。Authアカウントの削除にはAdmin SDKが要るため、呼び出し可能なCloud Functionの新設が必要。
   * **デプロイ前に必要な確認（未実施）**: ルール強化により `users` ドキュメントを持たないAuthアカウントは即座に失権する。自己登録で入った正規スタッフがいる場合その人も締め出されるため、**Authアカウントと `users` ドキュメントを突き合わせる確認スクリプト**（読み取り専用）をスクラッチパッドに用意した。本番データの読み取りが自動承認の対象外だったため、実行はユーザー側で行う。
 * **次のステップ**: (1) 確認スクリプトの実行と結果の判断、(2) Phase 0 のコミット・push・Vercel本番デプロイ、(3) デプロイ後に「党員募集」がピン種別一覧から消えるかの確認、(4) Phase 1（Capacitor疎通検証・本番環境に影響しないため並行着手可能）。
+
+### 2026-08-20 (Claude Code) その30
+* **タスク**: Phase 0（セキュリティ修正）の本番デプロイと、テストアカウントの整理
+* **内容**:
+  * **事前監査（読み取り専用）**: Authアカウントと `users` ドキュメントを突き合わせた結果、Auth 11件・`users` 7件で、`users` ドキュメントを持たない4件はすべてテストアカウント（`temp_aggregator_new@test.com` / `jetski_test_01@example.com` / `test_agent@example.com` / `guest@satoumasahi.com` ※最後の1件はドメインが `satoumasashi` ではなく `satoumasahi` の誤綴り、一度もログイン実績なし）であることを確認。正規スタッフ7名（全員 `@satoumasashi.com`、うち管理者3名）は全員 `users` ドキュメントを保持しており、**ルール強化による締め出しは発生しないことを確認**した上でデプロイに進んだ。
+    * 補足: `identitytoolkit.googleapis.com` はquotaプロジェクトの指定を要求するが、ローカルADCのquotaプロジェクトが無関係な別プロジェクト（`ldp-member-app-kanagawa16`）に紐づいているため、その23と同様にADC設定自体は変更せず、`x-goog-user-project` ヘッダーで明示的に上書きして回避した。
+  * **デプロイ**: コミット `170064f` → `git push origin main` → `firebase deploy --only firestore:rules`（ルールのコンパイル・リリース成功）→ `npx vercel --prod`（Deployment: `poster-map-k2h7klxkx-muogs-projects.vercel.app`, target: `production`）。
+  * **本番動作確認**: Playwrightで `https://poster-map-app.vercel.app` を実際に開き、ログイン画面から「新規アカウントを作成」ボタンが消え、「アカウントは管理者が発行します」の案内文が表示されることを確認済み。
+    * 未ログイン状態でコンソールに出る2件の権限エラー（`activityLogs` / `settings` の Missing or insufficient permissions）は、**認証前にフックがFirestoreを読もうとして正しく拒否されているもの**で、ルールが意図どおり機能している証拠。リグレッションではない。ただしログイン前にデータ取得フックが走る構造自体は改善余地があり、後日の整理候補として記録する。
+  * **テストアカウント4件の削除**: ユーザー承認のもと、対象メールアドレスの許可リストと「`users` ドキュメントを持たないこと」の二重の安全装置を入れたスクリプトで削除を実行。4件すべて削除成功し、**Authアカウント11→7件、`users` ドキュメントを持たないアカウントは0件**になった。
+  * **「党員募集」問題の決着**: `settings/pinTypes` ドキュメントの実データを直接確認したところ、**11件（党員募集を含まない）で正しく保存されていた**。つまりその11（2026-07-20）の削除作業自体は成功していたが、`settings` にセキュリティルールが無く既定の拒否になっていたため読み取りが失敗し、`usePinTypes` が無言でコード内デフォルト（党員募集を含む12件）にフォールバックしていた。**今回の `settings` ルール追加により、意図した11件が正しくアプリに反映される**ようになった。
+* **次のステップ**: Phase 1（Capacitor疎通検証）。iOS/Androidプロジェクトを生成し、WebView内でMaps / Geocoding / Places / Directions / Storage / Auth が疎通するかを実機確認する。とくに `capacitor.config.ts` の `server.hostname` を既存ドメインに合わせることでAPIキーのリファラー制限・StorageのCORS・Authの承認済みドメインをまとめて通す方式が成立するかが最大の未知数。本番環境には影響しない作業。
