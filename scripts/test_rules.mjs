@@ -209,6 +209,23 @@ await t('メンバーはグループ定義を読める（クエリ組み立て�
   assertSucceeds(getDoc(doc(as('nanbaUser'), 'groups/nanba'))));
 
 // ═══════════════════════════════════════════════════════════
+section('通知の既読状態 (notificationReads)');
+
+await t('自分の既読状態を書き込める', () =>
+  assertSucceeds(setDoc(doc(as('nanbaUser'), 'notificationReads/nanbaUser_2026-08-20'),
+    { userId: 'nanbaUser', date: '2026-08-20', readAt: 1 })));
+
+await t('自分の既読状態を読める', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), 'notificationReads/nanbaUser_2026-08-20'))));
+
+await t('🔒 他人の既読状態は読めない', () =>
+  assertFails(getDoc(doc(as('nanbaUser'), 'notificationReads/satoGeneral_2026-08-20'))));
+
+await t('🔒 他人の既読状態は書き換えられない', () =>
+  assertFails(setDoc(doc(as('nanbaUser'), 'notificationReads/satoGeneral_2026-08-20'),
+    { userId: 'satoGeneral', date: '2026-08-20', readAt: 1 })));
+
+// ═══════════════════════════════════════════════════════════
 section('現行の本番コレクション（動作を変えていないこと）');
 
 await t('承認済みメンバーは現行 posters を読み書きできる', async () => {

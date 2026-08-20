@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { PosterPin, FilterState } from '../types';
-import sampleData from '../data/sample.json';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import {
     collection,
     onSnapshot,
@@ -12,15 +11,20 @@ import {
     query,
     orderBy,
     writeBatch,
-    getDoc
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { COL } from '../lib/collections';
+import { scopeConstraints } from '../lib/groups';
+import { cityFromAddress } from '../lib/city';
+import { useSession } from './useSession';
 
-// アクティビティログをFirestoreに書き込むヘルパー
+// アクティビティログをFirestoreに書き込むヘルパー。
+// city / posterType はグループ権限の判定に使われるため、必ず埋める。
+// 欠けているとルール側で弾かれ、履歴が残らなくなる。
 const writeActivityLog = async (
     action: '追加' | '更新' | '削除',
     posterId: string,
     posterAddress: string,
+    city: string,
     changedBy: string,
     diff?: string,
     posterType?: string,
@@ -36,10 +40,11 @@ const writeActivityLog = async (
     try {
         const isNeedsRepair = Array.isArray(posterStatus) && posterStatus.includes('要修理');
         const isNewRegistration = action === '追加';
-        await addDoc(collection(db, 'activityLogs'), {
+        await addDoc(collection(db, COL.activityLogs), {
             action,
             posterId,
             posterAddress,
+            city: city || '',
             changedBy,
             changedAt: Date.now(),
             diff: diff || '',
@@ -57,6 +62,9 @@ const writeActivityLog = async (
 };
 
 export const usePosterData = () => {
+    const session = useSession();
+    const { group, name: userName, role: userRole } = session;
+
     const [posters, setPosters] = useState<PosterPin[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<FilterState>({
@@ -65,156 +73,104 @@ export const usePosterData = () => {
         status: [],  // 空配列 = すべて表示
         tags: [],    // 空配列 = すべて表示
     });
-    const [userRole, setUserRole] = useState<'admin' | 'general'>('general');
-    const [userName, setUserName] = useState<string>('unknown');
 
-    // Load from Firestore in real-time — wait for auth to confirm sign-in first
+    // グループが確定してから購読を開始する。
+    // 権限範囲の条件を付けずに問い合わせると Firestore がクエリごと拒否するため、
+    // 「まだ分からないので全件取りにいく」という挙動は許されない。
+    const scopeKey = group
+        ? `${group.id}|${group.allowAll}|${group.cities.join(',')}|${group.types.join(',')}`
+        : '';
+
     useEffect(() => {
-        let unsubscribeSnapshot: (() => void) | null = null;
+        if (!session.ready) return;
+        if (!group) {
+            setPosters([]);
+            setLoading(false);
+            return;
+        }
 
-        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                if (unsubscribeSnapshot) {
-                    unsubscribeSnapshot();
-                    unsubscribeSnapshot = null;
-                }
-                setPosters([]);
-                setLoading(false);
-                setUserRole('general');
-                setUserName('unknown');
-                return;
-            }
+        setLoading(true);
+        const q = query(
+            collection(db, COL.posters),
+            ...scopeConstraints(group),
+            orderBy('updatedAt', 'desc'),
+        );
 
-            // Get user info (role and name)
-            try {
-                const userDoc = await getDoc(doc(db, 'users', user.uid));
-                if (userDoc.exists()) {
-                    const data = userDoc.data();
-                    setUserRole(data.role || 'general');
-                    setUserName(data.name || user.displayName || user.email || 'unknown');
-                } else {
-                    setUserRole('general');
-                    setUserName(user.displayName || user.email || 'unknown');
-                }
-            } catch (e) {
-                console.error('Failed to get user info', e);
-                setUserRole('general');
-                setUserName(user.displayName || user.email || 'unknown');
-            }
-
-            const q = query(collection(db, 'posters'), orderBy('updatedAt', 'desc'));
-
-            unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-                const data: PosterPin[] = [];
-                snapshot.forEach((docSnap) => {
-                    const d = docSnap.data();
-                    // typeが配列（旧データ）の場合は先頭を取り出し文字列に変換（マイグレーション）
-                    let typeVal: string = '佐藤まさし';
-                    if (typeof d.type === 'string' && d.type) {
-                        const legacyMap: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
-                        typeVal = legacyMap[d.type] || d.type;
-                    } else if (Array.isArray(d.type) && d.type.length > 0) {
-                        const legacyMap: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
-                        typeVal = legacyMap[d.type[0]] || d.type[0];
-                    }
-
-                    data.push({
-                        id: docSnap.id,
-                        lat: d.lat,
-                        lng: d.lng,
-                        type: typeVal,
-                        status: d.status || '設置済',
-                        address: d.address || '',
-                        placement: d.placement || '',
-                        quantity: d.quantity || 1,
-                        owner: d.owner || '',
-                        contact: d.contact || '',
-                        memo: d.memo || '',
-                        specialNote: d.specialNote || '',
-                        imageUrl: d.imageUrl || '',
-                        imageUrls: d.imageUrls || [],
-                        tags: d.tags || [],
-                        removed: !!d.removed,
-                        createdAt: d.createdAt || Date.now(),
-                        updatedAt: d.updatedAt || Date.now(),
-                        createdBy: d.createdBy || '',
-                        updatedBy: d.updatedBy || '',
-                    } as PosterPin);
-                });
-                setPosters(data);
-                setLoading(false);
-
-                // Auto-load sample data only when the collection is truly empty
-                if (data.length === 0) {
-                    const autoLoad = async () => {
-                        try {
-                            const batch = writeBatch(db);
-                            sampleData.forEach((p: any) => {
-                                const ref = doc(collection(db, 'posters'));
-                                // 旧サンプルデータの変換
-                                const legacyMap: Record<string, string> = { sato: '佐藤まさし', goto: 'ごとう祐一' };
-                                const typeArr = Array.isArray(p.type) ? p.type : [legacyMap[p.type] || p.type || '佐藤まさし'];
-                                batch.set(ref, {
-                                    ...p,
-                                    type: typeArr,
-                                    status: Array.isArray(p.status) ? p.status : (p.status ? [p.status] : ['設置済']),
-                                    tags: undefined,
-                                    owner: '',
-                                    contact: '',
-                                    imageUrl: '',
-                                    createdBy: userName,
-                                    updatedBy: userName,
-                                    createdAt: Date.now(),
-                                    updatedAt: Date.now()
-                                });
-                            });
-                            await batch.commit();
-                            console.log('Sample data auto-loaded to Firestore.');
-                        } catch (e) {
-                            console.error('Failed to auto-load sample data', e);
-                        }
-                    };
-                    autoLoad();
-                }
-
-            }, (error) => {
-                console.error('Error fetching real-time data from Firestore:', error);
-                setLoading(false);
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data: PosterPin[] = [];
+            snapshot.forEach((docSnap) => {
+                const d = docSnap.data();
+                data.push({
+                    id: docSnap.id,
+                    lat: d.lat,
+                    lng: d.lng,
+                    type: d.type || '',
+                    status: d.status || [],
+                    address: d.address || '',
+                    city: d.city || '',
+                    placement: d.placement || '',
+                    quantity: d.quantity || 1,
+                    owner: d.owner || '',
+                    contact: d.contact || '',
+                    memo: d.memo || '',
+                    specialNote: d.specialNote || '',
+                    imageUrl: d.imageUrl || '',
+                    imageUrls: d.imageUrls || [],
+                    tags: d.tags || [],
+                    removed: !!d.removed,
+                    createdAt: d.createdAt || Date.now(),
+                    updatedAt: d.updatedAt || Date.now(),
+                    createdBy: d.createdBy || '',
+                    updatedBy: d.updatedBy || '',
+                } as PosterPin);
             });
+            setPosters(data);
+            setLoading(false);
+        }, (error) => {
+            console.error('ポスターの取得に失敗しました:', error);
+            setPosters([]);
+            setLoading(false);
         });
 
-        return () => {
-            unsubscribeAuth();
-            if (unsubscribeSnapshot) unsubscribeSnapshot();
-        };
-    }, []);
+        return () => unsubscribe();
+        // scopeKey にグループの条件を畳み込んでいるため、条件が変われば購読を張り直す
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session.ready, scopeKey]);
+
+    // city は権限判定に使う必須フィールド。呼び出し元が指定していなければ住所から補う。
+    const ensureCity = (p: Partial<PosterPin>): string => p.city || cityFromAddress(p.address);
 
     const addPoster = async (posterData: Partial<PosterPin>) => {
+        const city = ensureCity(posterData);
         try {
             const now = Date.now();
-            const docRef = await addDoc(collection(db, 'posters'), {
+            const docRef = await addDoc(collection(db, COL.posters), {
                 ...posterData,
+                city,
                 type: posterData.type || '佐藤まさし',
                 status: Array.isArray(posterData.status) ? posterData.status : ['設置済'],
                 createdAt: now,
                 updatedAt: now,
                 createdBy: userName,
-                updatedBy: userName
+                updatedBy: userName,
             });
             const diff = `枚数: ${posterData.quantity || 1}枚`;
-            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', city, userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
         } catch (e) {
             console.error('Error adding document: ', e);
-            alert('データの保存に失敗しました。');
+            alert(describeWriteError(e, '登録'));
         }
     };
 
     const updatePoster = async (id: string, updates: Partial<PosterPin>) => {
+        const currentPoster = posters.find(p => p.id === id);
         try {
-            const posterRef = doc(db, 'posters', id);
+            const posterRef = doc(db, COL.posters, id);
             // 種類情報: updates に含まれる場合はそれを優先、なければ現在の state から取得
-            const currentPoster = posters.find(p => p.id === id);
             const posterType = updates.type || currentPoster?.type || '';
+            // 住所が変わり、かつ city が指定されていない場合は住所から引き直す
+            const nextCity = updates.city ?? (updates.address ? cityFromAddress(updates.address) : currentPoster?.city ?? '');
+
             // 差分サマリーを作成
             const diffParts: string[] = [];
             if (updates.status) diffParts.push(`ステータス: ${Array.isArray(updates.status) ? updates.status.join(',') : updates.status}`);
@@ -239,32 +195,33 @@ export const usePosterData = () => {
 
             await updateDoc(posterRef, {
                 ...updates,
+                city: nextCity,
                 updatedAt: Date.now(),
-                updatedBy: userName
+                updatedBy: userName,
             });
             const newStatus = updates.status || currentPoster?.status || [];
-            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', userName, diff, posterType, Array.isArray(newStatus) ? newStatus : [newStatus], {
+            await writeActivityLog('更新', id, updates.address || currentPoster?.address || '', nextCity, userName, diff, posterType, Array.isArray(newStatus) ? newStatus : [newStatus], {
                 statusAdded,
                 statusRemoved,
                 removedChangedTo,
             });
         } catch (e) {
             console.error('Error updating document: ', e);
-            alert('データの更新に失敗しました。');
+            alert(describeWriteError(e, '更新'));
         }
     };
 
     const deletePoster = async (id: string, address?: string) => {
         try {
-            // 削除前に種類情報を state から取得（削除後は参照できないため）
+            // 削除前に種類・市区町村を state から取得（削除後は参照できないため）
             const currentPoster = posters.find(p => p.id === id);
             const posterType = currentPoster?.type || '';
             const diff = `枚数: ${currentPoster?.quantity || 1}枚`;
-            await writeActivityLog('削除', id, address || '住所不明', userName, diff, posterType);
-            await deleteDoc(doc(db, 'posters', id));
+            await writeActivityLog('削除', id, address || '住所不明', currentPoster?.city || '', userName, diff, posterType);
+            await deleteDoc(doc(db, COL.posters, id));
         } catch (e) {
             console.error('Error deleting document: ', e);
-            alert('データの削除に失敗しました。');
+            alert(describeWriteError(e, '削除'));
         }
     };
 
@@ -279,17 +236,19 @@ export const usePosterData = () => {
             const batch = writeBatch(db);
             chunk.forEach(p => {
                 if (p.id) {
-                    const ref = doc(db, 'posters', p.id);
-                    batch.set(ref, p, { merge: true });
+                    const ref = doc(db, COL.posters, p.id);
+                    // 部分更新でも city は必ず載せる（ルールが city を要求するため）
+                    batch.set(ref, { ...p, city: ensureCity(p) }, { merge: true });
                 } else {
-                    const ref = doc(collection(db, 'posters'));
+                    const ref = doc(collection(db, COL.posters));
                     batch.set(ref, {
                         ...p,
+                        city: ensureCity(p),
                         type: typeof p.type === 'string' ? p.type : (Array.isArray(p.type) && p.type[0]) || '佐藤まさし',
                         status: Array.isArray(p.status) ? p.status : (p.status ? [p.status] : ['設置済']),
                         createdAt: p.createdAt || Date.now(),
                         updatedAt: Date.now(),
-                        createdBy: userName
+                        createdBy: userName,
                     });
                 }
             });
@@ -342,6 +301,20 @@ export const usePosterData = () => {
         deletePoster,
         setPosters: setPostersBulk,
         loading,
-        userRole
+        userRole,
+        group,
     };
+};
+
+/**
+ * 書き込みエラーを利用者向けの文言にする。
+ * permission-denied は「権限範囲外の操作をした」場合に返るため、
+ * 「保存に失敗しました」よりも原因が伝わる文言にしておく。
+ */
+const describeWriteError = (e: unknown, verb: string): string => {
+    const code = (e as { code?: string })?.code ?? '';
+    if (code === 'permission-denied') {
+        return `このポスターは担当範囲外のため${verb}できません。\n担当の市区町村・種別の範囲をご確認ください。`;
+    }
+    return `データの${verb}に失敗しました。`;
 };

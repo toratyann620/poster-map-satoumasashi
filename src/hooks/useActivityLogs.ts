@@ -2,48 +2,42 @@ import { useState, useEffect } from 'react';
 import type { ActivityLog } from '../types';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { COL } from '../lib/collections';
+import { parseActivityLog, logScopeConstraints } from '../lib/activityLogs';
+import { useSession } from './useSession';
 
+/** 直近の変更履歴。自グループの範囲に絞って取得する。 */
 export const useActivityLogs = (maxCount = 100) => {
+    const { ready, group } = useSession();
     const [logs, setLogs] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const scopeKey = group ? `${group.id}|${group.allowAll}|${group.cities}|${group.types}` : '';
+
     useEffect(() => {
+        // グループが確定するまで問い合わせない（条件の無いクエリは拒否されるため）
+        if (!ready) return;
+        if (!group) { setLogs([]); setLoading(false); return; }
+
         const q = query(
-            collection(db, 'activityLogs'),
+            collection(db, COL.activityLogs),
+            ...logScopeConstraints(group),
             orderBy('changedAt', 'desc'),
-            limit(maxCount)
+            limit(maxCount),
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data: ActivityLog[] = [];
-            snapshot.forEach((docSnap) => {
-                const d = docSnap.data();
-                data.push({
-                    id: docSnap.id,
-                    action: d.action || '更新',
-                    posterId: d.posterId || '',
-                    posterAddress: d.posterAddress || '',
-                    posterType: d.posterType || '',
-                    changedBy: d.changedBy || '',
-                    changedAt: d.changedAt || 0,
-                    diff: d.diff || '',
-                    posterStatus: d.posterStatus || [],
-                    isNeedsRepair: !!d.isNeedsRepair,
-                    isNewRegistration: !!d.isNewRegistration,
-                    statusAdded: d.statusAdded || [],
-                    statusRemoved: d.statusRemoved || [],
-                    removedChangedTo: d.removedChangedTo ?? null,
-                });
-            });
-            setLogs(data);
+            setLogs(snapshot.docs.map(parseActivityLog));
             setLoading(false);
         }, (error) => {
-            console.error('Failed to fetch activity logs:', error);
+            console.error('変更履歴の取得に失敗しました:', error);
+            setLogs([]);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [maxCount]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ready, scopeKey, maxCount]);
 
     return { logs, loading };
 };

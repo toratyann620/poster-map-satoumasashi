@@ -81,6 +81,7 @@ export interface ActivityLog {
     action: '追加' | '更新' | '削除';
     posterId: string;
     posterAddress: string;
+    city: string;                 // 市区町村。ポスター本体と同じくグループ権限の判定に使う
     posterType?: string;          // ポスターの種類（例: 佐藤まさし）
     changedBy: string;
     changedAt: number;

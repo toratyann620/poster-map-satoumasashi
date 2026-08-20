@@ -4,28 +4,26 @@ import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
 import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
+import { useSession } from './hooks/useSession';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
+import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings } from 'lucide-react';
 import { auth } from './lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
 
 function App() {
-  const [user, setUser] = useState<any>(null);
-  const [authChecking, setAuthChecking] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthChecking(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  // 認証・ユーザー情報・所属グループの解決はセッション層に集約している。
+  // グループが決まるまでポスターの取得クエリを投げられないため（条件の無いクエリは
+  // Firestore に拒否される）、個々のフックが独自に認証を待つ形はやめている。
+  const session = useSession();
+  const user = session.user;
+  const authChecking = !session.ready;
 
   const {
     filteredPosters,
@@ -228,10 +226,14 @@ function App() {
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } }, (results, status) => {
         let addressStr = '';
+        let cityStr = '';
         if (status === 'OK' && results && results[0]) {
           addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+          // 市区町村はグループ権限の判定に使うため、住所文字列ではなく
+          // ジオコーディングの構造化データ（locality）から確定させる
+          cityStr = cityFromGeocoderResult(results[0]);
         }
-        setSelectedPoster({ lat, lng, address: addressStr, type: '佐藤まさし' });
+        setSelectedPoster({ lat, lng, address: addressStr, city: cityStr, type: '佐藤まさし' });
         setInitialViewMode(false);
         setIsSheetOpen(true);
       });
@@ -259,10 +261,12 @@ function App() {
         const geocoder = new window.google.maps.Geocoder();
         geocoder.geocode({ location: { lat: poster.lat, lng: poster.lng } }, (results, status) => {
           let addressStr = '';
+          let cityStr = '';
           if (status === 'OK' && results && results[0]) {
             addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+            cityStr = cityFromGeocoderResult(results[0]);
           }
-          setSelectedPoster(prev => ({ ...prev, address: addressStr }));
+          setSelectedPoster(prev => ({ ...prev, address: addressStr, city: cityStr }));
           setIsSheetOpen(true);
         });
       } else {
@@ -291,6 +295,7 @@ function App() {
         if (status === 'OK' && results && results[0]) {
           posterData.lat = results[0].geometry.location.lat();
           posterData.lng = results[0].geometry.location.lng();
+          posterData.city = cityFromGeocoderResult(results[0]) || cityFromAddress(posterData.address);
           finishSave(posterData, isExisting);
         } else {
           if (isExisting) {
@@ -370,6 +375,32 @@ function App() {
 
   if (!user) {
     return <Login />;
+  }
+
+  // ログインはできたが、アカウントにグループが割り当てられていない場合。
+  // この状態ではセキュリティルール側で全データが拒否されるため、
+  // 「地図が真っ白で理由が分からない」状態にせず、原因を明示する。
+  if (session.problem) {
+    const detail = session.problem === 'no-user-doc'
+      ? 'このアカウントはまだ利用が承認されていません。'
+      : 'このアカウントにはグループ（事務所）が割り当てられていません。';
+    return (
+      <div className="h-dvh w-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950 px-6">
+        <div className="max-w-sm text-center">
+          <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">ご利用いただけません</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+            {detail}<br />管理者にお問い合わせください。
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-6">{session.user?.email}</p>
+          <button
+            onClick={() => signOut(auth)}
+            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
+          >
+            ログアウト
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const handleLogout = () => {
