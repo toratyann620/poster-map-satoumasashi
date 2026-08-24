@@ -56,7 +56,7 @@ export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters, a
             : '先週と同じ';
 
     return (
-        <div className="absolute bottom-6 right-4 z-10">
+        <div className="absolute bottom-safe-6 right-4 z-10">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-gray-100 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 min-w-[160px]">
                 {/* アイコン */}
                 <div className="bg-indigo-50 dark:bg-indigo-950 p-2 rounded-xl">

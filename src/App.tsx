@@ -5,12 +5,14 @@ import { SearchBar } from './components/SearchBar';
 import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { useSession } from './hooks/useSession';
+import { useAppVersionGate } from './hooks/useAppVersionGate';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
+import { watchPosition, getCurrentPosition } from './lib/geolocation';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -24,6 +26,7 @@ function App() {
   const session = useSession();
   const user = session.user;
   const authChecking = !session.ready;
+  const versionGate = useAppVersionGate();
 
   const {
     filteredPosters,
@@ -83,44 +86,32 @@ function App() {
   // 移動中も現在地ドットをリアルタイムに追従させる（地図の中心・ズームは初回ジャンプ時と
   // 現在地ボタン押下時のみ更新し、移動のたびに地図が勝手に再センタリングされないようにする）
   useEffect(() => {
-    if (!navigator.geolocation) return;
-
     let hasCenteredOnce = false;
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+    // ネイティブでは OS の権限要求を挟む必要があるため、共通ラッパー経由で購読する
+    const stop = watchPosition(
+      (pos) => {
         setCurrentLocation(pos);
         if (!hasCenteredOnce) {
           hasCenteredOnce = true;
           setMapCenter(pos);
         }
       },
-      () => {
-        console.warn('Geolocation permission denied or failed.');
+      (reason) => {
+        // 起動時は黙って諦める（現在地ボタンを押したときに改めて案内する）
+        console.warn('現在地を取得できません:', reason);
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    return stop;
   }, []);
 
-  const locateMe = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-          setCurrentLocation(pos);
-          setMapCenter(pos);
-        },
-        () => {
-          alert('現在地の取得に失敗しました。端末の位置情報設定などを確認してください。');
-        }
-      );
-    } else {
-      alert('現在地機能はお使いのブラウザでサポートされていません。');
+  const locateMe = async () => {
+    const pos = await getCurrentPosition();
+    if (!pos) {
+      alert('現在地を取得できませんでした。\n端末の設定でこのアプリに位置情報の利用を許可してください。');
+      return;
     }
+    setCurrentLocation(pos);
+    setMapCenter(pos);
   };
 
   // ---- ピン移動モード ----
@@ -377,6 +368,31 @@ function App() {
     return <Login />;
   }
 
+  // アプリのバージョンが下限を割っている場合は利用を止める。
+  // 古いクライアントが混ざると、権限判定に必要なフィールドを欠いたまま
+  // 書き込まれるなどの不整合が起きるため。
+  if (versionGate.blocked) {
+    return (
+      <div className="h-dvh w-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950 px-6">
+        <div className="max-w-sm text-center">
+          <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">アプリの更新が必要です</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+            {versionGate.message || 'ご利用を続けるには、最新版へ更新してください。'}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-6 tabular-nums">
+            現在のバージョン {versionGate.currentVersion} ／ 必要なバージョン {versionGate.minimumVersion} 以上
+          </p>
+          {versionGate.storeUrl && (
+            <a href={versionGate.storeUrl} target="_blank" rel="noreferrer"
+              className="inline-block px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors">
+              更新する
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ログインはできたが、アカウントにグループが割り当てられていない場合。
   // この状態ではセキュリティルール側で全データが拒否されるため、
   // 「地図が真っ白で理由が分からない」状態にせず、原因を明示する。
@@ -456,13 +472,13 @@ function App() {
               />
 
               {/* 上部案内バナー */}
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-5 py-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center gap-2 text-sm font-medium">
+              <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-30 px-5 py-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center gap-2 text-sm font-medium">
                 <MapPin className="w-4 h-4 shrink-0" />
                 移動先の場所をタップしてください
               </div>
 
               {/* キャンセルボタン */}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+              <div className="absolute bottom-safe-6 left-1/2 -translate-x-1/2 z-30">
                 <button
                   onClick={cancelRelocation}
                   className="flex items-center gap-2 px-6 py-3.5 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 rounded-full shadow-xl border border-gray-200 dark:border-zinc-700 font-semibold hover:bg-gray-50 transition-colors"
@@ -480,7 +496,7 @@ function App() {
               <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
 
               {/* Floating Buttons: Expandable Menu with Gear Icon */}
-              <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3 items-center">
+              <div className="absolute bottom-safe-6 left-4 z-10 flex flex-col gap-3 items-center">
                 {/* 展開されたメニューアイテム */}
                 <div className={`flex gap-4 items-end transition-all duration-300 origin-bottom ${
                   isMenuExpanded 

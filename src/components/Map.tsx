@@ -994,7 +994,7 @@ const MapInner: React.FC<MapComponentProps> = ({
             {/* ナビゲーション案内バナー */}
             {map && navigationTarget && (
                 <>
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-md">
+                    <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-md">
                         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-gray-100 dark:border-zinc-800 overflow-hidden">
                             <div className="flex items-center justify-between px-4 pt-3">
                                 <div className="flex gap-1.5">
@@ -1044,7 +1044,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                     {!isFollowing && (
                         <button
                             onClick={handleRecenterNav}
-                            className="absolute bottom-24 right-4 z-40 px-4 py-2.5 bg-white dark:bg-zinc-800 rounded-full shadow-xl border border-gray-200 dark:border-zinc-700 text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"
+                            className="absolute bottom-safe-24 right-4 z-40 px-4 py-2.5 bg-white dark:bg-zinc-800 rounded-full shadow-xl border border-gray-200 dark:border-zinc-700 text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5"
                         >
                             <Navigation className="w-4 h-4" />
                             現在地に戻る
