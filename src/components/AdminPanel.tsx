@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useUsers } from '../hooks/useUsers';
+import { useGroups } from '../hooks/useGroups';
 import type { UserData } from '../hooks/useUsers';
 import { useActivityLogs } from '../hooks/useActivityLogs';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
@@ -32,6 +33,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [] }) => {
     const { users, loading: usersLoading, createUser, removeUser } = useUsers();
+    const { groups } = useGroups();
     const { logs, loading: logsLoading } = useActivityLogs(200);
     const { userRole, posters } = usePosterData();
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -66,6 +68,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [role, setRole] = useState<'admin' | 'general'>('general');
+    const [groupId, setGroupId] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
@@ -88,13 +91,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
         setSuccessMsg('');
         setIsCreating(true);
 
+        if (!groupId) {
+            setErrorMsg('所属グループ（事務所）を選択してください。未設定だとログインしてもデータを閲覧できません。');
+            setIsCreating(false);
+            return;
+        }
+
         try {
-            await createUser({ name, email, role }, password);
-            setSuccessMsg(`ユーザー「${name}」を正常に作成しました。`);
+            await createUser({ name, email, role, groupId }, password);
+            const gName = groups.find(g => g.id === groupId)?.name ?? groupId;
+            setSuccessMsg(`ユーザー「${name}」を ${gName} 所属で作成しました。`);
             setName('');
             setEmail('');
             setPassword('');
             setRole('general');
+            setGroupId('');
         } catch (err: any) {
             setErrorMsg(err.message || 'ユーザー作成に失敗しました。');
         } finally {
@@ -290,6 +301,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                             className="w-full px-4 py-2 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
                                             placeholder="例: 佐藤 スタッフ"
                                         />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">所属グループ（事務所）</label>
+                                        <select
+                                            required
+                                            value={groupId}
+                                            onChange={(e) => setGroupId(e.target.value)}
+                                            className="w-full px-4 py-2 bg-gray-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
+                                        >
+                                            <option value="">選択してください</option>
+                                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            所属した事務所の担当範囲（市区町村×種別）のポスターだけを閲覧・編集できます。
+                                        </p>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">権限 (Role)</label>

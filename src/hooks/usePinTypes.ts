@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { POSTER_PERSONS, PERSON_COLORS } from '../types';
+import { COL } from '../lib/collections';
+import { useSession } from './useSession';
 
-const SETTINGS_DOC = doc(db, 'settings', 'pinTypes');
+const SETTINGS_DOC = doc(db, COL.settings, 'pinTypes');
 
 export interface PinType {
     name: string;
@@ -17,10 +19,17 @@ const DEFAULT_PIN_TYPES: PinType[] = POSTER_PERSONS.map(name => ({
 }));
 
 export const usePinTypes = () => {
+    const { ready, user } = useSession();
     const [pinTypes, setPinTypes] = useState<PinType[]>(DEFAULT_PIN_TYPES);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // 認証が確定してから購読する。ログイン前に読みにいくと必ず拒否され、
+        // 無言でコード内のデフォルト値へフォールバックしてしまう
+        // （「党員募集」が消えていなかった不具合の再発防止）。
+        // 未ログイン時は購読しない。pinTypes は初期値のデフォルト一覧のままになる。
+        if (!ready || !user) return;
+
         // Firestoreの settings/pinTypes をリアルタイム監視
         const unsubscribe = onSnapshot(SETTINGS_DOC, (snap) => {
             if (snap.exists()) {
@@ -42,7 +51,7 @@ export const usePinTypes = () => {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [ready, user]);
 
     const addPinType = async (name: string, color: string) => {
         if (!name.trim()) return;
@@ -55,5 +64,11 @@ export const usePinTypes = () => {
         await setDoc(SETTINGS_DOC, { types: next }, { merge: true });
     };
 
-    return { pinTypes, loading, addPinType, removePinType };
+    return {
+        pinTypes,
+        // 未ログイン時は購読しないため、読み込み中にはならない
+        loading: ready && !!user ? loading : false,
+        addPinType,
+        removePinType,
+    };
 };

@@ -211,6 +211,90 @@ export const usePosterData = () => {
         }
     };
 
+    /**
+     * 複数のポスターをまとめて更新する（管理画面の一括編集用）。
+     *
+     * `setPostersBulk`（CSVインポート用）はバッチ書き込みで速い代わりに変更履歴を残さない。
+     * 一括編集は「誰がいつ何をまとめて変えたか」が後から追えないと困るため、
+     * 1件ずつ更新して履歴を書く。件数が多いと時間がかかるので進捗を通知する。
+     *
+     * タグの追加・削除はポスターごとに既存の配列と合成する必要があるため、
+     * `updates` とは別に受け取る。
+     */
+    const bulkUpdatePosters = async (
+        ids: string[],
+        updates: Partial<PosterPin>,
+        opts?: {
+            tagsAdd?: string[];
+            tagsRemove?: string[];
+            onProgress?: (done: number, total: number) => void;
+        },
+    ): Promise<{ succeeded: number; failed: { id: string; reason: string }[] }> => {
+        const failed: { id: string; reason: string }[] = [];
+        let succeeded = 0;
+        const tagsAdd = opts?.tagsAdd ?? [];
+        const tagsRemove = opts?.tagsRemove ?? [];
+
+        for (const [index, id] of ids.entries()) {
+            const current = posters.find(p => p.id === id);
+            try {
+                const perPoster: Partial<PosterPin> = { ...updates };
+
+                if (tagsAdd.length || tagsRemove.length) {
+                    const base = current?.tags ?? [];
+                    const next = [...new Set([...base, ...tagsAdd])].filter(t => !tagsRemove.includes(t));
+                    perPoster.tags = next;
+                }
+
+                const nextCity = perPoster.city ?? current?.city ?? '';
+                const posterType = perPoster.type || current?.type || '';
+
+                const diffParts: string[] = [];
+                if (perPoster.status) diffParts.push(`ステータス: ${(perPoster.status as string[]).join(',')}`);
+                if (perPoster.type) diffParts.push(`種類: ${perPoster.type}`);
+                if (perPoster.quantity !== undefined) diffParts.push(`枚数: ${perPoster.quantity}枚`);
+                if (perPoster.placement !== undefined) diffParts.push(`設置方法: ${perPoster.placement}`);
+                if (perPoster.owner !== undefined) diffParts.push(`所有者: ${perPoster.owner}`);
+                if (perPoster.removed !== undefined) diffParts.push(perPoster.removed ? '撤去' : '撤去解除');
+                if (tagsAdd.length) diffParts.push(`タグ追加: ${tagsAdd.join(',')}`);
+                if (tagsRemove.length) diffParts.push(`タグ削除: ${tagsRemove.join(',')}`);
+                const diff = (diffParts.length ? diffParts.join(' / ') : '内容を更新') + '（一括編集）';
+
+                const prevStatus = current?.status ?? [];
+                const nextStatus = (perPoster.status as string[] | undefined) ?? prevStatus;
+                const statusAdded = nextStatus.filter(s => !prevStatus.includes(s));
+                const statusRemoved = prevStatus.filter(s => !nextStatus.includes(s));
+                const removedChangedTo = (perPoster.removed !== undefined && perPoster.removed !== current?.removed)
+                    ? perPoster.removed
+                    : null;
+
+                await updateDoc(doc(db, COL.posters, id), {
+                    ...perPoster,
+                    city: nextCity,
+                    updatedAt: Date.now(),
+                    updatedBy: userName,
+                });
+                await writeActivityLog('更新', id, current?.address ?? '', nextCity, userName, diff, posterType, nextStatus, {
+                    statusAdded,
+                    statusRemoved,
+                    removedChangedTo,
+                });
+                succeeded++;
+            } catch (e) {
+                const code = (e as { code?: string })?.code ?? '';
+                failed.push({
+                    id,
+                    reason: code === 'permission-denied'
+                        ? '担当範囲外のため変更できません'
+                        : (e as Error)?.message ?? '不明なエラー',
+                });
+            }
+            opts?.onProgress?.(index + 1, ids.length);
+        }
+
+        return { succeeded, failed };
+    };
+
     const deletePoster = async (id: string, address?: string) => {
         try {
             // 削除前に種類・市区町村を state から取得（削除後は参照できないため）
@@ -298,6 +382,7 @@ export const usePosterData = () => {
         setFilter,
         addPoster,
         updatePoster,
+        bulkUpdatePosters,
         deletePoster,
         setPosters: setPostersBulk,
         loading,
