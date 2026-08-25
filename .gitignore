@@ -30,6 +30,10 @@ android/keystore.properties
 *.jks
 *.keystore
 
+# App Store Connect API の秘密鍵（万一プロジェクト内に置かれても追跡しない）
+*.p8
+AuthKey_*
+
 # iOS のビルド成果物
 build/
 *.xcarchive
