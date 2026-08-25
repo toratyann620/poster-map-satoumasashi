@@ -476,3 +476,20 @@
   * Android も APK ビルド成功（4.5MB → 9.6MB。プラグインとアイコン追加分）。
 * **未検証**: カメラの実動作。シミュレータにカメラが無いため、実機での確認が必要（Phase 6の内部テストで実施可能）。Android の機能全体もエミュレータが非力で未完了のままで、実機確認が必要。
 * **次のステップ**: Phase 6（内部テスト配信）。**Apple Developer / Google Play Console の資格情報と署名設定が必要なため、着手前にユーザーへ必要物を提示する**。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-25 (Claude Code) その35
+* **タスク**: 更新案内の1週間再表示の追加と、Phase 6（内部テスト配信）の準備
+* **内容**:
+  * **更新案内の再表示（コミット `973efb4` / `9f7ebae`）**: 「あとで」を選んだまま放置されると古い版が残り続けるため、記憶を永久にせず**1週間で失効**させるようにした。記憶をバージョン文字列から `{ version, at }` に変更（旧形式も読める）。時間経過はUI操作では再現しづらいため、判定を `src/lib/updatePrompt.ts` の `shouldShowUpdatePrompt()` として純粋関数に切り出し、`npm run test:update-prompt`（7件）で検証している。現在時刻はモジュール読み込み時に一度だけ取得する（レンダーのたびに読むと結果が不安定になるうえ、判定は「起動時点で1週間たっていたか」で足りるため）。
+  * **署名設定（コミット `12a0a71`）**:
+    * 既存のプロビジョニングプロファイル（別アプリ `jp.kanagawa16.partymember` のもの）から **Apple Team ID `46346RA3CT`（Masashi Satou）** が判明したため、Xcodeプロジェクトに設定。`ios/ExportOptions.plist`（app-store-connect 方式・自動署名）も追加した。
+    * 現状あるのは **Apple Development 証明書のみで、Distribution 証明書は未作成**。Xcodeの自動署名で作成できるが Admin 権限が要る。
+    * Android は `keystore.properties` があれば署名し、無ければ未署名でビルドする方式にした（開発時に鍵が無くても困らないようにするため）。鍵と資格情報は `.gitignore` で除外し、作成手順は `android/keystore.properties.example` に記載。**鍵は未作成**。
+    * **ビルド確認**: iOS の Release アーカイブ成功（未署名）、Android の `assembleRelease` / `bundleRelease` 成功（未署名、AAB 6.6MB）。
+  * **⚠️ プライバシーポリシーの不足を発見**: ユーザーから提示された https://satoumasashi.com/privacypolicy/ を取得して内容を確認したところ、**ウェブサイト向けの記載のみで、位置情報・カメラ・アプリ・端末への言及が一切無い**。両ストアともプライバシーポリシーはアプリの収集内容を網羅している必要があり、申告内容と食い違うと差し戻しになる。同じページの末尾に追記する形の文案を `docs/store-submission.md` に用意した（URLが変わらないため、ストアには従来どおりのURLを登録できる）。
+  * **申告内容の確定**: コードを実際に確認したうえで、Google Play のデータセーフティと Apple の App Privacy に入力する内容を整理した。
+    * **重要な確認**: ユーザーの現在地は画面表示と経路探索にのみ使われ、**Firestore・Storage のいずれにも保存していない**（`src/App.tsx` の `currentLocation` はコンポーネントの状態としてのみ保持）。このため「位置情報は収集しない」と申告できる。経路探索でGoogleへ送信される点はプライバシーポリシーに記載する。
+    * トラッキングは無し（広告・解析SDKは未導入。Firebase Analytics は `src/lib/firebase.ts` で明示的に無効化済み）。
+    * 掲示場所の所有者の氏名・連絡先は**第三者の個人情報をスタッフが入力している**ため、取得時の同意の取り方について運用面の整理を推奨する旨も記載した（ストアの必須要件ではないが法務上の論点）。
+* **ユーザー対応待ち**: (1) プライバシーポリシーへの追記、(2) App Store Connect でのアプリ作成（Bundle ID `com.satoumasashi.postermap`）、(3) Apple Distribution 証明書の作成、(4) Play Console でのアプリ作成、(5) Play App Signing の有効化とアップロード鍵の作成、(6) 内部テスターの登録（各最大100人）。
+* **次のステップ**: 上記が揃い次第、アーカイブ作成とアップロード。その後 Phase 7（データ移行・切替）。
