@@ -30,6 +30,9 @@ android/keystore.properties
 *.jks
 *.keystore
 
+# Google Play アップロード用のサービスアカウント鍵
+play-publisher*.json
+
 # App Store Connect API の識別子
 ios/appstore.env
 

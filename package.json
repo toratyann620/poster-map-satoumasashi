@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:rules": "RULES_TEST_RUN_ID=$(date +%s) JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" npx firebase-tools emulators:exec --only firestore --project demo-rules-test \"node scripts/test_rules.mjs\"",
-    "test:update-prompt": "node scripts/test_update_prompt.mjs"
+    "test:update-prompt": "node scripts/test_update_prompt.mjs",
+    "upload:play": "node scripts/upload_play.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
