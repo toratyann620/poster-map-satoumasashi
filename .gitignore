@@ -24,3 +24,13 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Android のリリース署名（鍵と資格情報はリポジトリに含めない）
+android/keystore.properties
+*.jks
+*.keystore
+
+# iOS のビルド成果物
+build/
+*.xcarchive
+*.ipa
