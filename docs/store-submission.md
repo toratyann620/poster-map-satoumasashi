@@ -10,7 +10,7 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 | プラットフォーム | 状態 |
 |---|---|
 | **iOS (TestFlight)** | ✅ **ビルド1をアップロード済み。処理完了（VALID）** |
-| **Android (Play 内部テスト)** | 署名済み AAB を用意済み。Play Console へのアップロード待ち |
+| **Android (Play 内部テスト)** | ✅ **versionCode 1 をアップロード済み。internal トラックへ反映完了** |
 
 - App Store Connect のアプリ名: **ポスター管理アプリ｜神奈川16区**（App ID `6804988572`）
 - TestFlight ビルドの有効期限: **2026-11-23**（90日）。期限が切れる前に再アップロードが必要
@@ -19,8 +19,9 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 ### 次回以降のリリース手順
 
 ```bash
-./scripts/release_ios.sh       # ビルド → 署名 → 検証 → アップロードまで自動
-./scripts/release_android.sh   # 署名済み AAB を生成（Play へは手動アップロード）
+./scripts/release_ios.sh       # ビルド → 署名 → 検証 → App Store Connect へアップロード
+./scripts/release_android.sh   # 署名済み AAB を生成
+npm run upload:play            # AAB を Play の内部テストトラックへアップロード
 ```
 
 ⚠️ **ビルド番号は同じ値で2回アップロードできない。**

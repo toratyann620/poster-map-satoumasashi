@@ -524,3 +524,13 @@
     * App Store Connect 上のアプリ名は「ポスター管理アプリ｜神奈川16区」（App ID `6804988572`）。
   * **リリース自動化**: `scripts/release_ios.sh`（ビルド→同期→アーカイブ→書き出し→検証→アップロードを1コマンド）と `scripts/release_android.sh`（署名済みAAB生成）を作成した。**ビルド番号は同じ値で2回アップロードできない**ため、2回目以降は `CURRENT_PROJECT_VERSION` / `versionCode` を上げる必要がある旨をスクリプト内とdocsに明記した。
 * **残作業**: (1) Play Console への AAB アップロード（`build/upload/postermap-1.0.0-build1.aab`）、(2) 内部テスターの登録（iOS は App Store Connect のユーザーとして、Android はメールアドレス）、(3) 署名鍵のバックアップ、(4) 実機でのカメラ動作確認（シミュレータでは不可）。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-26 (Claude Code) その38
+* **タスク**: Google Play へのアップロードをAPI経由で実行
+* **内容**（コミット `a1e5f2e`）:
+  * Play Developer API（`androidpublisher.googleapis.com`）を有効化し、アップロード専用のサービスアカウント `play-publisher@satoumasashi-poster-map.iam.gserviceaccount.com` を作成。鍵は `~/.playconsole/play-publisher.json` に600で配置し、リポジトリには含めない。
+  * `scripts/upload_play.mjs`（`npm run upload:play`）を作成。編集セッション作成 → AABアップロード → 内部テストトラックへ割り当て → コミット を実行する。**途中で失敗した場合は編集セッションを破棄する**ため、Play側に中途半端な状態が残らない。
+  * **権限付与でつまずいた点**: 最初の付与では403（PERMISSION_DENIED）が続いた。認証（トークン取得）は成功しており `UNAUTHENTICATED` ではなかったため、鍵やスクリプトではなくPlay Console側の権限が原因と切り分けられた。約8分の再試行でも変わらず、ユーザーが付与し直したところ通った。403時には「パッケージ名の一致」「招待が保留中でないか」「API利用規約への同意」を確認するよう案内する文言をスクリプトに組み込んである。
+  * **✅ アップロード完了**: versionCode 1 を internal トラックへ反映。APIで状態を確認し、`internal / versionCode 1 / status: completed` およびリリースノートの登録を確認済み。
+* **これで iOS・Android とも初回配信が完了した**（iOS はビルド1が TestFlight で VALID、Android は内部テストトラックで completed）。
+* **残作業**: (1) 内部テスターの登録（iOS は App Store Connect のユーザーとして、Android はメールアドレス）、(2) 署名鍵のバックアップ（`android/poster-map-upload.jks` と `keystore.properties` はこのMacにしか無い）、(3) 実機でのカメラ動作確認。その後 Phase 7（データ移行・切替）。
