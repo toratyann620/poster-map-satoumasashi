@@ -30,6 +30,9 @@ android/keystore.properties
 *.jks
 *.keystore
 
+# App Store Connect API の識別子
+ios/appstore.env
+
 # App Store Connect API の秘密鍵（万一プロジェクト内に置かれても追跡しない）
 *.p8
 AuthKey_*

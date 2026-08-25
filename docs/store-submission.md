@@ -5,7 +5,32 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 
 ---
 
-## 0. 確定している値
+## 0. 配信状況
+
+| プラットフォーム | 状態 |
+|---|---|
+| **iOS (TestFlight)** | ✅ **ビルド1をアップロード済み。処理完了（VALID）** |
+| **Android (Play 内部テスト)** | 署名済み AAB を用意済み。Play Console へのアップロード待ち |
+
+- App Store Connect のアプリ名: **ポスター管理アプリ｜神奈川16区**（App ID `6804988572`）
+- TestFlight ビルドの有効期限: **2026-11-23**（90日）。期限が切れる前に再アップロードが必要
+- アップロード用ファイル: `build/upload/postermap-1.0.0-build1.ipa` / `.aab`
+
+### 次回以降のリリース手順
+
+```bash
+./scripts/release_ios.sh       # ビルド → 署名 → 検証 → アップロードまで自動
+./scripts/release_android.sh   # 署名済み AAB を生成（Play へは手動アップロード）
+```
+
+⚠️ **ビルド番号は同じ値で2回アップロードできない。**
+2回目以降は次の値を上げること。
+- iOS: `ios/App/App.xcodeproj` の `CURRENT_PROJECT_VERSION`
+- Android: `android/app/build.gradle` の `versionCode`
+
+---
+
+## 1. 確定している値
 
 | 項目 | 値 |
 |---|---|
@@ -50,7 +75,7 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 
 ---
 
-## 1. プライバシーポリシー（対応済み）
+## 2. プライバシーポリシー（対応済み）
 
 **登録するURL: `https://poster-map-app.vercel.app/privacy`**
 
@@ -89,7 +114,7 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 ウェブサイト側のプライバシーポリシーは従来どおりで問題ない。
 本ポリシーの冒頭で「本アプリにのみ適用される」旨を明記している。
 
-## 2. Google Play — データセーフティの申告内容
+## 3. Google Play — データセーフティの申告内容
 
 Play Console →「アプリのコンテンツ」→「データセーフティ」に入力する。
 コードを確認したうえでの回答は次のとおり。
@@ -125,7 +150,7 @@ Firestore・Storage のいずれにも保存していない（`src/App.tsx` の 
 
 ---
 
-## 3. Apple — App Privacy（プライバシー情報）の申告内容
+## 4. Apple — App Privacy（プライバシー情報）の申告内容
 
 App Store Connect →「App のプライバシー」に入力する。
 
@@ -144,7 +169,7 @@ Firebase Analytics は `src/lib/firebase.ts` で明示的に無効化済み）�
 
 ---
 
-## 4. ストア掲載情報の下書き
+## 5. ストア掲載情報の下書き
 
 内部テストでも最低限の掲載情報が必要になる。
 
