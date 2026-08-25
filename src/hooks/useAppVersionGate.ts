@@ -16,16 +16,27 @@ import { useSession } from './useSession';
  * 不整合が起きうる。そのため、下限を割ったバージョンは利用を止める。
  *
  * 判定に使うのは Firestore の `settings/appVersion`:
- *   { minimum: '1.2.0', message?: string, iosUrl?: string, androidUrl?: string }
+ *   {
+ *     minimum: '1.2.0',   // これを下回ると利用を止める（強制）
+ *     latest:  '1.4.0',   // これを下回ると更新を促す（任意。閉じられる）
+ *     message?, iosUrl?, androidUrl?
+ *   }
  *
  * ドキュメントが無い場合・読めない場合は「制限なし」として扱う。
  * 設定漏れでアプリが使えなくなる方が損害が大きいため、安全側を「通す」に倒している。
+ *
+ * 強制停止（minimum）と、更新のお知らせ（latest）は別物として扱う。
+ * 前者は使えなくなるので慎重に、後者は気づいてもらうためのものなので気軽に設定できる。
  */
 
 export interface VersionGate {
+    /** 下限を割っており、利用を止めるべき状態 */
     blocked: boolean;
+    /** 最新版ではないため、更新を促すべき状態（利用は続けられる） */
+    updateAvailable: boolean;
     currentVersion: string;
     minimumVersion: string;
+    latestVersion: string;
     message: string;
     storeUrl: string;
 }
@@ -43,7 +54,8 @@ const compareVersions = (a: string, b: string): number => {
 };
 
 const EMPTY: VersionGate = {
-    blocked: false, currentVersion: '', minimumVersion: '', message: '', storeUrl: '',
+    blocked: false, updateAvailable: false,
+    currentVersion: '', minimumVersion: '', latestVersion: '', message: '', storeUrl: '',
 };
 
 export const useAppVersionGate = (): VersionGate => {
@@ -71,13 +83,19 @@ export const useAppVersionGate = (): VersionGate => {
                 if (!snap.exists()) { setGate(EMPTY); return; }
                 const d = snap.data();
                 const minimum = String(d.minimum ?? '');
-                if (!minimum) { setGate(EMPTY); return; }
+                const latest = String(d.latest ?? '');
+                // どちらも未設定なら判定材料が無いので何もしない
+                if (!minimum && !latest) { setGate(EMPTY); return; }
 
                 const platform = Capacitor.getPlatform();
+                const blocked = !!minimum && compareVersions(currentVersion, minimum) < 0;
                 setGate({
-                    blocked: compareVersions(currentVersion, minimum) < 0,
+                    blocked,
+                    // 停止対象のときは更新のお知らせを重ねない（停止画面に更新導線があるため）
+                    updateAvailable: !blocked && !!latest && compareVersions(currentVersion, latest) < 0,
                     currentVersion,
                     minimumVersion: minimum,
+                    latestVersion: latest,
                     message: d.message ?? '',
                     storeUrl: (platform === 'ios' ? d.iosUrl : d.androidUrl) ?? '',
                 });

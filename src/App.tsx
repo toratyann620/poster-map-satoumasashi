@@ -6,6 +6,7 @@ import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { useSession } from './hooks/useSession';
 import { useAppVersionGate } from './hooks/useAppVersionGate';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
@@ -432,6 +433,10 @@ function App() {
 
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
+      {/* 最新版でない場合のお知らせ。閉じられるので操作は妨げない
+          （利用を止めるのは下限を割ったときだけ） */}
+      <UpdatePrompt gate={versionGate} />
+
       {currentView === 'admin' && userRole === 'admin' ? (
         <AdminPanel
           onClose={() => setCurrentView('map')}
