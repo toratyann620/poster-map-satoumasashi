@@ -5,6 +5,50 @@ import type { VersionGate } from '../hooks/useAppVersionGate';
 
 const DISMISS_KEY = 'dismissedUpdateVersion';
 
+/** 「あとで」を選んでから、再度案内するまでの期間 */
+const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 1週間
+
+/**
+ * 起動時刻を基準にする。レンダーのたびに現在時刻を読むと結果が不安定になるうえ、
+ * 判定は「このセッションを開始した時点で1週間経っていたか」で十分なため。
+ */
+const SESSION_START = Date.now();
+
+export type Dismissal = { version: string; at: number };
+
+/**
+ * 案内を出すべきかを判定する。副作用を持たないので単体で検証できる
+ * （`npm run test:update-prompt`）。
+ *
+ * 出さないのは「同じバージョンについて、まだ日が浅いうちに閉じた」場合だけ。
+ * バージョンが上がっていれば出すし、閉じてから1週間たっていても出す。
+ */
+export const shouldShowUpdatePrompt = (
+    dismissal: Dismissal | null,
+    latestVersion: string,
+    now: number,
+): boolean => {
+    if (!latestVersion) return false;
+    if (!dismissal) return true;
+    if (dismissal.version !== latestVersion) return true;
+    return now - dismissal.at >= REMIND_AFTER_MS;
+};
+
+const readDismissal = (): Dismissal | null => {
+    try {
+        const raw = localStorage.getItem(DISMISS_KEY);
+        if (!raw) return null;
+        // 旧形式（バージョン文字列のみ）も読めるようにしておく
+        if (!raw.startsWith('{')) return { version: raw, at: SESSION_START };
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.version !== 'string') return null;
+        return { version: parsed.version, at: Number(parsed.at) || 0 };
+    } catch {
+        // プライベートモード等で localStorage が使えない場合は毎回表示する
+        return null;
+    }
+};
+
 /**
  * 「最新版ではない」ことを知らせるポップアップ。
  *
@@ -13,30 +57,27 @@ const DISMISS_KEY = 'dismissedUpdateVersion';
  * 一度閉じたバージョンは記憶し、同じ版について毎回出さない。
  * 起動のたびに同じ案内が出ると読まずに閉じる癖がつき、
  * 本当に必要なときに気づいてもらえなくなるため。
- * さらに新しい版が出れば、記憶は無効になって再び表示される。
+ *
+ * ただし記憶は永久ではない。閉じてから1週間たっても更新されていなければ、
+ * もう一度案内する。放置され続けると、古い版が残ったままになるため。
+ * さらに新しい版が出た場合も、記憶は無効になって再び表示される。
  */
 export const UpdatePrompt: React.FC<{ gate: VersionGate }> = ({ gate }) => {
-    // 「どのバージョンについて閉じたか」だけを持ち、表示可否はレンダー時に判定する。
+    // 「どのバージョンについて、いつ閉じたか」を持ち、表示可否はレンダー時に判定する。
     // 初期値の読み取りは初回マウント時の一度きり。
-    const [dismissedVersion, setDismissedVersion] = useState<string>(() => {
-        try {
-            return localStorage.getItem(DISMISS_KEY) ?? '';
-        } catch {
-            // プライベートモード等で localStorage が使えない場合は毎回表示する
-            return '';
-        }
-    });
+    const [dismissal, setDismissal] = useState<Dismissal | null>(readDismissal);
 
-    if (!gate.updateAvailable || !gate.latestVersion) return null;
-    if (dismissedVersion === gate.latestVersion) return null;
+    if (!gate.updateAvailable) return null;
+    if (!shouldShowUpdatePrompt(dismissal, gate.latestVersion, SESSION_START)) return null;
 
     const close = () => {
+        const next: Dismissal = { version: gate.latestVersion, at: Date.now() };
         try {
-            localStorage.setItem(DISMISS_KEY, gate.latestVersion);
+            localStorage.setItem(DISMISS_KEY, JSON.stringify(next));
         } catch {
             // 記憶できなくても閉じられれば支障はない
         }
-        setDismissedVersion(gate.latestVersion);
+        setDismissal(next);
     };
 
     return createPortal(
