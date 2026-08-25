@@ -11,10 +11,10 @@ if (hasKeystore) {
 }
 
 android {
-    namespace = "com.satoumasashi.postermap"
+    namespace = "app.satoumasashi.postermap"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.satoumasashi.postermap"
+        applicationId "app.satoumasashi.postermap"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

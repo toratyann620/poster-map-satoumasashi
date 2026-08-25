@@ -1,4 +1,4 @@
-package com.satoumasashi.postermap;
+package app.satoumasashi.postermap;
 
 import com.getcapacitor.BridgeActivity;
 

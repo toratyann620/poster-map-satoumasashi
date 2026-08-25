@@ -10,7 +10,7 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 | 項目 | 値 |
 |---|---|
 | アプリ名（端末表示） | ポスターマップ |
-| Bundle ID / パッケージ名 | `com.satoumasashi.postermap` |
+| Bundle ID / パッケージ名 | `app.satoumasashi.postermap` |
 | バージョン | 1.0.0（ビルド番号 1） |
 | Apple Team ID | `46346RA3CT`（Masashi Satou） |
 | 対応OS | iOS 15.0以上 / Android（Capacitor 8 の既定に準拠） |
@@ -163,7 +163,7 @@ Firebase Analytics は `src/lib/firebase.ts` で明示的に無効化済み）�
 
 ### ご対応いただくこと
 
-1. **App Store Connect でアプリを新規作成** — Bundle ID `com.satoumasashi.postermap`
+1. **App Store Connect でアプリを新規作成** — Bundle ID `app.satoumasashi.postermap`
 2. **Apple Distribution 証明書の作成** — Xcode の自動署名で作成可能（要 Admin 権限）
 3. **Google Play Console でアプリを新規作成** — 同じパッケージ名
 4. **Play App Signing の有効化と、アップロード鍵の作成**

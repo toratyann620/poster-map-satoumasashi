@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.satoumasashi.postermap',
+  appId: 'app.satoumasashi.postermap',
   appName: 'ポスターマップ',
   webDir: 'dist',
 
