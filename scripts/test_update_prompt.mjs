@@ -9,10 +9,10 @@ import { readFileSync } from 'node:fs';
 
 // TypeScript をそのまま読めないので、判定ロジックを同じ定義で再現し、
 // 本体と食い違っていないかをソースの突き合わせで担保する。
-const src = readFileSync('src/components/UpdatePrompt.tsx', 'utf8');
+const src = readFileSync('src/lib/updatePrompt.ts', 'utf8');
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
-if (!src.includes('const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;')) {
+if (!src.includes('export const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000;')) {
     console.error('❌ REMIND_AFTER_MS の定義が想定と異なります。テストを更新してください。');
     process.exit(1);
 }
