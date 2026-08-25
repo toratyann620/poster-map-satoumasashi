@@ -17,15 +17,31 @@ Phase 6 で App Store Connect / Google Play Console に入力・提出する内�
 | 配信形態 | TestFlight 内部テスト / Google Play 内部テスト（**一般公開はしない**） |
 | プライバシーポリシー | `https://poster-map-app.vercel.app/privacy`（公開済み） |
 
-### 署名の状態
+### 署名の状態（2026-08-25 更新）
 
 - **iOS**: `DEVELOPMENT_TEAM = 46346RA3CT` を設定済み。`ios/ExportOptions.plist` も用意済み。
-  現在あるのは **Apple Development** 証明書のみで、**Apple Distribution 証明書が未作成**。
-  Xcode の自動署名で作成できるが、Apple Developer アカウントで
-  Account Holder または Admin 権限が必要。
-- **Android**: `android/app/build.gradle` に署名設定を追加済み。
-  `android/keystore.properties` があればリリースビルドが署名され、無ければ未署名でビルドされる。
-  **鍵（.jks）は未作成**。作成手順は `android/keystore.properties.example` に記載。
+  **⛔ ブロック中**: Xcode にApple Developerアカウントが登録されておらず、署名済みアーカイブを作れない。
+  実行時のエラー: `No Accounts: Add a new account in Accounts settings.`
+  Xcode → Settings → Accounts から Apple ID を追加する必要がある（2要素認証のため本人操作が必須）。
+  追加後は Apple Distribution 証明書とプロファイルが自動生成される。
+
+- **Android**: ✅ **アップロード鍵を作成済み。署名済み AAB のビルドまで完了。**
+
+  | 項目 | 値 |
+  |---|---|
+  | 鍵ファイル | `android/poster-map-upload.jks`（Gitには含めない） |
+  | 資格情報 | `android/keystore.properties`（Gitには含めない） |
+  | 別名（alias） | `poster-map` |
+  | 有効期限 | 2054年1月10日 |
+  | SHA-1 | `65:DA:6E:4D:FD:0B:DD:8B:D5:EE:F0:48:D2:C3:1F:B3:EA:90:27:2E` |
+  | SHA-256 | `78:25:75:5E:11:F6:3A:33:E9:48:09:B2:6F:E1:55:CA:4D:AE:93:49:38:3B:6F:75:BF:1A:4B:8F:A2:67:D1:15` |
+
+  > ⚠️ **`poster-map-upload.jks` と `keystore.properties` は必ずバックアップすること。**
+  > Play App Signing を有効にしていれば、万一紛失してもアップロード鍵の再登録を
+  > Google に申請できる（配信用の署名鍵はGoogle側が保管するため、アプリの更新自体は継続できる）。
+  > 有効にしていない場合、紛失＝アプリを二度と更新できない。
+
+  **アップロード用ファイル**: `build/upload/postermap-1.0.0-build1.aab`（6.39MB、署名済み）
 
 ### ビルド確認済み
 
