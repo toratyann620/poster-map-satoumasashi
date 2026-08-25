@@ -104,6 +104,20 @@ export const Login: React.FC = () => {
                             アカウントは管理者が発行します。<br />
                             ログインできない場合は管理者にお問い合わせください。
                         </p>
+
+                        {/* ログイン前から参照できるようにしておく（ストア審査でも確認される）。
+                            リンク先は実ファイル名にする。ネイティブアプリではVercelのリライトが
+                            効かず、同梱された privacy.html を直接開く必要があるため。 */}
+                        <p className="text-center text-xs">
+                            <a
+                                href="/privacy.html"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-gray-400 dark:text-gray-500 underline underline-offset-2 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                            >
+                                プライバシーポリシー
+                            </a>
+                        </p>
                     </form>
                 </div>
             </div>
