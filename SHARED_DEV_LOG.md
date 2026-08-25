@@ -509,3 +509,18 @@
   * 掲示場所の所有者など**第三者の個人情報の扱い**と、その方からの開示・訂正・削除請求の窓口についても章を設けた。
   * ブランチ運用: プライバシーポリシーはグループ機能とは独立しているため、`main` へ cherry-pick して本番デプロイし、その後 `main` を作業ブランチへマージした（`vercel.json` が main に無く競合したため、将来のマージで再衝突しないよう同一内容で作成した）。
 * **次のステップ**: ユーザー側での (1) App Store Connect でのアプリ作成、(2) Apple Distribution 証明書の作成、(3) Play Console でのアプリ作成、(4) Play App Signing の有効化とアップロード鍵の作成、(5) 内部テスターの登録。揃い次第アーカイブとアップロードを行う。
+
+### 2026-08-25 (Claude Code) その37
+* **タスク**: Bundle ID の変更と、Phase 6（内部テスト配信）の実行
+* **内容**:
+  * **Bundle ID を `app.satoumasashi.postermap` に変更（コミット `e6dfff9`）**: ユーザー指定。当初 GCP のプロジェクト名に合わせた `satoumasashi-poster-map` の要望があったが、**Androidのパッケージ名はJavaの識別子でありハイフンが使えない**ため不可能であること、Firebase との紐付けは Web SDK 経由なので Bundle ID と GCP プロジェクト名に技術的な関係が無いことを説明し、逆ドメイン形式で確定した。iOS・Android 両方（Javaパッケージのディレクトリ移動を含む）を変更し、**IPA の `CFBundleIdentifier` と AAB 内の AndroidManifest を展開して**新IDのみになっていることを確認した。
+  * **Android の署名（コミット `8bc36b2`）**: アップロード鍵 `android/poster-map-upload.jks` を生成（alias: `poster-map`、2054年まで有効）。SHA-1 / SHA-256 の指紋を docs に記録。鍵と `keystore.properties` は `.gitignore` で除外しており、**このMacにしか存在しないためバックアップが必須**である旨をユーザーへ伝えた。Play App Signing は有効化済みとの回答を得ている。
+  * **⚠️ 配布物からデバッグ用ファイルを削除（コミット `a062e09`）**: IPA の中身を検証していて、`public/map-test.html`（2026年7月のCORS調査で作った検証ページ）に**Firebaseキーと Map ID が直書きされたまま**残っており、本番Webで公開（HTTP 200）され、アプリのバンドルにも同梱されていることが判明した。該当キーは既にFirebase専用APIへ制限済みのため影響は限定的だが削除し、IPA と AAB を再生成して両方から消えたことを確認した。
+  * **App Store Connect API キーの管理（コミット `a282d4a`）**: ユーザーがプロジェクト直下に置いた `AuthKey_767NSJKV27.p8` について、まず **Git に流出していないこと（未追跡・履歴にも無し）を確認**したうえで `~/.appstoreconnect/private_keys/` へ移動し、ディレクトリ700・ファイル600に設定。**ファイル名は変更していない**（Appleのツールは `AuthKey_<キーID>.p8` の形式で鍵を探すため、改名すると見つけられなくなる）。`.gitignore` に `*.p8` / `AuthKey_*` / `ios/appstore.env` を追加した。
+  * **✅ iOS の初回アップロード完了（コミット `a395766`）**:
+    * Xcodeへのアカウント登録が済んだ結果、自動署名で **Apple Distribution 証明書（Cloud Managed）とApp Store用プロファイルが生成**され、アーカイブ・IPA書き出しに成功。`codesign` と `embedded.mobileprovision` を検査し、`Apple Distribution: Masashi Satou (46346RA3CT)` による署名・App Store配布方式（端末限定でない）であることを確認した。
+    * `altool --validate-app` で **VERIFY SUCCEEDED（エラーなし）**、`--upload-app` で **UPLOAD SUCCEEDED**。
+    * App Store Connect API を直接叩いて確認したところ、**ビルド1の処理は完了（processingState: VALID）**。有効期限は 2026-11-23（TestFlightの90日制限）。
+    * App Store Connect 上のアプリ名は「ポスター管理アプリ｜神奈川16区」（App ID `6804988572`）。
+  * **リリース自動化**: `scripts/release_ios.sh`（ビルド→同期→アーカイブ→書き出し→検証→アップロードを1コマンド）と `scripts/release_android.sh`（署名済みAAB生成）を作成した。**ビルド番号は同じ値で2回アップロードできない**ため、2回目以降は `CURRENT_PROJECT_VERSION` / `versionCode` を上げる必要がある旨をスクリプト内とdocsに明記した。
+* **残作業**: (1) Play Console への AAB アップロード（`build/upload/postermap-1.0.0-build1.aab`）、(2) 内部テスターの登録（iOS は App Store Connect のユーザーとして、Android はメールアドレス）、(3) 署名鍵のバックアップ、(4) 実機でのカメラ動作確認（シミュレータでは不可）。その後 Phase 7（データ移行・切替）。
