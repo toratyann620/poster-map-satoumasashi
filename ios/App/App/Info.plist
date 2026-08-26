@@ -24,6 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>現在地を地図に表示し、近くのポスター掲示場所を確認したり、目的地までの経路を案内するために使用します。</string>
 	<key>NSCameraUsageDescription</key>
