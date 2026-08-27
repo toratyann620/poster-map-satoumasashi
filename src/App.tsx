@@ -5,6 +5,7 @@ import { SearchBar } from './components/SearchBar';
 import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { useSession } from './hooks/useSession';
+import { scopedPinTypes } from './lib/groups';
 import { useAppVersionGate } from './hooks/useAppVersionGate';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { AdminPanel } from './components/AdminPanel';
@@ -58,6 +59,15 @@ function App() {
     () => localStorage.getItem('showRemovedPins') === 'true'
   );
   const [isMenuExpanded, setIsMenuExpanded] = useState(false);
+
+  // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
+  // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
+  // 「入力したのに保存できない」状態になるため。
+  // 地図のマーカー色には全種別のリストを使う（色の対応表として参照するだけのため）。
+  const selectablePinTypes = useMemo(
+    () => scopedPinTypes(session.group, pinTypes),
+    [session.group, pinTypes],
+  );
 
   // 全ポスターから使用されているユニークなタグ一覧を生成（早期リターン前に宣言する必要あり）
   const allTags = useMemo(() => {
@@ -498,7 +508,7 @@ function App() {
           {/* Floating UI Elements（移動モード・ナビゲーション中は非表示） */}
           {!isRelocating && !navigationTarget && (
             <>
-              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
+              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} />
 
               {/* Floating Buttons: Expandable Menu with Gear Icon */}
               <div className="absolute bottom-safe-6 left-4 z-10 flex flex-col gap-3 items-center">
@@ -583,7 +593,7 @@ function App() {
             poster={activePoster}
             initialViewMode={initialViewMode}
             allTags={allTags}
-            pinTypes={pinTypes}
+            pinTypes={selectablePinTypes}
             onSave={handleSave}
             onDelete={handleDelete}
             onRemove={handleRemove}

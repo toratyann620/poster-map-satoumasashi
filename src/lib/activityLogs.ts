@@ -1,5 +1,6 @@
 import { where, type QueryConstraint, type DocumentData, type QueryDocumentSnapshot } from 'firebase/firestore';
 import type { ActivityLog, Group } from '../types';
+import { allowedTypes } from './groups';
 
 /**
  * 変更履歴の共通処理。
@@ -42,6 +43,6 @@ export const logScopeConstraints = (group: Group | null): QueryConstraint[] => {
     if (!group || group.allowAll) return [];
     return [
         where('city', 'in', group.cities),
-        where('posterType', 'in', group.types),
+        where('posterType', 'in', allowedTypes(group)),
     ];
 };

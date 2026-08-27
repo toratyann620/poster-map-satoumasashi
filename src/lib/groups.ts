@@ -1,5 +1,5 @@
 import { where, type QueryConstraint } from 'firebase/firestore';
-import type { Group, PosterPin } from '../types';
+import { ALWAYS_ALLOWED_TYPES, type Group, type PosterPin } from '../types';
 
 /**
  * グループ権限のクライアント側ロジック。
@@ -9,11 +9,28 @@ import type { Group, PosterPin } from '../types';
  * ルールの条件と1対1で対応していなければならない。片方だけを変更しないこと。
  */
 
+/** そのグループが扱える種別の一覧（グループ定義 ＋ 常に許可される種別） */
+export const allowedTypes = (group: Group | null): string[] =>
+    group ? [...new Set([...group.types, ...ALWAYS_ALLOWED_TYPES])] : [];
+
 /** ポスター1件がグループの権限範囲に入るか */
 export const isPosterInScope = (group: Group | null, poster: Pick<PosterPin, 'city' | 'type'>): boolean => {
     if (!group) return false;
     if (group.allowAll) return true;
-    return group.cities.includes(poster.city ?? '') && group.types.includes(poster.type ?? '');
+    return group.cities.includes(poster.city ?? '') && allowedTypes(group).includes(poster.type ?? '');
+};
+
+/**
+ * 種類の選択肢を、そのグループが扱えるものだけに絞る。
+ *
+ * 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
+ * 「入力したのに保存できない」状態になるため、入口で絞る。
+ */
+export const scopedPinTypes = <T extends { name: string }>(group: Group | null, pinTypes: T[]): T[] => {
+    if (!group) return [];
+    if (group.allowAll) return pinTypes;
+    const allowed = allowedTypes(group);
+    return pinTypes.filter((t) => allowed.includes(t.name));
 };
 
 /**
@@ -29,7 +46,7 @@ export const scopeConstraints = (group: Group | null): QueryConstraint[] => {
     if (group.allowAll) return [];
     return [
         where('city', 'in', group.cities),
-        where('type', 'in', group.types),
+        where('type', 'in', allowedTypes(group)),
     ];
 };
 
@@ -43,7 +60,7 @@ export const validateGroupScope = (group: Pick<Group, 'allowAll' | 'cities' | 't
     if (group.allowAll) return null;
     if (group.cities.length === 0) return '市区町村を1つ以上指定してください。';
     if (group.types.length === 0) return 'ポスター種別を1つ以上指定してください。';
-    const combinations = group.cities.length * group.types.length;
+    const combinations = group.cities.length * allowedTypes(group as Group).length;
     if (combinations > MAX_DISJUNCTIONS) {
         return `市区町村×種別の組み合わせが${combinations}通りあり、Firestoreの上限（${MAX_DISJUNCTIONS}）を超えます。条件を絞ってください。`;
     }

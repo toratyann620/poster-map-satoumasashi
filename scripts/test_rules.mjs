@@ -55,6 +55,8 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'posters_v2/atsugi_goto'), poster({ city: '厚木市', type: 'ごとう祐一' }));
   await setDoc(doc(db, 'posters_v2/ebina_sato'), poster({ city: '海老名市', type: '佐藤まさし' }));
   await setDoc(doc(db, 'posters_v2/nocity_sato'), poster({ city: '', type: '佐藤まさし' }));
+  await setDoc(doc(db, 'posters_v2/atsugi_other'), poster({ city: '厚木市', type: 'その他' }));
+  await setDoc(doc(db, 'posters_v2/ebina_other'), poster({ city: '海老名市', type: 'その他' }));
 
   const log = (over) => ({ action: '更新', posterId: 'x', posterAddress: 'a', changedBy: 'seed', changedAt: 1, ...over });
   await setDoc(doc(db, 'activityLogs_v2/log_atsugi'), log({ city: '厚木市', posterType: '佐藤まさし' }));
@@ -164,6 +166,30 @@ await t('🔒 管轄外の新規ポスターは追加できない', () =>
 await t('🔒 city を省いた新規ポスターは追加できない', () =>
   assertFails(addDoc(collection(as('nanbaUser'), P),
     { type: '佐藤まさし', lat: 1, lng: 1, status: [], address: 'x', quantity: 1 })));
+
+// ═══════════════════════════════════════════════════════════
+section('「その他」の種別（どのグループでも扱える）');
+
+await t('自分の市区町村の「その他」は読める', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), `${P}/atsugi_other`))));
+
+await t('🔒 他の市区町村の「その他」は読めない（市区町村の条件は効く）', () =>
+  assertFails(getDoc(doc(as('nanbaUser'), `${P}/ebina_other`))));
+
+await t('自分の市区町村の「その他」を更新できる', () =>
+  assertSucceeds(updateDoc(doc(as('nanbaUser'), `${P}/atsugi_other`), { memo: '更新' })));
+
+await t('自分の市区町村に「その他」を新規追加できる', () =>
+  assertSucceeds(addDoc(collection(as('nanbaUser'), P),
+    { city: '厚木市', type: 'その他', lat: 1, lng: 1, status: [], address: 'x', quantity: 1 })));
+
+await t('🔒 他の市区町村に「その他」は追加できない', () =>
+  assertFails(addDoc(collection(as('nanbaUser'), P),
+    { city: '海老名市', type: 'その他', lat: 1, lng: 1, status: [], address: 'x', quantity: 1 })));
+
+await t('「その他」を含めたクエリが通る', () =>
+  assertSucceeds(getDocs(query(collection(as('nanbaUser'), P),
+    where('city', 'in', ['厚木市']), where('type', 'in', ['佐藤まさし', '難波県議', 'その他'])))));
 
 // ═══════════════════════════════════════════════════════════
 section('変更履歴 (activityLogs_v2)');
