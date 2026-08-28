@@ -1,7 +1,11 @@
 /**
  * Google Play の内部テストトラックへ AAB をアップロードする。
  *
- *   node scripts/upload_play.mjs [AABのパス]
+ *   node scripts/upload_play.mjs [AABのパス] [トラック]
+ *
+ * トラックは internal（内部テスト・既定）/ alpha（クローズドテスト）/
+ * beta（オープンテスト）/ production（製品版）。
+ * internal は審査なしで即時に配信されるが、それ以外は Google の審査を通る。
  *
  * 前提:
  *   - ~/.playconsole/play-publisher.json（サービスアカウントの鍵）
@@ -17,7 +21,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const PACKAGE = 'app.satoumasashi.postermap';
-const TRACK = 'internal'; // 内部テスト
+const TRACK = process.argv[3] ?? 'internal'; // internal / alpha / beta / production
+// completed = 即時反映 / draft = 下書き（Play Console から公開操作を行う）。
+// 一度も公開していないアプリでは、内部テスト以外は draft でしか作成できない。
+const STATUS = process.env.RELEASE_STATUS ?? (TRACK === 'internal' ? 'completed' : 'draft');
+const TRACK_LABEL = { internal: '内部テスト', alpha: 'クローズドテスト', beta: 'オープンテスト', production: '製品版' }[TRACK] ?? TRACK;
 const KEY_PATH = path.join(os.homedir(), '.playconsole', 'play-publisher.json');
 const API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
 const UPLOAD_API = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3';
@@ -112,7 +120,7 @@ try {
     console.log(`  SHA-256: ${bundle.sha256 ?? '-'}`);
 
     // ── 3. 内部テストトラックへ割り当て ──
-    console.log(`\n── ${TRACK} トラックへ割り当て ──`);
+    console.log(`\n── ${TRACK_LABEL}（${TRACK}）トラックへ割り当て ──`);
     const track = await call(`${API}/applications/${PACKAGE}/edits/${edit.id}/tracks/${TRACK}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -120,23 +128,33 @@ try {
             track: TRACK,
             releases: [{
                 versionCodes: [String(bundle.versionCode)],
-                status: 'completed',
+                status: STATUS,
                 releaseNotes: [{
                     language: 'ja-JP',
-                    text: '初回リリース。ポスター掲示場所の地図表示・記録・経路案内に対応しています。',
+                    text: process.env.RELEASE_NOTES
+                        ?? '初回リリース。ポスター掲示場所の地図表示・記録・経路案内に対応しています。',
                 }],
             }],
         }),
     });
     console.log(`  リリース状態: ${track.releases?.[0]?.status}`);
+    if (STATUS === 'draft') {
+        console.log('  （下書きとして作成しました。公開するには Play Console での操作が必要です）');
+    }
 
     // ── 4. コミット（ここで初めて反映される）──
     console.log('\n── 変更を確定 ──');
     const committed = await call(`${API}/applications/${PACKAGE}/edits/${edit.id}:commit`, { method: 'POST' });
     console.log(`  確定: ${committed.id}`);
 
-    console.log('\n✅ 内部テストトラックへの反映が完了しました。');
-    console.log('   Play Console →「テスト」→「内部テスト」で確認できます。');
+    console.log(`\n✅ ${TRACK_LABEL}トラックへの反映が完了しました。`);
+    console.log(`   Play Console →「テスト」→「${TRACK_LABEL}」で確認できます。`);
+    if (STATUS === 'draft') {
+        console.log(`   ⚠️ まだ下書きです。Play Console →「テスト」→「${TRACK_LABEL}」を開き、`);
+        console.log('      内容を確認して「公開を開始」（審査へ送信）してください。');
+    } else if (TRACK !== 'internal') {
+        console.log('   ⚠️ 内部テスト以外は Google の審査を通ります。公開まで時間がかかります。');
+    }
 } catch (e) {
     // 失敗したら編集セッションを破棄する（中途半端な状態を残さないため）
     console.error(`\n⛔ 失敗しました: ${e.message}`);
