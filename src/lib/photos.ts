@@ -27,26 +27,31 @@ const toFile = async (webPath: string | undefined, index = 0): Promise<File | nu
     }
 };
 
-/** 権限を確認・要求する。拒否されている場合は false。 */
-export const ensurePhotoPermission = async (kind: 'camera' | 'photos'): Promise<boolean> => {
+/**
+ * カメラの利用許可を確認・要求する。拒否されている場合は false。
+ *
+ * 写真の「選択」については権限を要求しない。プラグインの pickImages は
+ * OSの写真選択UI（Android の Photo Picker / iOS の PHPicker）を開くだけで、
+ * ユーザーが選んだ画像しかアプリに渡らないため、ライブラリ全体への
+ * アクセス権は不要なため。
+ */
+export const ensureCameraPermission = async (): Promise<boolean> => {
     if (!isNativePhotos()) return true;
     try {
         const status = await Camera.checkPermissions();
-        const current = kind === 'camera' ? status.camera : status.photos;
-        if (current === 'granted' || current === 'limited') return true;
-        if (current === 'denied') return false;
-        const asked = await Camera.requestPermissions({ permissions: [kind] });
-        const next = kind === 'camera' ? asked.camera : asked.photos;
-        return next === 'granted' || next === 'limited';
+        if (status.camera === 'granted' || status.camera === 'limited') return true;
+        if (status.camera === 'denied') return false;
+        const asked = await Camera.requestPermissions({ permissions: ['camera'] });
+        return asked.camera === 'granted' || asked.camera === 'limited';
     } catch (e) {
-        console.warn('カメラ／写真の権限確認に失敗しました:', e);
+        console.warn('カメラの権限確認に失敗しました:', e);
         return false;
     }
 };
 
 /** その場で1枚撮影する。キャンセル時は null。 */
 export const takePhoto = async (): Promise<File | null> => {
-    if (!(await ensurePhotoPermission('camera'))) {
+    if (!(await ensureCameraPermission())) {
         alert('カメラを利用できません。\n端末の設定でこのアプリにカメラの利用を許可してください。');
         return null;
     }
@@ -64,12 +69,12 @@ export const takePhoto = async (): Promise<File | null> => {
     }
 };
 
-/** 写真ライブラリから複数選ぶ。キャンセル時は空配列。 */
+/**
+ * 写真から複数選ぶ。キャンセル時は空配列。
+ *
+ * OSの写真選択UIを開くだけなので、事前の権限要求は行わない。
+ */
 export const pickPhotos = async (limit = 10): Promise<File[]> => {
-    if (!(await ensurePhotoPermission('photos'))) {
-        alert('写真を利用できません。\n端末の設定でこのアプリに写真へのアクセスを許可してください。');
-        return [];
-    }
     try {
         const result = await Camera.pickImages({ quality: 85, limit });
         const files = await Promise.all((result.photos ?? []).map((p, i) => toFile(p.webPath, i)));

@@ -21,7 +21,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const PACKAGE = 'app.satoumasashi.postermap';
-const TRACK = process.argv[3] ?? 'internal'; // internal / alpha / beta / production
+// カンマ区切りで複数トラックへ同時に割り当てられる（AABのアップロードは1回だけ行う）
+const TRACKS = (process.argv[3] ?? 'internal').split(',').map((t) => t.trim()).filter(Boolean);
+const TRACK = TRACKS[0];
 // completed = 即時反映 / draft = 下書き（Play Console から公開操作を行う）。
 // 一度も公開していないアプリでは、内部テスト以外は draft でしか作成できない。
 const STATUS = process.env.RELEASE_STATUS ?? (TRACK === 'internal' ? 'completed' : 'draft');
@@ -119,27 +121,32 @@ try {
     console.log(`  versionCode: ${bundle.versionCode}`);
     console.log(`  SHA-256: ${bundle.sha256 ?? '-'}`);
 
-    // ── 3. 内部テストトラックへ割り当て ──
-    console.log(`\n── ${TRACK_LABEL}（${TRACK}）トラックへ割り当て ──`);
-    const track = await call(`${API}/applications/${PACKAGE}/edits/${edit.id}/tracks/${TRACK}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            track: TRACK,
-            releases: [{
-                versionCodes: [String(bundle.versionCode)],
-                status: STATUS,
-                releaseNotes: [{
-                    language: 'ja-JP',
-                    text: process.env.RELEASE_NOTES
-                        ?? '初回リリース。ポスター掲示場所の地図表示・記録・経路案内に対応しています。',
+    // ── 3. 各トラックへ割り当て ──
+    const LABELS = { internal: '内部テスト', alpha: 'クローズドテスト', beta: 'オープンテスト', production: '製品版' };
+    for (const tr of TRACKS) {
+        // 内部テストは即時反映できる。それ以外は、一度も公開していないアプリでは
+        // 下書きしか作れないため draft にする。
+        const st = process.env.RELEASE_STATUS ?? (tr === 'internal' ? 'completed' : 'draft');
+        const label = LABELS[tr] ?? tr;
+        console.log(`\n── ${label}（${tr}）トラックへ割り当て ──`);
+        const track = await call(`${API}/applications/${PACKAGE}/edits/${edit.id}/tracks/${tr}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                track: tr,
+                releases: [{
+                    versionCodes: [String(bundle.versionCode)],
+                    status: st,
+                    releaseNotes: [{
+                        language: 'ja-JP',
+                        text: process.env.RELEASE_NOTES
+                            ?? '初回リリース。ポスター掲示場所の地図表示・記録・経路案内に対応しています。',
+                    }],
                 }],
-            }],
-        }),
-    });
-    console.log(`  リリース状態: ${track.releases?.[0]?.status}`);
-    if (STATUS === 'draft') {
-        console.log('  （下書きとして作成しました。公開するには Play Console での操作が必要です）');
+            }),
+        });
+        console.log(`  リリース状態: ${track.releases?.[0]?.status}`);
+        if (st === 'draft') console.log(`  （下書きです。Play Console の「${label}」から公開操作が必要です）`);
     }
 
     // ── 4. コミット（ここで初めて反映される）──
@@ -147,8 +154,7 @@ try {
     const committed = await call(`${API}/applications/${PACKAGE}/edits/${edit.id}:commit`, { method: 'POST' });
     console.log(`  確定: ${committed.id}`);
 
-    console.log(`\n✅ ${TRACK_LABEL}トラックへの反映が完了しました。`);
-    console.log(`   Play Console →「テスト」→「${TRACK_LABEL}」で確認できます。`);
+    console.log(`\n✅ 反映が完了しました（${TRACKS.join(', ')}）。`);
     if (STATUS === 'draft') {
         console.log(`   ⚠️ まだ下書きです。Play Console →「テスト」→「${TRACK_LABEL}」を開き、`);
         console.log('      内容を確認して「公開を開始」（審査へ送信）してください。');
