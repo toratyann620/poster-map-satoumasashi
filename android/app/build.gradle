@@ -42,8 +42,21 @@ android {
             if (hasKeystore) {
                 signingConfig signingConfigs.release
             }
+
+            // 難読化（R8）は有効にしていない。
+            // Capacitor はプラグインのクラスとメソッドをリフレクションで探すが、
+            // consumer ProGuard ルールを同梱していないため、有効にすると
+            // プラグインの呼び出しが壊れる。自前でルールを書いて検証する必要がある。
+            // 現状 6.4MB と小さく、削減効果より不具合の危険が上回るため見送る。
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            // Play Console の「デバッグシンボルがアップロードされていません」警告について。
+            // AABに含まれる .so は CameraX（androidx.camera）由来で、自前ビルドではない。
+            // Google が配布する時点でシンボルが削除済みのため、
+            // ndk.debugSymbolLevel を設定しても取り出せるシンボルが無く、警告は解消しない
+            // （実際に SYMBOL_TABLE を設定してビルドし、AABに何も追加されないことを確認済み）。
+            // 対処のしようがない警告なので、そのままにしている。
         }
     }
 }
