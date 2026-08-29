@@ -291,6 +291,35 @@ await t('🔒 この例外を使って groupId は書き換えられない', () 
   assertFails(updateDoc(doc(as('nanbaUser'), 'users/nanbaUser'), { groupId: 'admin' })));
 
 // ═══════════════════════════════════════════════════════════
+section('プッシュ通知のトークン (pushTokens)');
+
+const pushDoc = (uid) => ({ uid, token: `tok_${uid}`, platform: 'ios', updatedAt: 1 });
+
+await t('自分のトークンを登録できる', () =>
+  assertSucceeds(setDoc(doc(as('nanbaUser'), 'pushTokens/tok_nanbaUser'), pushDoc('nanbaUser'))));
+
+await t('同じ端末から登録し直せる（上書き）', () =>
+  assertSucceeds(setDoc(doc(as('nanbaUser'), 'pushTokens/tok_nanbaUser'), pushDoc('nanbaUser'))));
+
+await t('自分のトークンを削除できる（ログアウト時）', async () => {
+  await assertSucceeds(deleteDoc(doc(as('nanbaUser'), 'pushTokens/tok_nanbaUser')));
+  await setDoc(doc(as('nanbaUser'), 'pushTokens/tok_nanbaUser'), pushDoc('nanbaUser'));
+});
+
+await t('🔒 他人になりすましてトークンを登録できない', () =>
+  assertFails(setDoc(doc(as('nanbaUser'), 'pushTokens/tok_evil'), pushDoc('satoGeneral'))));
+
+await t('🔒 他人のトークンを削除できない', () =>
+  assertFails(deleteDoc(doc(as('satoGeneral'), 'pushTokens/tok_nanbaUser'))));
+
+await t('🔒 管理者でもトークンを読めない（誰がどの端末かを見せない）', () =>
+  assertFails(getDoc(doc(as('super1'), 'pushTokens/tok_nanbaUser'))));
+
+await t('🔒 users ドキュメントを持たないアカウントは登録できない', () =>
+  assertFails(setDoc(doc(as('strangerWithAuthOnly'), 'pushTokens/tok_stranger'),
+    pushDoc('strangerWithAuthOnly'))));
+
+// ═══════════════════════════════════════════════════════════
 section('現行の本番コレクション（動作を変えていないこと）');
 
 await t('承認済みメンバーは現行 posters を読み書きできる', async () => {

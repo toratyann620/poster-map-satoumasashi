@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- プッシュ通知の受信に必要。development にしておくと、TestFlight や
+	     App Store 配布時には Xcode が自動で production に置き換える。 -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

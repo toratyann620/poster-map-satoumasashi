@@ -16,6 +16,7 @@ import { useAnnouncements } from './hooks/useAnnouncements';
 import { Tutorial } from './components/Tutorial';
 import { ChangePassword } from './components/ChangePassword';
 import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
+import { registerForPush, unregisterFromPush } from './lib/push';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
@@ -70,6 +71,14 @@ function App() {
   const [showTutorial, setShowTutorial] = useState(() => !hasSeenTutorial());
 
   const announcements = useAnnouncements();
+
+  // プッシュ通知の許可は、ログインが済んで実際に使える状態になってから求める。
+  // 起動直後に尋ねると何のアプリか分からないまま拒否されやすく、
+  // iOS は一度拒否されると設定アプリからしか戻せない。
+  useEffect(() => {
+    if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
+    void registerForPush(session.uid);
+  }, [session.ready, session.uid, session.problem, session.mustChangePassword]);
 
   // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
   // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
@@ -448,12 +457,14 @@ function App() {
     return <ChangePassword uid={session.uid} />;
   }
 
-  const handleLogout = () => {
-    if (window.confirm('ログアウトしますか？')) {
-      // 次に別の人がこの端末でログインしたら、また案内から始める
-      forgetTutorial();
-      signOut(auth);
-    }
+  const handleLogout = async () => {
+    if (!window.confirm('ログアウトしますか？')) return;
+    // トークンの削除はログイン中にしかできない（ルールで本人確認しているため）。
+    // 外しておかないと、この端末を次に使う人に前の人あての通知が届く。
+    await unregisterFromPush();
+    // 次に別の人がこの端末でログインしたら、また案内から始める
+    forgetTutorial();
+    await signOut(auth);
   };
 
   const handleCancelTempPin = () => {

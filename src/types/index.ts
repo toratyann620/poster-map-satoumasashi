@@ -101,6 +101,8 @@ export interface Announcement {
     body: string;
     /** true なら次回アプリを開いたときにモーダルで一度だけ表示する */
     isPopup: boolean;
+    /** 配信時にプッシュ通知も送るか。送信は Cloud Functions が行う */
+    sendPush?: boolean;
     publishedAt: number;
     createdBy: string;
 }

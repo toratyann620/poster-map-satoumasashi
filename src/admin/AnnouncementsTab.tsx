@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Megaphone, Plus, Loader2, Trash2, BellRing } from 'lucide-react';
+import { Megaphone, Plus, Loader2, Trash2, BellRing, Smartphone } from 'lucide-react';
 import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { COL } from '../lib/collections';
@@ -28,6 +28,7 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [isPopup, setIsPopup] = useState(false);
+    const [sendPush, setSendPush] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -46,12 +47,15 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
                 title: title.trim(),
                 body: body.trim(),
                 isPopup,
+                // 送信は Cloud Functions が受け持つ。作成後に値を変えても送り直されない
+                sendPush,
                 publishedAt: Date.now(),
                 createdBy: authorName,
             });
             setTitle('');
             setBody('');
             setIsPopup(false);
+            setSendPush(false);
         } catch (e) {
             setError((e as Error)?.message ?? '配信に失敗しました。');
         } finally {
@@ -120,6 +124,20 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
                     </span>
                 </label>
 
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={sendPush} onChange={e => setSendPush(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded accent-indigo-600" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="inline-flex items-center gap-1 font-medium">
+                            <Smartphone className="w-3.5 h-3.5 text-indigo-500" />
+                            スマートフォンにプッシュ通知を送る
+                        </span>
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            アプリを入れている全員の端末に届きます。配信すると取り消せません。
+                        </span>
+                    </span>
+                </label>
+
                 <button
                     type="button" onClick={handlePublish} disabled={saving}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-colors"
@@ -146,6 +164,11 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
                                         {a.isPopup && (
                                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 shrink-0">
                                                 <BellRing className="w-2.5 h-2.5" />ポップアップ
+                                            </span>
+                                        )}
+                                        {a.sendPush && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 shrink-0">
+                                                <Smartphone className="w-2.5 h-2.5" />プッシュ送信
                                             </span>
                                         )}
                                     </div>
