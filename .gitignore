@@ -24,3 +24,23 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Android のリリース署名（鍵と資格情報はリポジトリに含めない）
+android/keystore.properties
+*.jks
+*.keystore
+
+# Google Play アップロード用のサービスアカウント鍵
+play-publisher*.json
+
+# App Store Connect API の識別子
+ios/appstore.env
+
+# App Store Connect API の秘密鍵（万一プロジェクト内に置かれても追跡しない）
+*.p8
+AuthKey_*
+
+# iOS のビルド成果物
+build/
+*.xcarchive
+*.ipa

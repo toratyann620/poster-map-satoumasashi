@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
     TrendingUp, TrendingDown, MapPin, CheckCircle, Activity, Clock, AlertTriangle,
     PlusCircle, PackageOpen, RefreshCcw, Wrench,
 } from 'lucide-react';
 import type { PosterPin } from '../types';
-import { POSTER_PERSONS, POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
+import { POSTER_PERSONS, PERSON_COLORS } from '../types';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
 import { computePosterMetrics } from '../lib/posterMetrics';
@@ -41,8 +41,32 @@ interface DailyData {
     deleted: number;
 }
 
+/**
+ * 要素の実際の横幅を測る。
+ *
+ * グラフは固定ピクセル幅（560px）で描いていたため、集計期間が短いと
+ * 右側が空いたままになっていた。SVGに viewBox を持たせて拡大する方法だと
+ * 文字まで引き伸ばされるので、描画領域の実寸を測ってその幅で組み立てる。
+ */
+const useElementWidth = <T extends HTMLElement>(fallback = 560) => {
+    const ref = useRef<T>(null);
+    const [width, setWidth] = useState(fallback);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(entries => {
+            const w = entries[0]?.contentRect.width;
+            if (w && w > 0) setWidth(Math.floor(w));
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    return [ref, width] as const;
+};
+
 const ActivityBarChart: React.FC<{ data: DailyData[] }> = ({ data }) => {
     const [tooltip, setTooltip] = useState<{ x: number; y: number; item: DailyData } | null>(null);
+    const [wrapRef, wrapW] = useElementWidth<HTMLDivElement>();
 
     if (data.length === 0) {
         return (
@@ -54,17 +78,18 @@ const ActivityBarChart: React.FC<{ data: DailyData[] }> = ({ data }) => {
 
     const maxTotal = Math.max(...data.map(d => d.added + d.updated + d.deleted), 1);
     const chartH = 160;
-    const barW = Math.max(6, Math.min(28, Math.floor(560 / data.length) - 3));
-    const gap = 3;
+    // 描画領域の実寸に合わせて棒の幅と間隔を決め、期間が短くても横幅一杯に広げる
+    const gap = Math.max(2, Math.min(8, Math.floor(wrapW / (data.length * 6)) || 2));
+    const barW = Math.max(4, Math.floor((wrapW - 24) / data.length) - gap);
     const totalW = data.length * (barW + gap);
-    const labelInterval = Math.max(1, Math.ceil(data.length / 8));
+    const labelInterval = Math.max(1, Math.ceil(data.length / Math.max(4, Math.floor(wrapW / 70))));
 
     return (
-        <div className="relative overflow-x-auto" onMouseLeave={() => setTooltip(null)}>
+        <div ref={wrapRef} className="relative w-full" onMouseLeave={() => setTooltip(null)}>
             <svg
-                width={Math.max(totalW + 24, 560)}
+                width={totalW + 24}
                 height={chartH + 32}
-                className="min-w-full"
+                className="w-full"
             >
                 {/* グリッド線 */}
                 {[0.25, 0.5, 0.75, 1.0].map(ratio => (
@@ -166,11 +191,13 @@ interface TypeTrendLineChartProps {
 const TypeTrendLineChart: React.FC<TypeTrendLineChartProps> = ({ data, types }) => {
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+    const [wrapRef, wrapW] = useElementWidth<HTMLDivElement>();
 
     if (data.length === 0) return null;
 
     const chartH = 180;
-    const chartW = 560;
+    // 描画領域の実寸に合わせる（期間が短くても横幅一杯に伸ばす）
+    const chartW = wrapW;
     const padLeft = 28;
     const padRight = 10;
     const padTop = 12;
@@ -179,7 +206,7 @@ const TypeTrendLineChart: React.FC<TypeTrendLineChartProps> = ({ data, types }) 
     const innerH = chartH - padTop - padBottom;
 
     const maxVal = Math.max(...data.flatMap(d => types.map(t => Number(d[t] || 0))), 1);
-    const labelInterval = Math.max(1, Math.ceil(data.length / 8));
+    const labelInterval = Math.max(1, Math.ceil(data.length / Math.max(4, Math.floor(chartW / 70))));
 
     // (x, y) 座標を計算
     const getX = (i: number) => padLeft + (i / Math.max(data.length - 1, 1)) * innerW;
@@ -187,13 +214,14 @@ const TypeTrendLineChart: React.FC<TypeTrendLineChartProps> = ({ data, types }) 
 
     return (
         <div
-            className="relative overflow-x-auto"
+            ref={wrapRef}
+            className="relative w-full"
             onMouseLeave={() => { setHoveredIdx(null); setMousePos(null); }}
         >
             <svg
-                width={Math.max(chartW, 560)}
+                width={chartW}
                 height={chartH}
-                className="min-w-full"
+                className="w-full"
                 onMouseMove={(e) => {
                     const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
                     const relX = e.clientX - rect.left - padLeft;
@@ -320,19 +348,15 @@ const getCityCategory = (address: string): '厚木市' | '海老名市' | '伊�
 export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = [] }) => {
     const [dateFromStr, setDateFromStr] = useState(toInputDate(getDefault30DaysAgo()));
     const [dateToStr, setDateToStr] = useState(toInputDate(new Date()));
-    const [statusFilter, setStatusFilter] = useState<string[]>([...POSTER_STATUS_OPTIONS]);
+    // 空配列 = すべての種類を対象にする
+    const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
     const [selectedCity, setSelectedCity] = useState<CityCategory>('全体');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
     const { logs, loading } = useDashboardData(dateFromStr, dateToStr);
 
-    // 新規／撤去／張替え解除／修理解除の4指標（全履歴から再構築するため activityLogs 全件を取得）
+    // 4指標の再構築に使う全履歴（絞り込みは後段で行う）
     const { logsAsc: allLogsAsc } = useAllActivityLogs();
-    const posterMetrics = useMemo(() => {
-        const rangeStart = new Date(dateFromStr + 'T00:00:00').getTime();
-        const rangeEnd = new Date(dateToStr + 'T23:59:59').getTime() + 1;
-        return computePosterMetrics(posters, allLogsAsc, rangeStart, rangeEnd);
-    }, [posters, allLogsAsc, dateFromStr, dateToStr]);
 
     // 全ポスターから使用されているユニークなタグ一覧を生成
     const allTags = useMemo(() => {
@@ -341,56 +365,96 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         return Array.from(tagSet).sort();
     }, [posters]);
 
-    // タグで絞り込まれたポスターのベース
-    const taggedBasePosters = useMemo(() => {
-        if (selectedTags.length === 0) return posters;
-        return posters.filter(p => {
-            const pTags = p.tags || [];
-            return selectedTags.some(t => pTags.includes(t));
-        });
-    }, [posters, selectedTags]);
+    // 撤去済みのポスターは枚数・新規数の集計から除く。
+    // 「撤去した」という事実は変更履歴側（撤去カード）で数えており、
+    // 現在の掲示状況を表す数値に含めると実態より多く見えるため。
+    const activePosters = useMemo(() => posters.filter(p => !p.removed), [posters]);
 
-    // ──── 市区町村別フィルタリング ────
-    const filteredPostersByCity = useMemo(() => {
-        if (selectedCity === '全体') return taggedBasePosters;
-        return taggedBasePosters.filter(p => getCityCategory(p.address) === selectedCity);
-    }, [taggedBasePosters, selectedCity]);
+    // 画面に出す種類の選択肢は、実際に存在するポスターから作る
+    const availableTypes = useMemo(() => {
+        const set = new Set<string>();
+        posters.forEach(p => { if (p.type) set.add(p.type); });
+        const ordered = POSTER_PERSONS.filter(t => set.has(t));
+        const extra = [...set].filter(t => !POSTER_PERSONS.includes(t as typeof POSTER_PERSONS[number])).sort();
+        return [...ordered, ...extra];
+    }, [posters]);
 
-    const filteredLogsByCity = useMemo(() => {
-        if (selectedCity === '全体') return logs;
-        return logs.filter(l => getCityCategory(l.posterAddress) === selectedCity);
-    }, [logs, selectedCity]);
+    // ──── 4条件（期間・市区町村・種類・タグ）の判定 ────
+    const matchesType = useMemo(() => {
+        const set = new Set(selectedTypes);
+        return (type: string | undefined) => set.size === 0 || set.has(type ?? '');
+    }, [selectedTypes]);
+
+    const matchesTag = useMemo(() => {
+        const set = new Set(selectedTags);
+        return (tags: string[] | undefined) => set.size === 0 || (tags ?? []).some(t => set.has(t));
+    }, [selectedTags]);
+
+    const matchesCity = useMemo(() =>
+        (address: string | undefined) => selectedCity === '全体' || getCityCategory(address ?? '') === selectedCity,
+    [selectedCity]);
+
+    // タグはポスター側にしか無いため、履歴を絞るときはポスターIDで引く
+    const taggedPosterIds = useMemo(() => {
+        if (selectedTags.length === 0) return null;
+        return new Set(posters.filter(p => matchesTag(p.tags)).map(p => p.id));
+    }, [posters, selectedTags, matchesTag]);
+
+    // 4条件をすべて適用したポスター（撤去済みは除外済み）
+    const scopedPosters = useMemo(() =>
+        activePosters.filter(p => matchesTag(p.tags) && matchesCity(p.address) && matchesType(p.type)),
+    [activePosters, matchesTag, matchesCity, matchesType]);
+
+    // 4条件をすべて適用した履歴（期間は取得時点で絞られている）
+    const scopeLogs = useMemo(() => (list: typeof logs) =>
+        list.filter(l =>
+            matchesCity(l.posterAddress)
+            && matchesType(l.posterType)
+            && (taggedPosterIds === null || taggedPosterIds.has(l.posterId))),
+    [matchesCity, matchesType, taggedPosterIds]);
+
+    const scopedLogs = useMemo(() => scopeLogs(logs), [scopeLogs, logs]);
+
+    // ──── 新規／撤去／張替え解除／修理解除の4指標 ────
+    // 対象ポスターは scopedPosters（撤去済みを除外し、市区町村・種類・タグを適用済み）、
+    // 履歴も同じ条件で絞ってから、期間内のイベントを数える。
+    const posterMetrics = useMemo(() => {
+        const rangeStart = new Date(dateFromStr + 'T00:00:00').getTime();
+        const rangeEnd = new Date(dateToStr + 'T23:59:59').getTime() + 1;
+        return computePosterMetrics(scopedPosters, scopeLogs(allLogsAsc), rangeStart, rangeEnd);
+    }, [scopedPosters, scopeLogs, allLogsAsc, dateFromStr, dateToStr]);
+
+    // 旧名を維持している箇所のための別名
+    const filteredPostersByCity = scopedPosters;
+    const filteredLogsByCity = scopedLogs;
 
     // ──── 「全体」選択時のカード内ホバー内訳データ ────
-    const satoQtyByCity = useMemo(() => {
+    // いずれも選択中の種類・タグに追従する（撤去済みは除外済み）
+    const qtyByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const postersInCity = taggedBasePosters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const postersInCity = activePosters.filter(p =>
+                matchesTag(p.tags) && matchesType(p.type) && getCityCategory(p.address) === city);
             const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
-            
-            const filteredInCity = postersInCity.filter(p => {
-                const statuses = Array.isArray(p.status) ? p.status : [p.status];
-                return statusFilter.some(s => statuses.includes(s));
-            });
-            const filteredQty = filteredInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
 
             let change = 0;
-            logs.forEach(l => {
-                if (l.posterType === '佐藤まさし' && getCityCategory(l.posterAddress) === city) {
+            scopeLogs(logs).forEach(l => {
+                if (getCityCategory(l.posterAddress) === city) {
                     const qty = parseQuantityFromDiff(l.diff);
                     if (l.action === '追加') change += qty;
                     if (l.action === '削除') change -= qty;
                 }
             });
 
-            return { city, totalQty, filteredQty, change };
+            return { city, totalQty, change };
         });
-    }, [posters, logs, statusFilter]);
+    }, [activePosters, logs, matchesTag, matchesType, scopeLogs]);
 
-    const satoInstallRateByCity = useMemo(() => {
+    const installRateByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const postersInCity = taggedBasePosters.filter(p => p.type === '佐藤まさし' && getCityCategory(p.address) === city);
+            const postersInCity = activePosters.filter(p =>
+                matchesTag(p.tags) && matchesType(p.type) && getCityCategory(p.address) === city);
             const totalQty = postersInCity.reduce((sum, p) => sum + (p.quantity || 1), 0);
             const installedQty = postersInCity.filter(p => {
                 const statuses = Array.isArray(p.status) ? p.status : [p.status];
@@ -399,95 +463,62 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
             const rate = totalQty > 0 ? Math.round((installedQty / totalQty) * 100) : 0;
             return { city, totalQty, installedQty, rate };
         });
-    }, [taggedBasePosters]);
+    }, [activePosters, matchesTag, matchesType]);
 
     const actionsByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const cityLogs = logs.filter(l => getCityCategory(l.posterAddress) === city);
+            const cityLogs = scopedLogs.filter(l => getCityCategory(l.posterAddress) === city);
             const total = cityLogs.length;
             const added = cityLogs.filter(l => l.action === '追加').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
             const updated = cityLogs.filter(l => l.action === '更新').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
             const deleted = cityLogs.filter(l => l.action === '削除').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
             return { city, total, added, updated, deleted };
         });
-    }, [logs]);
+    }, [scopedLogs]);
 
     const lastUpdateByCity = useMemo(() => {
         const cities: ('厚木市' | '海老名市' | '伊勢原市' | 'それ以外')[] = ['厚木市', '海老名市', '伊勢原市', 'それ以外'];
         return cities.map(city => {
-            const cityLogs = logs.filter(l => getCityCategory(l.posterAddress) === city);
+            const cityLogs = scopedLogs.filter(l => getCityCategory(l.posterAddress) === city);
             const lastTs = cityLogs.length > 0 ? cityLogs[0].changedAt : null;
             return { city, lastTs };
         });
-    }, [logs]);
+    }, [scopedLogs]);
 
-    // ──── フィルター済みポスター（ステータスで絞り込み） ────
-    const filteredPosters = useMemo(() => {
-        if (statusFilter.length === 0) return [];
-        if (statusFilter.length === POSTER_STATUS_OPTIONS.length) return filteredPostersByCity;
-        return filteredPostersByCity.filter(p => {
-            const statuses = Array.isArray(p.status) ? p.status : [p.status];
-            return statusFilter.some(s => statuses.includes(s));
-        });
-    }, [filteredPostersByCity, statusFilter]);
+    // ──── KPI 計算（条件設定に連動）────
+    // 対象は scopedPosters（期間以外の3条件を適用済み、撤去済みは除外済み）
+    const scopedTotalQty = useMemo(() =>
+        scopedPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [scopedPosters]);
 
-    // ──── KPI 計算（佐藤まさし 専用） ────
-    const satoPosters = useMemo(() =>
-        filteredPostersByCity.filter(p => p.type === '佐藤まさし'),
-    [filteredPostersByCity]);
-
-    const satoTotalQty = useMemo(() =>
-        satoPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [satoPosters]);
-
-    const satoFilteredPosters = useMemo(() => {
-        if (statusFilter.length === 0) return [];
-        if (statusFilter.length === POSTER_STATUS_OPTIONS.length) return satoPosters;
-        return satoPosters.filter(p => {
-            const statuses = Array.isArray(p.status) ? p.status : [p.status];
-            return statusFilter.some(s => statuses.includes(s));
-        });
-    }, [satoPosters, statusFilter]);
-
-    const satoFilteredQty = useMemo(() =>
-        satoFilteredPosters.reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [satoFilteredPosters]);
-
-    const satoInstalledQty = useMemo(() =>
-        satoPosters.filter(p => {
+    const scopedInstalledQty = useMemo(() =>
+        scopedPosters.filter(p => {
             const statuses = Array.isArray(p.status) ? p.status : [p.status];
             return statuses.includes('設置済');
         }).reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [satoPosters]);
+    [scopedPosters]);
 
-    const satoInstalledRate = satoTotalQty > 0
-        ? Math.round((satoInstalledQty / satoTotalQty) * 100)
+    const scopedInstalledRate = scopedTotalQty > 0
+        ? Math.round((scopedInstalledQty / scopedTotalQty) * 100)
         : 0;
 
-    const satoNetChange = useMemo(() => {
+    const scopedNetChange = useMemo(() => {
         let change = 0;
-        filteredLogsByCity.forEach(l => {
-            if (l.posterType === '佐藤まさし') {
-                const qty = parseQuantityFromDiff(l.diff);
-                if (l.action === '追加') change += qty;
-                if (l.action === '削除') change -= qty;
-            }
+        scopedLogs.forEach(l => {
+            const qty = parseQuantityFromDiff(l.diff);
+            if (l.action === '追加') change += qty;
+            if (l.action === '削除') change -= qty;
         });
         return change;
-    }, [filteredLogsByCity]);
+    }, [scopedLogs]);
 
-    // ──── KPI 計算（全体） ────
-    const totalPostersQty = useMemo(() =>
-        filteredPostersByCity.reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [filteredPostersByCity]);
-
-    const installedPostersQty = useMemo(() =>
-        filteredPostersByCity.filter(p => {
-            const statuses = Array.isArray(p.status) ? p.status : [p.status];
-            return statuses.includes('設置済');
-        }).reduce((sum, p) => sum + (p.quantity || 1), 0),
-    [filteredPostersByCity]);
+    /** 選択中の種類を表す見出し文言 */
+    const typeLabel = selectedTypes.length === 0
+        ? 'すべての種類'
+        : selectedTypes.length <= 2
+            ? selectedTypes.join('・')
+            : `${selectedTypes.length}種類`;
 
     const uninstalledCountQty = useMemo(() =>
         filteredPostersByCity.filter(p => {
@@ -496,9 +527,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         }).reduce((sum, p) => sum + (p.quantity || 1), 0),
     [filteredPostersByCity]);
 
-    const installedRate = totalPostersQty > 0
-        ? Math.round((installedPostersQty / totalPostersQty) * 100)
-        : 0;
+    const installedRate = scopedInstalledRate;
 
     const periodAddedQty = useMemo(() => {
         return filteredLogsByCity.filter(l => l.action === '追加')
@@ -538,10 +567,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
     const typeSummary = useMemo(() =>
         activeTypes.map(type => {
             const allOfType = filteredPostersByCity.filter(p => p.type === type);
-            const filteredOfType = filteredPosters.filter(p => p.type === type);
 
             const currentAllQty = allOfType.reduce((sum, p) => sum + (p.quantity || 1), 0);
-            const currentQty = filteredOfType.reduce((sum, p) => sum + (p.quantity || 1), 0);
+            const currentQty = currentAllQty;
 
             const installedOfTypeQty = allOfType.filter(p => {
                 const statuses = Array.isArray(p.status) ? p.status : [p.status];
@@ -572,7 +600,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                 net: added - deleted,
             };
         }).filter(s => s.currentAll > 0 || s.added > 0),
-    [filteredPostersByCity, filteredPosters, filteredLogsByCity]);
+    [filteredPostersByCity, filteredLogsByCity]);
 
     // ──── 日別アクティビティデータ ────
     const dailyData = useMemo((): DailyData[] => {
@@ -674,9 +702,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         return `${Math.floor(h / 24)}日前`;
     };
 
-    const toggleStatus = (s: string) => {
-        setStatusFilter(prev =>
-            prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+    const toggleType = (t: string) => {
+        setSelectedTypes(prev =>
+            prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
         );
     };
 
@@ -720,22 +748,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                         </select>
                     </div>
 
-                    {/* ステータスフィルター */}
-                    <div className="flex items-center gap-3 flex-wrap sm:ml-auto">
-                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">ステータス</span>
-                        {POSTER_STATUS_OPTIONS.map(s => (
-                            <label key={s} className="flex items-center gap-1.5 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={statusFilter.includes(s)}
-                                    onChange={() => toggleStatus(s)}
-                                    className="w-3.5 h-3.5 rounded text-indigo-600 cursor-pointer"
-                                />
-                                <span className="text-xs text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
-                                    {s}
-                                </span>
-                            </label>
-                        ))}
+                    {/* 種類フィルター */}
+                    <div className="flex items-center gap-3 flex-wrap w-full border-t border-gray-100 dark:border-zinc-800 pt-3">
+                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">種類</span>
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTypes([])}
+                                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                                    selectedTypes.length === 0
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-indigo-400 bg-gray-50 dark:bg-zinc-800/50'
+                                }`}
+                            >
+                                すべて
+                            </button>
+                            {availableTypes.map(type => {
+                                const active = selectedTypes.includes(type);
+                                const color = PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280';
+                                return (
+                                    <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() => toggleType(type)}
+                                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                                            active
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                                : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-indigo-400 bg-gray-50 dark:bg-zinc-800/50'
+                                        }`}
+                                    >
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                        {type}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     {/* タグフィルター */}
@@ -783,19 +830,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                     {/* ───── KPI カード ───── */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-                        {/* 佐藤まさし ポスター数 */}
+                        {/* ポスター枚数（選択中の種類）*/}
                         <div className="relative group bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">佐藤まさし ポスター枚数</span>
+                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">{typeLabel} ポスター枚数</span>
                                 <MapPin className="w-4 h-4 text-indigo-300" />
                             </div>
-                            <div className="text-3xl font-bold">{satoFilteredQty.toLocaleString()}</div>
-                            <div className="text-xs text-indigo-200 mt-0.5">全体: {satoTotalQty.toLocaleString()}枚</div>
+                            <div className="text-3xl font-bold">{scopedTotalQty.toLocaleString()}</div>
+                            <div className="text-xs text-indigo-200 mt-0.5">撤去済みを除く</div>
                             <div className="mt-2 flex items-center gap-1 text-sm">
-                                {satoNetChange >= 0 ? (
-                                    <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{satoNetChange}</span></>
+                                {scopedNetChange >= 0 ? (
+                                    <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{scopedNetChange}</span></>
                                 ) : (
-                                    <><TrendingDown className="w-3.5 h-3.5 text-red-300" /><span className="text-red-300 font-medium">{satoNetChange}</span></>
+                                    <><TrendingDown className="w-3.5 h-3.5 text-red-300" /><span className="text-red-300 font-medium">{scopedNetChange}</span></>
                                 )}
                                 <span className="text-indigo-300 text-xs">期間純増減</span>
                             </div>
@@ -803,14 +850,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                             {/* ツールチップ (全体選択時のみ) */}
                             {selectedCity === '全体' && (
                                 <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
-                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (佐藤まさし)</p>
+                                    <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳（{typeLabel}・撤去済みを除く）</p>
                                     <div className="space-y-1.5">
-                                        {satoQtyByCity.map(item => (
+                                        {qtyByCity.map(item => (
                                             <div key={item.city} className="flex justify-between items-center">
                                                 <span className="text-zinc-400">{item.city}</span>
                                                 <div className="flex items-center gap-1.5 font-medium">
-                                                    <span>{item.filteredQty.toLocaleString()}枚</span>
-                                                    <span className="text-[10px] text-zinc-500">(全体:{item.totalQty.toLocaleString()})</span>
+                                                    <span>{item.totalQty.toLocaleString()}枚</span>
                                                     <span className={`text-[10px] ${item.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                         {item.change >= 0 ? `+${item.change}` : item.change}
                                                     </span>
@@ -822,21 +868,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                             )}
                         </div>
 
-                        {/* 佐藤まさし 設置済み率 */}
+                        {/* 設置率（選択中の種類）*/}
                         <div className="relative group bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">佐藤まさし 設置率</span>
+                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wide">{typeLabel} 設置率</span>
                                 <CheckCircle className="w-4 h-4 text-emerald-300" />
                             </div>
-                            <div className="text-3xl font-bold">{satoInstalledRate}%</div>
+                            <div className="text-3xl font-bold">{scopedInstalledRate}%</div>
                             <div className="mt-2 bg-emerald-600/50 rounded-full h-1.5">
                                 <div
                                     className="bg-white rounded-full h-1.5 transition-all duration-700"
-                                    style={{ width: `${satoInstalledRate}%` }}
+                                    style={{ width: `${scopedInstalledRate}%` }}
                                 />
                             </div>
                             <div className="mt-1.5 text-xs text-emerald-100">
-                                設置済: {satoInstalledQty.toLocaleString()} / {satoTotalQty.toLocaleString()}枚
+                                設置済: {scopedInstalledQty.toLocaleString()} / {scopedTotalQty.toLocaleString()}枚（撤去済みを除く）
                             </div>
 
                             {/* ツールチップ (全体選択時のみ) */}
@@ -844,7 +890,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                 <div className="absolute top-full left-0 right-0 mt-2 hidden group-hover:block bg-zinc-950/95 text-white text-xs rounded-xl p-3 shadow-xl backdrop-blur-md z-20 border border-zinc-800 animate-in fade-in slide-in-from-top-1 duration-150">
                                     <p className="font-semibold border-b border-zinc-800 pb-1 mb-1.5 text-zinc-300">市区町村別内訳 (設置率)</p>
                                     <div className="space-y-1.5">
-                                        {satoInstallRateByCity.map(item => (
+                                        {installRateByCity.map(item => (
                                             <div key={item.city} className="flex justify-between items-center">
                                                 <span className="text-zinc-400">{item.city}</span>
                                                 <div className="flex items-center gap-2">
@@ -936,6 +982,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide mb-4">
                             期間内の作業成果（新規・撤去・張替え・修理）
                         </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">
+                            条件設定（期間・市区町村・種類・タグ）に連動します。
+                            <span className="font-medium">「新規」は撤去済みのポスターを除いた数</span>です。
+                            「張替え」「修理」は作業が完了した数を表します。
+                        </p>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
                                 { label: '新規', count: posterMetrics.newCount, breakdown: posterMetrics.newBreakdown, Icon: PlusCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
@@ -971,53 +1022,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                         </p>
                     </div>
 
+                    {/* ───── グラフ2枚（PCでは横並び）───── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     {/* ───── 種類別ピン数 折れ線グラフ ───── */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
-                        <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                                種類別 ピン数推移（累積追加数）
-                            </h3>
-                            {trendTypes.length > 0 && (
-                                <div className="flex flex-wrap gap-3 text-xs">
-                                    {trendTypes.map(type => (
-                                        <span key={type} className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                                            <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }} />
-                                            {type}
-                                        </span>
-                                    ))}
+                        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+                            <div className="flex items-center justify-between mb-5">
+                                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
+                                    種類別 ピン数推移（累積追加数）
+                                </h3>
+                                {trendTypes.length > 0 && (
+                                    <div className="flex flex-wrap gap-3 text-xs">
+                                        {trendTypes.map(type => (
+                                            <span key={type} className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                                <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: PERSON_COLORS[type as keyof typeof PERSON_COLORS] || '#6B7280' }} />
+                                                {type}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {trendTypes.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400 dark:text-gray-500 text-sm">
+                                    <span className="text-2xl">📊</span>
+                                    <p>まだデータがありません</p>
+                                    <p className="text-xs text-center">ポスターの追加・削除操作を行うと、ここに種類別のピン数推移が表示されます（B案ログから集計）</p>
                                 </div>
+                            ) : (
+                                <TypeTrendLineChart data={typeTrendData} types={trendTypes} />
                             )}
                         </div>
-                        {trendTypes.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400 dark:text-gray-500 text-sm">
-                                <span className="text-2xl">📊</span>
-                                <p>まだデータがありません</p>
-                                <p className="text-xs text-center">ポスターの追加・削除操作を行うと、ここに種類別のピン数推移が表示されます（B案ログから集計）</p>
-                            </div>
-                        ) : (
-                            <TypeTrendLineChart data={typeTrendData} types={trendTypes} />
-                        )}
-                    </div>
 
-                    {/* ───── 日別アクション推移グラフ ───── */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
-                        <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                                日別アクション推移
-                            </h3>
-                            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />追加
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />更新
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block" />削除
-                                </span>
+                        {/* ───── 日別アクション推移グラフ ───── */}
+                        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+                            <div className="flex items-center justify-between mb-5">
+                                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
+                                    日別アクション推移
+                                </h3>
+                                <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />追加
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />更新
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block" />削除
+                                    </span>
+                                </div>
                             </div>
+                            <ActivityBarChart data={dailyData} />
                         </div>
-                        <ActivityBarChart data={dailyData} />
                     </div>
 
                     {/* ───── 種類別サマリーテーブル ───── */}
