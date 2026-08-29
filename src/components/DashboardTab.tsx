@@ -470,9 +470,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         return cities.map(city => {
             const cityLogs = scopedLogs.filter(l => getCityCategory(l.posterAddress) === city);
             const total = cityLogs.length;
-            const added = cityLogs.filter(l => l.action === '追加').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-            const updated = cityLogs.filter(l => l.action === '更新').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-            const deleted = cityLogs.filter(l => l.action === '削除').reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
+            const added = cityLogs.filter(l => l.action === '追加').length;
+            const updated = cityLogs.filter(l => l.action === '更新').length;
+            const deleted = cityLogs.filter(l => l.action === '削除').length;
             return { city, total, added, updated, deleted };
         });
     }, [scopedLogs]);
@@ -529,15 +529,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
 
     const installedRate = scopedInstalledRate;
 
+    // 種類別サマリーの純増減に使う枚数。追加・削除のログは diff に必ず
+    // 「枚数: N枚」を含むため合算できる（更新は含まないことがあり合算できない）。
     const periodAddedQty = useMemo(() => {
         return filteredLogsByCity.filter(l => l.action === '追加')
             .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
     }, [filteredLogsByCity]);
 
-    const periodUpdatedQty = useMemo(() => {
-        return filteredLogsByCity.filter(l => l.action === '更新')
-            .reduce((sum, l) => sum + parseQuantityFromDiff(l.diff), 0);
-    }, [filteredLogsByCity]);
+    // 期間アクションカードは操作の件数で表す（上の dailyData と同じ理由）
+    const periodActionCounts = useMemo(() => ({
+        added: scopedLogs.filter(l => l.action === '追加').length,
+        updated: scopedLogs.filter(l => l.action === '更新').length,
+        deleted: scopedLogs.filter(l => l.action === '削除').length,
+    }), [scopedLogs]);
 
     const periodDeletedQty = useMemo(() => {
         return filteredLogsByCity.filter(l => l.action === '削除')
@@ -613,14 +617,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
             const dayEnd = new Date(cursor).setHours(23, 59, 59, 999);
             const dayLogs = filteredLogsByCity.filter(l => l.changedAt >= dayStart && l.changedAt <= dayEnd);
 
+            // 操作の件数で数える。更新ログの diff にある「枚数: N枚」は変更後の値ではなく
+            // その時点の枚数の記録なので、合算しても意味のある枚数にならない
+            // （同じピンを3回更新すれば3回足される）。枚数の増減は種類別ピン数推移で見る。
             let added = 0;
             let updated = 0;
             let deleted = 0;
             dayLogs.forEach(l => {
-                const qty = parseQuantityFromDiff(l.diff);
-                if (l.action === '追加') added += qty;
-                if (l.action === '更新') updated += qty;
-                if (l.action === '削除') deleted += qty;
+                if (l.action === '追加') added++;
+                else if (l.action === '更新') updated++;
+                else if (l.action === '削除') deleted++;
             });
 
             result.push({
@@ -951,12 +957,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                 {scopedLogs.length.toLocaleString()}<span className="text-sm font-normal ml-1">件</span>
                             </div>
                             <div className="mt-1.5 flex gap-2.5 text-xs text-violet-200">
-                                <span className="text-emerald-300 font-medium">追加 {periodAddedQty}枚</span>
-                                <span className="text-blue-300">更新 {periodUpdatedQty}枚</span>
-                                <span className="text-red-300">削除 {periodDeletedQty}枚</span>
+                                <span className="text-emerald-300 font-medium">追加 {periodActionCounts.added}</span>
+                                <span className="text-blue-300">更新 {periodActionCounts.updated}</span>
+                                <span className="text-red-300">削除 {periodActionCounts.deleted}</span>
                             </div>
                             <div className="mt-1.5 text-[10px] leading-snug text-violet-200/90">
-                                操作の記録数です。掲示した箇所の数は下の「期間内の作業成果」をご覧ください。
+                                操作の件数です。掲示した箇所の数は下の「期間内の作業成果」をご覧ください。
                             </div>
 
                             {/* ツールチップ (全体選択時のみ) */}
@@ -969,7 +975,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                                 <span className="text-zinc-400">{item.city}</span>
                                                 <div className="flex items-center gap-1.5 font-medium">
                                                     <span>{item.total.toLocaleString()}件</span>
-                                                    <span className="text-[10px] text-zinc-500">(追加{item.added} 更新{item.updated} 削除{item.deleted}枚)</span>
+                                                    <span className="text-[10px] text-zinc-500">(追加{item.added} 更新{item.updated} 削除{item.deleted})</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -1068,7 +1074,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
                             <div className="flex items-center justify-between mb-5">
                                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                                    種類別 ピン数推移（累積追加数）
+                                    種類別 ピン数推移（累積追加数・枚）
                                 </h3>
                                 {trendTypes.length > 0 && (
                                     <div className="flex flex-wrap gap-3 text-xs">
@@ -1096,7 +1102,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
                             <div className="flex items-center justify-between mb-5">
                                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                                    日別アクション推移
+                                    日別アクション推移<span className="ml-1.5 font-normal normal-case text-gray-400">（件）</span>
                                 </h3>
                                 <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1.5">
@@ -1117,7 +1123,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                     {/* ───── 種類別サマリーテーブル ───── */}
                     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
                         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide mb-4">
-                            種類別サマリー
+                            種類別サマリー<span className="ml-1.5 font-normal normal-case text-gray-400">（枚）</span>
                         </h3>
 
                         {typeSummary.length === 0 ? (
