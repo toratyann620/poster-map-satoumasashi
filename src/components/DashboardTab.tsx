@@ -708,6 +708,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         );
     };
 
+    // 集計期間の日数。既定が30日のため、短い期間を見ているつもりで
+    // 既定のままだと数値が想定と合わない。何日分を見ているかを常に画面へ出す。
+    const rangeDays = useMemo(() => {
+        const from = new Date(dateFromStr + 'T00:00:00').getTime();
+        const to = new Date(dateToStr + 'T00:00:00').getTime();
+        if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
+        return Math.round((to - from) / 86400000) + 1;
+    }, [dateFromStr, dateToStr]);
+
+    /** 集計期間を「本日から遡ってdays日間」に設定する */
+    const applyRangePreset = (days: number) => {
+        const from = new Date();
+        from.setDate(from.getDate() - (days - 1));
+        setDateFromStr(toInputDate(from));
+        setDateToStr(toInputDate(new Date()));
+    };
+
     const totalCurrentFiltered = typeSummary.reduce((sum, s) => sum + s.current, 0);
     const totalAdded = typeSummary.reduce((sum, s) => sum + s.added, 0);
     const totalDeleted = typeSummary.reduce((sum, s) => sum + s.deleted, 0);
@@ -732,6 +749,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                             onChange={e => setDateToStr(e.target.value)}
                             className="px-3 py-1.5 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
+                        {rangeDays !== null && (
+                            <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 rounded-full px-2.5 py-1 whitespace-nowrap">
+                                {rangeDays}日間
+                            </span>
+                        )}
+                        {[7, 30].map(d => (
+                            <button
+                                key={d} type="button" onClick={() => applyRangePreset(d)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                    rangeDays === d
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-indigo-400 bg-gray-50 dark:bg-zinc-800/50'
+                                }`}
+                            >
+                                直近{d}日
+                            </button>
+                        ))}
                     </div>
 
                     {/* 市区町村フィルター */}
@@ -913,11 +947,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                 <span className="text-xs font-semibold text-violet-200 uppercase tracking-wide">期間アクション</span>
                                 <Activity className="w-4 h-4 text-violet-300" />
                             </div>
-                            <div className="text-3xl font-bold">{logs.length.toLocaleString()}</div>
+                            <div className="text-3xl font-bold">
+                                {scopedLogs.length.toLocaleString()}<span className="text-sm font-normal ml-1">件</span>
+                            </div>
                             <div className="mt-1.5 flex gap-2.5 text-xs text-violet-200">
-                                <span className="text-emerald-300 font-medium">+{periodAddedQty}</span>
-                                <span className="text-blue-300">○{periodUpdatedQty}</span>
-                                <span className="text-red-300">−{periodDeletedQty}</span>
+                                <span className="text-emerald-300 font-medium">追加 {periodAddedQty}枚</span>
+                                <span className="text-blue-300">更新 {periodUpdatedQty}枚</span>
+                                <span className="text-red-300">削除 {periodDeletedQty}枚</span>
+                            </div>
+                            <div className="mt-1.5 text-[10px] leading-snug text-violet-200/90">
+                                操作の記録数です。掲示した箇所の数は下の「期間内の作業成果」をご覧ください。
                             </div>
 
                             {/* ツールチップ (全体選択時のみ) */}
@@ -930,7 +969,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                                 <span className="text-zinc-400">{item.city}</span>
                                                 <div className="flex items-center gap-1.5 font-medium">
                                                     <span>{item.total.toLocaleString()}件</span>
-                                                    <span className="text-[10px] text-zinc-500">(+{item.added} ○{item.updated} −{item.deleted})</span>
+                                                    <span className="text-[10px] text-zinc-500">(追加{item.added} 更新{item.updated} 削除{item.deleted}枚)</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -980,19 +1019,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                     {/* ───── 新規／撤去／張替え解除／修理解除（重要指標） ───── */}
                     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
                         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide mb-4">
-                            期間内の作業成果（新規・撤去・張替え・修理）
+                            期間内の作業成果（新規・撤去・張替え完了・修理完了）
                         </h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">
-                            条件設定（期間・市区町村・種類・タグ）に連動します。
-                            <span className="font-medium">「新規」は撤去済みのポスターを除いた数</span>です。
-                            「張替え」「修理」は作業が完了した数を表します。
+                            条件設定（期間・市区町村・種類・タグ）に連動します。単位はすべて<span className="font-medium">箇所（ピンの数）</span>で、
+                            上のカードの「枚数」とは数え方が異なります。
+                            <span className="font-medium">「新規」は期間内に登録され、現在も掲示しているポスターの箇所数</span>で、撤去済みは含みません。
+                            「張替え完了」「修理完了」は、予定フラグが外れた＝作業が終わった箇所数です。
                         </p>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
                                 { label: '新規', count: posterMetrics.newCount, breakdown: posterMetrics.newBreakdown, Icon: PlusCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
                                 { label: '撤去', count: posterMetrics.removedCount, breakdown: posterMetrics.removedBreakdown, Icon: PackageOpen, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
-                                { label: '張替え', count: posterMetrics.replaceCancelCount, breakdown: posterMetrics.replaceCancelBreakdown, Icon: RefreshCcw, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-                                { label: '修理', count: posterMetrics.repairCancelCount, breakdown: posterMetrics.repairCancelBreakdown, Icon: Wrench, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
+                                { label: '張替え完了', count: posterMetrics.replaceCancelCount, breakdown: posterMetrics.replaceCancelBreakdown, Icon: RefreshCcw, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+                                { label: '修理完了', count: posterMetrics.repairCancelCount, breakdown: posterMetrics.repairCancelBreakdown, Icon: Wrench, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
                             ].map(item => (
                                 <div key={item.label} className={`relative group rounded-xl p-4 ${item.bg}`}>
                                     <div className="flex items-center justify-between mb-1.5">
