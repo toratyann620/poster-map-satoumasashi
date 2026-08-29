@@ -146,20 +146,20 @@ async function buildReport() {
     }).format(new Date(rangeEnd));
 
     const message = [
-        `◆ポスター作業成果_${dateLabel}`,
+        `◆ポスター作業成果_${dateLabel}（${TARGET_TYPE}・単位は箇所）`,
         `新規：${newPosters.length}箇所`,
         `撤去：${removedLogs.length}箇所`,
-        `張替え：${replaceCancelLogs.length}箇所`,
-        `修理：${repairCancelLogs.length}箇所`,
+        `張替え完了：${replaceCancelLogs.length}箇所`,
+        `修理完了：${repairCancelLogs.length}箇所`,
         '```',
         '<内訳>',
         formatSection('新規', newBreakdown),
         '',
         formatSection('撤去', removedBreakdown),
         '',
-        formatSection('張替え', replaceCancelBreakdown),
+        formatSection('張替え完了', replaceCancelBreakdown),
         '',
-        formatSection('修理', repairCancelBreakdown),
+        formatSection('修理完了', repairCancelBreakdown),
         '```',
         `設置率：${overallRate}%(${cityRates.map(c => `${c.label}${c.rate}%`).join('/')})`,
     ].join('\n');
