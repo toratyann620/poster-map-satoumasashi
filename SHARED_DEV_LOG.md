@@ -601,3 +601,28 @@
   2. **今回の変更はまだ配信されていない**。`feature/groups-admin` 上のコミット `209f302`。ユーザーに届けるには新しいビルドの作成と TestFlight / Play への提出が要る。
   3. **セキュリティルールのデプロイが未実施**。`announcements` と `users` の更新ルールを本番へ反映しないとお知らせ機能は動かない（`firebase deploy --only firestore:rules`）。
   4. Node 22 ランタイムのデプロイ（`npx firebase-tools deploy --only functions:dailyPosterReport --project satoumasashi-poster-map`）。
+
+### 2026-08-29 (Claude Code) その42
+* **タスク**: プッシュ通知（共通仕様 2.1）の実装。ユーザーから APNs 認証キー `AuthKey_T7SN9YYF72.p8` の提供を受けて着手した。
+* **設計判断**:
+  * **プラグインは `@capacitor-firebase/messaging` を採用**。公式の `@capacitor/push-notifications` は iOS で APNs のトークンをそのまま返すため、iOS 向けに APNs へ直接送る経路を別に作ることになる。前者なら両OSとも FCM のトークンに揃い、送信側を1本にできる。
+  * **トークンは `users` ではなく `pushTokens` コレクションへ1件ずつ**。`users` は佐藤まさし事務所の管理者しか書けない設計で、そこに例外を増やすより「自分の uid が入った文書だけ書ける」独立コレクションの方が安全。1人が複数端末を持つ場合にも素直に対応できる。**読み取りは誰にも許可していない**（送信は Admin SDK なので支障なし。読ませると「誰がどの端末を使っているか」が全メンバーに見えてしまう）。ログアウト時に削除する。
+  * **送信は `PUSH_NOTIFICATIONS_ENABLED=true` のときだけ**（共通仕様どおり）。誤送信は取り消せないため既定は送らない側に倒した。500件ずつ送り、届かなくなったトークンはその場で削除する。
+  * **許可を求めるのは起動直後ではなくログイン後**。何のアプリか分からないまま尋ねると拒否されやすく、iOS は一度拒否されると設定アプリからしか戻せない。
+* **Apple / Firebase 側に加えた変更**:
+  * Firebase プロジェクトに **iOS アプリ**（`1:390119901860:ios:cf6ba03911bd2c8ba33431`）と **Android アプリ**（`1:390119901860:android:d25efca5115be8b5a33431`）を登録し、設定ファイルを配置した。従来は Web アプリのみ登録されていた。
+  * 自動生成された iOS の APIキーに**バンドルIDの制限**を付けた。Android キーは Play App Signing により署名証明書が Google のものに置き換わるため、アップロード鍵の SHA-1 で縛ると配信版が動かなくなる。**Play Console の「アプリの署名」に表示される SHA-1 が必要なので保留**（API では取得できない）。両キーとも API 制限（Firebase 系サービスのみ）は自動で入っている。
+  * App ID `app.satoumasashi.postermap` に **PUSH_NOTIFICATIONS を有効化**した（App Store Connect API 経由）。`IN_APP_PURCHASE` のみ有効な状態だった。
+  * `ios/App/App/App.entitlements`（`aps-environment`）を新設し、Debug / Release 両方の `CODE_SIGN_ENTITLEMENTS` に設定した。
+  * **`GoogleService-Info.plist` は Xcode の Resources ビルドフェーズにも登録が必要**。ファイルを置くだけではアプリに同梱されず、Firebase が実行時に見つけられない。`project.pbxproj` にファイル参照・ビルドファイル・グループ・Resources の4箇所を追加した。
+* **検証**:
+  * ルール境界テスト **56→63件、全通過**。「他人になりすましてトークンを登録できない」「他人のトークンを削除できない」「管理者でも読めない」を確認。
+  * **Android**: `assembleDebug` 成功。マージ後のマニフェストに `POST_NOTIFICATIONS` と `FirebaseMessagingService` が入ることを確認。
+  * **iOS**: シミュレータ向けビルド成功。`GoogleService-Info.plist` が `App.app` に同梱され `IS_GCM_ENABLED=true` であること、`FIRMessaging` が `App.debug.dylib` にリンクされていることを確認（Xcode 16 の Debug ビルドは本体を dylib に分けるため、`App` 本体は 71KB しかない）。
+  * **Web**: プラグイン導入後もログイン画面がコンソールエラーなしで開くことを確認。
+* **未完了 / 次のステップ**:
+  1. **APNs 認証キーの Firebase への登録が未実施**。公開APIが無くコンソール操作のみ。Firebase Console → プロジェクトの設定 → Cloud Messaging → Apple アプリの構成 → APNs 認証キーをアップロード。**キーID `T7SN9YYF72` / チームID `46346RA3CT`**。これをやるまで iOS には届かない。
+  2. **Cloud Functions のデプロイと環境変数**。`PUSH_NOTIFICATIONS_ENABLED=true` を設定しないと送信されない。`sendAnnouncementPush` と、Node 22 化した `dailyPosterReport` の両方をデプロイする。
+  3. **セキュリティルールのデプロイ**（`announcements` / `pushTokens` / `users` の更新）。
+  4. **実機での確認が必要**。プッシュ通知はシミュレータでは検証しきれない。新しいビルドを TestFlight / Play へ上げてから確認する。
+  5. Android の APIキーに、Play App Signing の SHA-1 でアプリ制限を付ける（上記）。
