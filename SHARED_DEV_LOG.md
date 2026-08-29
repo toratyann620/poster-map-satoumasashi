@@ -626,3 +626,19 @@
   3. **セキュリティルールのデプロイ**（`announcements` / `pushTokens` / `users` の更新）。
   4. **実機での確認が必要**。プッシュ通知はシミュレータでは検証しきれない。新しいビルドを TestFlight / Play へ上げてから確認する。
   5. Android の APIキーに、Play App Signing の SHA-1 でアプリ制限を付ける（上記）。
+
+### 2026-08-29 (Claude Code) その43
+* **タスク**: プッシュ通知の本番反映（APNs 認証キーの登録はユーザーが実施済み）
+* **完了したこと**:
+  * **Firestore ルールを本番へ反映**。`announcements` / `pushTokens` / `users` の更新ルールが有効になった。
+  * **Cloud Functions を2本ともデプロイ**。いずれも `nodejs22` / `asia-northeast1` / GEN_2 で ACTIVE。
+    * `dailyPosterReport` — Node 20 からの移行完了（2026-10-30 の廃止期限に対応済み）。
+    * `sendAnnouncementPush` — 新規。トリガーは `announcements/{announcementId}` の created、環境変数 `PUSH_NOTIFICATIONS_ENABLED=true` が入っていることを確認。
+  * **初回デプロイの失敗と対処**: 1度目は Eventarc の「Permission denied while using the Eventarc Service Agent」で失敗した。調べたところサービスエージェントには `roles/eventarc.serviceAgent` が既に付与済みで、Firestore のロケーション（`asia-northeast1`）と関数のリージョンも一致していたため、**設定の不備ではなく、2nd gen 関数を初めて使う際の権限伝播待ち**と判断。90秒待って再試行したところ成功した。
+  * `PUSH_NOTIFICATIONS_ENABLED` は `functions/.env.satoumasashi-poster-map` に置いた。機密ではなく、設定内容を残す意味があるためリポジトリに含めている。
+* **Play の現況**（確認のみ）: 内部テスト・クローズドテストとも `versionCode 3 / 1.0.1` が `completed`。オープンテスト・製品版はリリースなし。
+* **未完了 / 次のステップ**:
+  1. **プッシュ通知は新しいビルドを配信するまで届かない**。現在配信中の `versionCode 3` にはプラグインが入っていない。`versionCode 4` / `1.0.2` へ上げてビルドし直し、TestFlight / Play へ提出する必要がある。**着手の可否はユーザー判断待ち**（クローズドテスト審査中のため）。
+  2. **実機での確認が必要**。プッシュ通知はシミュレータでは検証しきれない。
+  3. Android の APIキーに Play App Signing の SHA-1 でアプリ制限を付ける（Play Console の「アプリの署名」から取得が必要。API では取れない）。
+  4. 改修後のアプリ画面の目視確認（検証アカウントのパスワードが古いまま）。
