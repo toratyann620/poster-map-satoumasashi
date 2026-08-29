@@ -9,8 +9,9 @@ interface PosterCountWidgetProps {
 
 export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters, activityLogs = [] }) => {
     const { totalCount, weeklyDiff } = useMemo(() => {
-        // 「佐藤まさし」ポスターのみ集計
-        const satoPosters = posters.filter(p => p.type === '佐藤まさし');
+        // 「佐藤まさし」ポスターのみ集計。撤去済みは今の掲示枚数ではないので除く
+        // （ダッシュボードの枚数カードと同じ数え方に揃えている）
+        const satoPosters = posters.filter(p => p.type === '佐藤まさし' && !p.removed);
 
         // 現在の総枚数
         const total = satoPosters.reduce((sum, p) => sum + (p.quantity || 1), 0);
@@ -33,6 +34,11 @@ export const PosterCountWidget: React.FC<PosterCountWidgetProps> = ({ posters, a
                     satoWeeklyDiff += qty;
                 } else if (log.action === '削除') {
                     satoWeeklyDiff -= qty;
+                } else if (log.removedChangedTo === true) {
+                    // 撤去は総枚数から外れるので、増減にも反映しないと数が合わなくなる
+                    satoWeeklyDiff -= qty;
+                } else if (log.removedChangedTo === false) {
+                    satoWeeklyDiff += qty;
                 }
             }
         });
