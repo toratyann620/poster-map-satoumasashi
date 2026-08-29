@@ -53,12 +53,21 @@ export const Login: React.FC = () => {
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                 メールアドレス
                             </label>
                             <div className="mt-1">
+                                {/* id / name / autoComplete は、iCloudキーチェーンや
+                                    Googleパスワードマネージャーに「どの欄が何か」を伝えるために要る。
+                                    揃っていないと保存も自動入力も提案されない。 */}
                                 <input
+                                    id="login-email"
+                                    name="username"
                                     type="email"
+                                    autoComplete="username"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     required
                                     className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-base"
                                     value={email}
@@ -69,12 +78,18 @@ export const Login: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                 パスワード
                             </label>
                             <div className="mt-1">
                                 <input
+                                    id="login-password"
+                                    name="password"
                                     type="password"
+                                    autoComplete="current-password"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     required
                                     className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-base"
                                     value={password}

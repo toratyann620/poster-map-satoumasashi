@@ -32,13 +32,15 @@ export interface Session {
     group: Group | null;
     /** 佐藤まさし事務所（allowAll）の管理者。ユーザー・グループ定義を変更できる */
     isSuperAdmin: boolean;
+    /** 管理者が発行した初期パスワードのままで、変更を求めるべき状態 */
+    mustChangePassword: boolean;
     /** ログイン済みだがグループが解決できない場合の理由（画面に出す） */
     problem: 'no-user-doc' | 'no-group' | null;
 }
 
 const EMPTY: Session = {
     ready: false, user: null, uid: null, name: '', role: 'general',
-    groupId: null, group: null, isSuperAdmin: false, problem: null,
+    groupId: null, group: null, isSuperAdmin: false, mustChangePassword: false, problem: null,
 };
 
 let state: Session = EMPTY;
@@ -75,7 +77,7 @@ onAuthStateChanged(auth, (user) => {
             if (!snap.exists()) {
                 // Authアカウントはあるが承認されていない。ルール側でも全面的に拒否される。
                 stopDownstream();
-                emit({ ready: true, name: user.email ?? '', role: 'general', groupId: null, group: null, isSuperAdmin: false, problem: 'no-user-doc' });
+                emit({ ready: true, name: user.email ?? '', role: 'general', groupId: null, group: null, isSuperAdmin: false, mustChangePassword: false, problem: 'no-user-doc' });
                 return;
             }
             const d = snap.data();
@@ -84,6 +86,9 @@ onAuthStateChanged(auth, (user) => {
                 name: d.name || user.displayName || user.email || 'unknown',
                 role: d.role === 'admin' ? 'admin' : 'general',
                 groupId,
+                // 明示的に true のときだけ求める。フィールドを持たない
+                // 既存ユーザーに変更画面を出さないため。
+                mustChangePassword: d.mustChangePassword === true,
             });
 
             if (!groupId) {

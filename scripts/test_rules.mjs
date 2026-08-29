@@ -252,6 +252,45 @@ await t('🔒 他人の既読状態は書き換えられない', () =>
     { userId: 'satoGeneral', date: '2026-08-20', readAt: 1 })));
 
 // ═══════════════════════════════════════════════════════════
+section('お知らせ (announcements)');
+
+await t('佐藤まさし事務所の管理者はお知らせを出せる', () =>
+  assertSucceeds(setDoc(doc(as('super1'), 'announcements/a1'),
+    { title: 'お知らせ', body: '本文', isPopup: false, publishedAt: 1, createdBy: '管理者' })));
+
+await t('他事務所のメンバーもお知らせを読める（事務所をまたいで届く）', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), 'announcements/a1'))));
+
+await t('🔒 他事務所の管理者はお知らせを出せない', () =>
+  assertFails(setDoc(doc(as('nanbaAdmin'), 'announcements/a2'),
+    { title: '勝手なお知らせ', body: '本文', isPopup: true, publishedAt: 1, createdBy: '難波' })));
+
+await t('🔒 一般ユーザーはお知らせを消せない', () =>
+  assertFails(deleteDoc(doc(as('satoGeneral'), 'announcements/a1'))));
+
+await t('🔒 users ドキュメントを持たないアカウントはお知らせを読めない', () =>
+  assertFails(getDoc(doc(as('strangerWithAuthOnly'), 'announcements/a1'))));
+
+// ═══════════════════════════════════════════════════════════
+section('初期パスワードの変更記録 (users.mustChangePassword)');
+
+await t('本人は mustChangePassword を false にできる', () =>
+  assertSucceeds(updateDoc(doc(as('nanbaUser'), 'users/nanbaUser'), { mustChangePassword: false })));
+
+await t('🔒 本人でも他のフィールドを同時には変えられない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), 'users/nanbaUser'),
+    { mustChangePassword: false, role: 'admin' })));
+
+await t('🔒 本人でも mustChangePassword を true には戻せない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), 'users/nanbaUser'), { mustChangePassword: true })));
+
+await t('🔒 他人の mustChangePassword は変えられない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), 'users/satoGeneral'), { mustChangePassword: false })));
+
+await t('🔒 この例外を使って groupId は書き換えられない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), 'users/nanbaUser'), { groupId: 'admin' })));
+
+// ═══════════════════════════════════════════════════════════
 section('現行の本番コレクション（動作を変えていないこと）');
 
 await t('承認済みメンバーは現行 posters を読み書きできる', async () => {

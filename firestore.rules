@@ -58,8 +58,18 @@ service cloud.firestore {
     match /users/{userId} {
       // 閲覧: 本人、または管理者
       allow read: if isOwner(userId) || isAdmin();
-      // 作成・更新・削除: 佐藤まさし事務所の管理者のみ（上記の権限昇格対策）
-      allow write: if isSuperAdmin();
+      // 作成・削除: 佐藤まさし事務所の管理者のみ（上記の権限昇格対策）
+      allow create, delete: if isSuperAdmin();
+      // 更新: 原則として佐藤まさし事務所の管理者のみ。
+      // 例外として、本人が初期パスワードを変更し終えたことを記録できるようにする。
+      // 変更できるのは mustChangePassword を false にすることだけで、
+      // role や groupId には触れられないため権限昇格には使えない。
+      allow update: if isSuperAdmin()
+                    || (
+                      isOwner(userId)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword'])
+                      && request.resource.data.mustChangePassword == false
+                    );
     }
 
     // ══════════════════════════════════════════════════════════
@@ -94,6 +104,16 @@ service cloud.firestore {
     // 従来はルールが無く既定の拒否になっており、既読管理が機能していなかった。
     match /notificationReads/{readId} {
       allow read, write: if isMember() && readId.split('_')[0] == request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 5-2. お知らせ (announcements)
+    // ══════════════════════════════════════════════════════════
+    // 全メンバーが読める。事務所をまたいだ連絡ができなくなるため、
+    // グループでは絞っていない。書けるのは佐藤まさし事務所の管理者のみ。
+    match /announcements/{announcementId} {
+      allow read: if isMember();
+      allow write: if isSuperAdmin();
     }
 
     // ══════════════════════════════════════════════════════════

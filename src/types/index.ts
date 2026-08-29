@@ -87,6 +87,24 @@ export type FilterState = {
     tags: string[];    // 複数選択、空配列 = すべて表示
 };
 
+/**
+ * 管理者が出すお知らせ。Firestore の `announcements/{id}`。
+ *
+ * ポスターの変更を知らせる「デイリー通知」とは別物で、こちらは
+ * 人が書いて全メンバーに届ける連絡。グループでは絞っていない
+ * （事務所をまたいだ連絡ができなくなるため）。逆に言えば、
+ * 特定の事務所にしか関係しない内容は本文で明示する運用にする。
+ */
+export interface Announcement {
+    id: string;
+    title: string;
+    body: string;
+    /** true なら次回アプリを開いたときにモーダルで一度だけ表示する */
+    isPopup: boolean;
+    publishedAt: number;
+    createdBy: string;
+}
+
 // 変更履歴ログ
 export interface ActivityLog {
     id: string;

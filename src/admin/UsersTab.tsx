@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { UserPlus, Trash2, Shield, User as UserIcon, Loader2, Info } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User as UserIcon, Loader2, Info, RefreshCw, KeyRound } from 'lucide-react';
+import { generateInitialPassword, INITIAL_PASSWORD_LENGTH } from '../lib/password';
 import type { UserData } from '../hooks/useUsers';
 import type { Group } from '../types';
 
@@ -15,7 +16,9 @@ interface UsersTabProps {
 export const UsersTab: React.FC<UsersTabProps> = ({ users, groups, currentUid, onCreate, onUpdate, onRemove }) => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    // 初期パスワードは開いた時点で用意しておく。毎回考えさせない方が、
+    // 使い回しや「1234」のような値を防げる。
+    const [password, setPassword] = useState(generateInitialPassword);
     const [role, setRole] = useState<'admin' | 'general'>('general');
     const [groupId, setGroupId] = useState(groups[0]?.id ?? 'admin');
     const [creating, setCreating] = useState(false);
@@ -32,8 +35,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ users, groups, currentUid, o
         setCreating(true);
         try {
             await onCreate({ name, email, role, groupId }, password);
-            setSuccess(`${name} さんのアカウントを作成しました（${groupName(groupId)}）`);
-            setName(''); setEmail(''); setPassword(''); setRole('general');
+            setSuccess(`${name} さんのアカウントを作成しました（${groupName(groupId)}）。初期パスワード「${password}」を本人にお伝えください。初回ログイン時に本人が変更します。`);
+            setName(''); setEmail(''); setPassword(generateInitialPassword()); setRole('general');
         } catch (err) {
             setError((err as Error)?.message ?? 'アカウントの作成に失敗しました。');
         } finally {
@@ -84,8 +87,21 @@ export const UsersTab: React.FC<UsersTabProps> = ({ users, groups, currentUid, o
                     </label>
                     <label className="block">
                         <span className={labelCls}>初期パスワード</span>
-                        <input required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
-                            placeholder="6文字以上" className={field} />
+                        <div className="flex gap-2">
+                            <input required minLength={INITIAL_PASSWORD_LENGTH} value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder={`${INITIAL_PASSWORD_LENGTH}文字以上`}
+                                className={`${field} font-mono tracking-wider`} />
+                            <button type="button" onClick={() => setPassword(generateInitialPassword())}
+                                title="別のパスワードを生成する"
+                                className="shrink-0 px-3 rounded-lg border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-gray-400 hover:text-indigo-600 hover:border-indigo-400 transition-colors">
+                                <RefreshCw className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <span className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
+                            <KeyRound className="w-3.5 h-3.5 mt-px shrink-0" />
+                            見間違えやすい 0 と O、1 と l は使いません。本人が初回ログイン時に変更します。
+                        </span>
                     </label>
                     <label className="block">
                         <span className={labelCls}>所属グループ</span>

@@ -11,6 +11,8 @@ export interface UserData {
     role: 'admin' | 'general';
     /** 所属グループID（例: admin / nanba）。未設定のユーザーはデータに一切アクセスできない。 */
     groupId?: string;
+    /** 発行された初期パスワードのままで、変更を求めている状態 */
+    mustChangePassword?: boolean;
 }
 
 export const useUsers = () => {
@@ -54,6 +56,9 @@ export const useUsers = () => {
                 // グループは必須。未設定だとルール側で全面的に拒否され、
                 // ログインはできるが何も見えない状態になる。
                 groupId: userData.groupId ?? '',
+                // 初期パスワードは口頭やメモで渡す前提の短いものなので、
+                // 本人が使い始めるときに必ず変えてもらう。
+                mustChangePassword: true,
             });
 
             return { success: true, uid: newUid };

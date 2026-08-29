@@ -11,6 +11,11 @@ import { UpdatePrompt } from './components/UpdatePrompt';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
+import { AnnouncementsButton, AnnouncementPopup } from './components/Announcements';
+import { useAnnouncements } from './hooks/useAnnouncements';
+import { Tutorial } from './components/Tutorial';
+import { ChangePassword } from './components/ChangePassword';
+import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
@@ -59,6 +64,12 @@ function App() {
     () => localStorage.getItem('showRemovedPins') === 'true'
   );
   const [isMenuExpanded, setIsMenuExpanded] = useState(false);
+
+  // 初回だけ出す使い方の案内。判定は端末の記録だけで決まるので、
+  // 描画のたびに読まなくていいよう初期値として一度だけ読む。
+  const [showTutorial, setShowTutorial] = useState(() => !hasSeenTutorial());
+
+  const announcements = useAnnouncements();
 
   // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
   // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
@@ -430,8 +441,17 @@ function App() {
     );
   }
 
+  // 初期パスワードのままなら、変更するまで先へ進ませない。
+  // グループの確認より後に置いているのは、そもそも使えないアカウントに
+  // パスワード変更をさせても意味が無いため。
+  if (session.mustChangePassword && session.uid) {
+    return <ChangePassword uid={session.uid} />;
+  }
+
   const handleLogout = () => {
     if (window.confirm('ログアウトしますか？')) {
+      // 次に別の人がこの端末でログインしたら、また案内から始める
+      forgetTutorial();
       signOut(auth);
     }
   };
@@ -446,6 +466,17 @@ function App() {
       {/* 最新版でない場合のお知らせ。閉じられるので操作は妨げない
           （利用を止めるのは下限を割ったときだけ） */}
       <UpdatePrompt gate={versionGate} />
+
+      {/* 初回の使い方案内。お知らせのポップアップと重ならないよう、
+          案内が終わるまでポップアップは出さない */}
+      {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
+
+      {!showTutorial && announcements.pendingPopup && (
+        <AnnouncementPopup
+          announcement={announcements.pendingPopup}
+          onClose={() => announcements.dismissPopup(announcements.pendingPopup!.id)}
+        />
+      )}
 
       {currentView === 'admin' && userRole === 'admin' ? (
         <AdminPanel
@@ -536,6 +567,14 @@ function App() {
 
                     {/* Notification Bell */}
                     <NotificationPanel userId={user?.uid ?? null} posters={posters} />
+
+                    {/* 管理者からのお知らせ。ポスターの変更を知らせるベルとは
+                        別物なので、アイコンも分けている */}
+                    <AnnouncementsButton
+                      announcements={announcements.announcements}
+                      unreadCount={announcements.unreadCount}
+                      markAllRead={announcements.markAllRead}
+                    />
 
                     {userRole === 'admin' && (
                       <button

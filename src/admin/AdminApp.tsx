@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { signOut } from 'firebase/auth';
 import {
     Table2, MapPinOff, Users, Building2, History, LayoutDashboard,
-    LineChart, Settings, LogOut, ExternalLink, ShieldAlert,
+    LineChart, Settings, LogOut, ExternalLink, ShieldAlert, Megaphone,
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useSession } from '../hooks/useSession';
@@ -22,14 +22,17 @@ import { CityFixTab } from './CityFixTab';
 import { UsersTab } from './UsersTab';
 import { GroupsTab } from './GroupsTab';
 import { HistoryTab } from './HistoryTab';
+import { AnnouncementsTab } from './AnnouncementsTab';
+import { useAnnouncements } from '../hooks/useAnnouncements';
 
-type TabId = 'posters' | 'city' | 'users' | 'groups' | 'history' | 'dashboard' | 'analytics' | 'settings';
+type TabId = 'posters' | 'city' | 'users' | 'groups' | 'announcements' | 'history' | 'dashboard' | 'analytics' | 'settings';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
     { id: 'posters', label: 'ポスター管理', Icon: Table2 },
     { id: 'city', label: '市区町村の手当て', Icon: MapPinOff },
     { id: 'users', label: 'ユーザー管理', Icon: Users },
     { id: 'groups', label: 'グループ管理', Icon: Building2 },
+    { id: 'announcements', label: 'お知らせ', Icon: Megaphone },
     { id: 'history', label: '変更履歴', Icon: History },
     { id: 'dashboard', label: 'ダッシュボード', Icon: LayoutDashboard },
     { id: 'analytics', label: 'ユーザー分析', Icon: LineChart },
@@ -124,6 +127,7 @@ const AdminShell: React.FC<{
     const { pinTypes } = usePinTypes();
     const { logs } = useActivityLogs(1000);
     const { logsAsc } = useAllActivityLogs();
+    const { announcements } = useAnnouncements();
 
     // モバイル側と同じ保存先（localStorage）を使う
     const [showRemovedPins, setShowRemovedPins] = useState(
@@ -231,6 +235,12 @@ const AdminShell: React.FC<{
                                 onSave={saveGroup}
                                 onRemove={removeGroup}
                             />
+                        )}
+
+                        {tab === 'announcements' && (
+                            <div className="overflow-y-auto h-full">
+                                <AnnouncementsTab announcements={announcements} authorName={sessionName} />
+                            </div>
                         )}
 
                         {tab === 'history' && (
