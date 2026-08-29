@@ -7,6 +7,17 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+// 参照するコレクション。Webとアプリの統合にあたり、両者とも v2 を読み書きする
+// ようになったため、日次レポートの集計元も v2 に合わせる。
+// 旧コレクション（posters / activityLogs）は切替前のデータとして残してあるが、
+// 以降は更新されないため、ここを向けたままだと古い数字を報告し続けることになる。
+//
+// ⚠️ src/lib/collections.ts の COL と対になっている。片方だけ変更しないこと。
+const COL = {
+    posters: 'posters_v2',
+    activityLogs: 'activityLogs_v2',
+};
+
 const SLACK_WEBHOOK_URL = defineSecret('SLACK_WEBHOOK_URL');
 
 // 設置率の対象都市（既存ダッシュボード [DashboardTab.tsx] の getCityCategory と同じ判定基準）
@@ -92,8 +103,8 @@ async function buildReport() {
     // 張替え解除・修理解除の過去分再構築には、対象ポスターの過去の全履歴が必要なため、
     // activityLogsは全件を時系列順に取得する
     const [postersSnap, allLogsSnap] = await Promise.all([
-        db.collection('posters').get(),
-        db.collection('activityLogs').orderBy('changedAt', 'asc').get(),
+        db.collection(COL.posters).get(),
+        db.collection(COL.activityLogs).orderBy('changedAt', 'asc').get(),
     ]);
 
     const posters = [];
