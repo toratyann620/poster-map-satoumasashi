@@ -1,10 +1,91 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
+import { isNativePhotos, takePhoto, pickPhotos } from '../lib/photos';
+
+/**
+ * 写真の追加ボタン。Web ではファイル選択、ネイティブでは「撮影」と
+ * 「写真から選ぶ」を出し分ける。
+ *
+ * ネイティブで `<input type="file">` のままだと、撮影と選択を分けられず、
+ * iOS では権限まわりで落ちる経路が残る。見た目は呼び出し元の className に従うため、
+ * 既存の3箇所（一覧上部・画像の上・未登録時のプレースホルダ）でそのまま使える。
+ */
+const PhotoPicker: React.FC<{
+    onFiles: (files: File[]) => void;
+    disabled?: boolean;
+    className?: string;
+    children: React.ReactNode;
+}> = ({ onFiles, disabled, className, children }) => {
+    const [choosing, setChoosing] = useState(false);
+
+    if (!isNativePhotos()) {
+        return (
+            <label className={className}>
+                {children}
+                <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={disabled}
+                    onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        e.target.value = '';
+                        if (files.length) onFiles(files);
+                    }}
+                />
+            </label>
+        );
+    }
+
+    const choose = async (mode: 'camera' | 'library') => {
+        setChoosing(false);
+        if (mode === 'camera') {
+            const file = await takePhoto();
+            if (file) onFiles([file]);
+        } else {
+            const files = await pickPhotos();
+            if (files.length) onFiles(files);
+        }
+    };
+
+    return (
+        <>
+            <button type="button" disabled={disabled} className={className} onClick={() => setChoosing(true)}>
+                {children}
+            </button>
+            {choosing && createPortal(
+                <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/50 p-4"
+                    onClick={() => setChoosing(false)}>
+                    <div className="w-full sm:max-w-xs bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}>
+                        <button type="button" onClick={() => choose('camera')}
+                            className="w-full flex items-center gap-3 px-5 py-4 text-left text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+                            <CameraIcon className="w-5 h-5 text-indigo-500" />
+                            <span className="font-medium">撮影する</span>
+                        </button>
+                        <button type="button" onClick={() => choose('library')}
+                            className="w-full flex items-center gap-3 px-5 py-4 text-left text-gray-900 dark:text-white border-t border-gray-100 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+                            <Images className="w-5 h-5 text-indigo-500" />
+                            <span className="font-medium">写真から選ぶ</span>
+                        </button>
+                        <button type="button" onClick={() => setChoosing(false)}
+                            className="w-full px-5 py-4 text-center text-gray-500 dark:text-gray-400 border-t-4 border-gray-100 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+                            キャンセル
+                        </button>
+                    </div>
+                </div>,
+                document.body,
+            )}
+        </>
+    );
+};
 
 interface PinBottomSheetProps {
     isOpen: boolean;
@@ -158,8 +239,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
         );
     };
 
-    const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const files = event.target.files;
+    const handleImageUpload = async (files: File[]) => {
         if (!files || files.length === 0) return;
 
         setIsUploading(true);
@@ -171,7 +251,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                 initialQuality: 0.7 
             };
             
-            const uploadPromises = Array.from(files).map(async (file) => {
+            const uploadPromises = files.map(async (file) => {
                 const compressedFile = await imageCompression(file, options);
                 const timestamp = Date.now();
                 const randomStr = Math.random().toString(36).substring(2, 9);
@@ -197,7 +277,6 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             alert('画像のアップロードに失敗しました。ファイル形式や接続を確認してください。');
         } finally {
             setIsUploading(false);
-            event.target.value = '';
         }
     };
 
@@ -454,11 +533,14 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 <div className="flex justify-between items-end mb-2">
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">写真</label>
                                     {imageUrls.length > 0 && (
-                                        <label className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700">
+                                        <PhotoPicker
+                                            onFiles={handleImageUpload}
+                                            disabled={isUploading}
+                                            className="cursor-pointer bg-white text-gray-900 border border-gray-200 px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm flex items-center hover:bg-gray-50 dark:bg-zinc-800 dark:text-white dark:border-zinc-700"
+                                        >
                                             <Upload className="w-3.5 h-3.5 mr-1" />
                                             写真を追加
-                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                        </label>
+                                        </PhotoPicker>
                                     )}
                                 </div>
 
@@ -497,11 +579,14 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                         )}
                                         <img src={imageUrl} alt="ポスタープレビュー" className="w-full h-full object-cover" />
                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg font-medium text-sm shadow flex items-center hover:bg-gray-50">
+                                            <PhotoPicker
+                                                onFiles={handleImageUpload}
+                                                disabled={isUploading}
+                                                className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg font-medium text-sm shadow flex items-center hover:bg-gray-50"
+                                            >
                                                 <Upload className="w-4 h-4 mr-2" />
                                                 写真を変更・追加
-                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                                            </label>
+                                            </PhotoPicker>
                                         </div>
                                         <button onClick={() => setImageUrl('')} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow hover:bg-red-600">
                                             <X className="w-4 h-4" />
@@ -515,12 +600,14 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                                 <span className="text-sm font-medium">アップロード中...</span>
                                             </div>
                                         ) : (
-                                            <label className="w-full h-24 flex flex-col items-center justify-center cursor-pointer transition-colors">
+                                            <PhotoPicker
+                                                onFiles={handleImageUpload}
+                                                className="w-full h-24 flex flex-col items-center justify-center cursor-pointer transition-colors"
+                                            >
                                                 <Upload className="w-6 h-6 mb-1.5 text-indigo-500" />
                                                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">写真を選択・撮影する</span>
                                                 <span className="text-xs text-gray-400 mt-0.5">複数選択可</span>
-                                                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                                            </label>
+                                            </PhotoPicker>
                                         )}
                                     </div>
                                 )}

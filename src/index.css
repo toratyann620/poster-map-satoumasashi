@@ -33,12 +33,24 @@ body {
   /* ダブルタップズーム防止 */
   touch-action: manipulation;
 
-  /* iOS SafariでのSafe Area対応 */
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+  /* セーフエリアは body ではなく「地図に重ねるUI」側で吸収する。
+     body にパディングを入れると地図が下へずれ、上部に帯が出て
+     画面下も見切れるため（実機で確認）。地図は全面に敷き、
+     検索バーやボタンだけをノッチ・ホームバーの外側へ逃がす。 */
+}
+
+/* ── セーフエリア用ユーティリティ ──
+   Tailwind の top-4 や bottom-6 に相当する位置へ、さらにインセットを足したもの。
+   使用箇所では元の Tailwind クラスと差し替える（併用しない）。 */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.px-safe {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
+.top-safe-4 { top: calc(1rem + env(safe-area-inset-top)); }
+.bottom-safe-6 { bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+.bottom-safe-24 { bottom: calc(6rem + env(safe-area-inset-bottom)); }
 
 #root {
   height: 100dvh;

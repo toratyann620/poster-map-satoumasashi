@@ -381,6 +381,172 @@
   * **「党員募集」問題の決着**: `settings/pinTypes` ドキュメントの実データを直接確認したところ、**11件（党員募集を含まない）で正しく保存されていた**。つまりその11（2026-07-20）の削除作業自体は成功していたが、`settings` にセキュリティルールが無く既定の拒否になっていたため読み取りが失敗し、`usePinTypes` が無言でコード内デフォルト（党員募集を含む12件）にフォールバックしていた。**今回の `settings` ルール追加により、意図した11件が正しくアプリに反映される**ようになった。
 * **次のステップ**: Phase 1（Capacitor疎通検証）。iOS/Androidプロジェクトを生成し、WebView内でMaps / Geocoding / Places / Directions / Storage / Auth が疎通するかを実機確認する。とくに `capacitor.config.ts` の `server.hostname` を既存ドメインに合わせることでAPIキーのリファラー制限・StorageのCORS・Authの承認済みドメインをまとめて通す方式が成立するかが最大の未知数。本番環境には影響しない作業。
 
+### 2026-08-20 (Claude Code) その31
+* **タスク**: Phase 1（Capacitor疎通検証）完了、Phase 2（グループ基盤）の実装
+* **ユーザー確定事項**: 配信は限定配布（TestFlight内部テスト / Play内部テスト）、閲覧権限は自グループのみ（最厳格）、宇田川事務所の対象種別は「長田県議」で確定、PC管理画面は佐藤まさし事務所の管理者のみ。
+* **内容**:
+  * **Phase 1: Capacitor 8.5 導入と実機検証（完了・コミット `fb01b7e`）**
+    * `capacitor.config.ts` の `server.hostname` を本番ドメインに合わせる方式を実装し、実機で検証。
+      * **Android**: 狙いどおり `origin = https://poster-map-app.vercel.app` になることを確認（画面上の診断表示と、logcat の `Capacitor: Handling local request: https://poster-map-app.vercel.app/vite.svg` の両方で確認）。本番Webと完全に同一オリジンとなるため、リファラー制限・CORS・承認済みドメインが既存設定のまま通る。
+      * **iOS**: `iosScheme: 'https'` は効かず `capacitor://poster-map-app.vercel.app` にフォールバックする。WKWebView が https を予約スキームとして扱い、カスタムスキームハンドラを登録できないため。**Capacitor側の仕様であり回避不可**。
+    * **重大な発見①: Maps APIキーにリファラー制限が一切設定されていない。** `gcloud services api-keys describe` で確認したところ、制限は `apiTargets`（利用可能APIのホワイトリスト）のみ。そのため `capacitor://` オリジンでも地図が表示できてしまった。**キーは現在も本番Webのバンドルから容易に抽出でき、第三者が使用して課金を発生させられる状態**。ネイティブ配布でさらに露出が増えるため、リファラー制限の設定（またはネイティブ用に別キーを発行しバンドルID制限をかける）が別途必要。要ユーザー判断。
+    * **重大な発見②: ネイティブでは `getAuth()` が使えない。** `getAuth()` が組み込むブラウザ用のpopup/redirectリゾルバがカスタムスキーム下で初期化に失敗し、**`onAuthStateChanged` が一度も発火せず、認証チェックのスピナーで永久に固まる**。iOSシミュレータで事象を再現・特定した（IndexedDBは正常に開けており、原因ではないことも確認済み）。`initializeAuth(app, { persistence: indexedDBLocalPersistence })` に変更して解決。`src/lib/firebase.ts` に `makeAuth()` ヘルパーを追加し、`useUsers` の二次App生成も統一。
+    * **iOSシミュレータでの最終確認（iPhone 17）**: 自動ログイン後、地図タイル・ポスターピン・クラスタリング・重なりピンの「×2」バッジ・検索バー・絞り込みUI・コンパス・現在地ボタンがすべて正常表示され、Firestoreのリアルタイム取得も動作。Maps JS API v3.66.1a 読み込み成功、`tilesloaded` 発火、Geocoding OK、Directions OK（2.4km 8分）、Firebase Auth 到達性OKを個別に検証済み。
+    * **Androidの検証範囲**: APKビルド成功（4.4MB、Capacitor 8 は Java 21 必須のため Android Studio 同梱JDKを使用）、オリジンとローカルアセット配信を確認。ただしエミュレータが `adb shell` すら応答しないほど非力（ANR多発、ソフトウェアGPU）で**機能全体の動作確認は未完了**。実機での確認が必要（Phase 6の内部テストで実施可能）。
+    * 検証にあたり `qa.verification@satoumasashi.com`（role: admin）を作成。パスワードはリポジトリ外に保管。**検証完了後に削除予定**。自動ログイン用の一時パッチ（`src/main.tsx`）は検証後に元へ戻しており、コミットには含まれていない。
+    * 参考: iOS のログに `Missing UsageDescription key for requested authorization` が出ており、位置情報の権限文言が未設定であることが実証された（Phase 5の対応項目）。
+  * **Phase 2: グループ基盤（コミット `71a07d8`、コードのみ・データ投入は未実施）**
+    * **環境分離の方式を確定**: 新しいFirebaseプロジェクトは作らず、同一プロジェクト内に `posters_v2` / `activityLogs_v2` / `groups` を並走させる（`src/lib/collections.ts`）。`users`・Storage・Auth は共通のままとすることで、**最終移行で写真の移行もパスワードの移行も不要**になる。ルールはコレクション単位で独立するため、v2のバグが現行 `posters` に影響しない。
+    * **ブランチ分離**: Phase 2以降は `feature/groups-admin` ブランチで作業する。`main` は本番用として維持し、切替時（Phase 7）にマージする。
+    * `PosterPin` に `city` を追加し、`src/lib/city.ts` でジオコーディング結果の `locality` から確定する方式を実装。住所文字列の部分一致（`address.includes('厚木市')`）は権限境界に使えないため（住所を書き換えれば越境でき、「ＲＥＥＶＥＳ」のように市区町村名を含まない住所はどのグループからも触れなくなる）。
+    * セキュリティルールに `posters_v2` / `activityLogs_v2` の範囲判定を実装。**`update` は変更前と変更後の両方が権限範囲内であることを要求**し、`city`/`type` の書き換えによる越境を禁止する。
+    * **権限昇格の穴を発見・対処**: `users` への書き込みが従来の `isAdmin()` のままだと、他事務所の管理者が自分の `groupId` を `admin` に書き換えて全データへ昇格できてしまう。`isSuperAdmin()`（role=admin かつ 所属グループが allowAll）に限定した。
+    * `scripts/seed_groups.mjs` を作成（groups 4件の作成 ＋ 既存ユーザー全員への `groupId: 'admin'` 割り当て）。**実行は未了**（本番Firestoreへの書き込みが自動承認の対象外だったため）。
+* **次のステップ**: (1) `scripts/seed_groups.mjs` の実行（ルールのデプロイより先に必須。未実行のままルールを反映すると superAdmin が0名になり本番管理者がユーザー管理を失う）、(2) ルールのデプロイと権限境界のテスト、(3) Phase 3（アプリのグループ対応：全データ読み込みのグループ単位への書き換え、複合インデックス作成、各集計画面の対応）、(4) Phase 4（PC管理画面）、(5) Phase 5（ネイティブ統合：位置情報・カメラの権限、セーフエリア、強制アップデート）。
+* **未解決の判断事項**: Maps APIキーのリファラー制限（上記の重大な発見①）。現行Webと将来のネイティブアプリの両方に関わるため、方針の確認が必要。
+
+### 2026-08-20 (Claude Code) その32
+* **タスク**: Phase 2 完了（グループ基盤の投入・ルール適用・検証）、Maps APIキーの制限設計と適用、Phase 3（アプリのグループ対応）
+* **内容**:
+  * **Phase 2 完了**
+    * `scripts/seed_groups.mjs` を実行し、`groups` 4件（admin/nanba/udagawa/watanabe）を作成、既存ユーザー8名全員に `groupId: 'admin'` を割り当て。superAdmin 相当4名・groupId未設定0名を確認してからルールを反映した（順序を誤ると本番管理者がユーザー管理を失うため）。
+    * **`scripts/test_rules.mjs` を新設**し、Firestoreエミュレータ上で権限境界を検証（`npm run test:rules`、**40件すべて成功**）。他グループの閲覧・更新・削除の拒否、絞り込み無しクエリの拒否、city/type 書き換えによる越境の拒否、他事務所管理者による groupId 昇格の拒否、履歴の改ざん・削除の拒否、現行 posters の動作不変などを網羅。Capacitor 8 と同様、firebase-tools も JDK 21 が必要なため Android Studio 同梱JDKを指定している。
+    * ルールとインデックスを本番へデプロイ。デプロイ後、Playwrightで本番Webに実際にログインし、マーカー504件・タイル描画・ピン種別の表示が正常であることを確認済み（本番への影響なし）。
+    * 副次的に、`notificationReads` コレクションにもルールが無く既定の拒否になっていた（通知の既読管理が機能していなかった）ことが判明し、あわせて修正した。
+  * **Maps APIキーの制限（ユーザー依頼により最適構成を提案・適用）**
+    * **重要な検証結果**: iOSのWebViewオリジン `capacitor://poster-map-app.vercel.app` が、Googleのリファラー制限のパターンとして**実際に機能する**ことをシミュレータ実機で確認した。当初はiOS用に別キー＋クォータ上限で被害を限定する案を想定していたが、**1本のキーで Web・Android・iOS すべてを制限下に置ける**ことが分かったため、より単純な構成を採用した。
+    * 制限が実際に効いていることを両方向で確認: 許可外オリジン（`http://localhost:9999`）からは `RefererNotAllowedMapError` で拒否され、許可済オリジンからは成功する。
+    * **採用した構成**:
+      * 新規キー `Poster Map - Maps (restricted)`: Maps/Geocoding/Places/Directions のみ許可。リファラー制限 `https://poster-map-app.vercel.app/*` / `capacitor://poster-map-app.vercel.app/*` / `http://localhost:3062/*` / `http://localhost:5173/*`。
+      * 既存キーを `Firebase key (Firestore/Auth/Storage only)` に改名し、**Maps系4APIを許可リストから除去**。Firebaseの構成キーは公開前提であり、保護はセキュリティルールが担う。
+    * Vercelの `VITE_GOOGLE_MAPS_API_KEY`（Production/Preview/Development）を新キーに差し替え、`main` から本番デプロイして地図が正常表示されることを確認済み。ローカルの `.env.local` も差し替え済み。
+    * **未完了の確認事項**: 旧キーからの Geocoding REST 呼び出しは `REQUEST_DENIED`（API制限が効いている）になったが、**Maps JavaScript API 経路だけは30分経過後もまだ通ってしまう**。設定自体は正しく反映されているため Google 側の伝播遅延と判断。後日あらためて確認が必要。
+  * **Phase 3: アプリのデータ層をグループ対応（コミット `046eb2e`）**
+    * `src/hooks/useSession.ts` を新設し、認証・ユーザー情報・所属グループの解決を一元化。**グループが確定するまでクエリを投げない**構造にした。ポスター取得には自グループの条件が必須で、条件の無いクエリはFirestoreに丸ごと拒否されるため。従来は各フックが認証を待たずにクエリを投げており、起動直後の permission-denied（本番でも発生していた既存の不具合）の原因でもあった。
+    * `usePosterData` / `useActivityLogs` / `useAllActivityLogs` / `useDashboardData` / `useDailyNotifications` を `posters_v2` / `activityLogs_v2` とグループ絞り込みに対応。
+    * `src/lib/activityLogs.ts` を新設し、4つのフックに書き写されていた同一の変換処理を集約（lintの指摘件数も 42→38 に減少）。
+    * `App.tsx` の3箇所のジオコーディングで `city` を確定させる。グループ未割当てのアカウント向けの説明画面も追加（ルール側で全拒否されるため、原因の分からない白画面を避ける）。
+    * **`scripts/verify_group_isolation.mjs` を新設**し、本番Firestoreに対して各グループの検証用アカウントを作り、アプリと同じクエリを実行して隔離を実証（**18件すべて成功**、実行後にアカウントと検証データは自動削除）。難波事務所には投入した7件中2件（厚木市×佐藤まさし/難波県議）のみが見え、市区町村なしのポスターや対象外種別は一切見えないことを確認。
+    * **この検証で複合インデックス不足（`failed-precondition`）が発覚した。** エミュレータのルールテストでは表面化しない種類の問題で、実データ検証を入れた意義が出た。`firestore.indexes.json` を定義してデプロイし、READY 後に再検証して解消を確認している。
+* **次のステップ**: Phase 4（PC管理画面）、Phase 5（ネイティブ統合：位置情報・カメラの権限文言、セーフエリア、強制アップデート）、Phase 6（内部テスト配信）、Phase 7（データ移行・切替）。あわせて旧キーのMaps JS API制限の反映確認。
+
+### 2026-08-24 (Claude Code) その33
+* **タスク**: Phase 4（PC向け管理画面）の実装と検証
+* **内容**:
+  * **検証用データの投入**: `scripts/migrate_to_v2.mjs` を新設し、本番 `posters` 1,460件と `activityLogs` 1,438件を v2 コレクションへ複写。**本番コレクションからは読み取りのみで、書き込みは一切行っていない**。冪等（同一IDへのPATCH）なので、Phase 7 の切替時に同じスクリプトで差分を再同期できる。
+    * `city` の付与結果: 厚木市607 / 海老名市475 / 伊勢原市374 / 綾瀬市2 / 判定不能2件（`シャトルＡＺＵＭＡ`・`コスモ` の建物名のみ住所。ＲＥＥＶＥＳと同種）。
+    * 変更履歴のうち92件は city 不明、463件は種別未記録（`posterType` が導入される前の古いログ）。これらは佐藤まさし事務所からのみ閲覧可能になる。
+  * **管理画面（コミット `92989cc`）**: `/admin` に新設。`React.lazy` による遅延読み込みで、**モバイルに配布されるバンドルには載らない**（AdminApp は 65KB の独立チャンク）。アクセスできるのは佐藤まさし事務所（allowAll）の管理者のみ。
+    * 新規タブ: ポスター管理（一覧・横断検索・4種の絞り込み・列ソート・ページ送り・複数選択・一括編集・1件編集）／市区町村の手当て／ユーザー管理（グループ割当対応）／グループ管理（事務所の追加と条件編集）／変更履歴（全期間の4指標つき）。
+    * 既存の `DashboardTab` / `UserAnalyticsTab` / `SettingsTab` / `CsvActions` は書き直さずそのまま再利用している。
+    * ルータは追加していない。`main.tsx` でパスを見て分岐し、タブ状態は `location.hash` で保持する方式。`/admin` の直アクセスが404にならないよう `vercel.json` に SPA リライトを追加。
+  * **付随する修正**:
+    * `usePosterData` に `bulkUpdatePosters` を追加。CSVインポート用の `setPostersBulk` はバッチ書き込みで速い代わりに変更履歴を残さないため、一括編集では1件ずつ更新して履歴（`（一括編集）` 付き）を残し、進捗を通知する。
+    * `CsvActions` に `city` 列を追加（テンプレート・エクスポート・インポート）。新規行はジオコーディング結果から `city` を取る。
+    * モバイルの `AdminPanel` のユーザー作成に所属グループの選択を追加。未選択では作成できないようにした（グループ無しのユーザーはログインできてもデータが一切見えないため）。
+    * **`usePinTypes` をセッション層に揃えた**。このフックだけ認証を待たずにクエリを投げており、拒否されると無言でコード内のデフォルト値へフォールバックしていた。これが「党員募集が消えていなかった」不具合の構造そのものだったため、認証確定後にのみ購読するよう変更。この修正により**アプリのコンソールエラーが0件になった**。
+    * 実装中、render 内でコンポーネントを定義していた箇所を3件修正（再描画のたびに入力欄が再マウントされ、1文字打つごとにフォーカスが外れる不具合）。lint が検出した。
+  * **検証（開発サーバー上、Playwright / スクリーンショット取得済み）**:
+    * ポスター一覧: 全1,460件・撤去を除く1,399件を表示。「厚木市」検索で587件、列ソート・ページ送り（14ページ）・複数選択が動作。
+    * **一括編集**: UIから2件にタグを付与 → Firestore側で実際にタグが付いていること、`activityLogs_v2` に「タグ追加: …（一括編集）」が記録されることを確認。タグ削除で復元し、検証データは残していない。
+    * 市区町村の手当て: 移行レポートと同じ「未設定2件・対象3市以外2件」が表示され、該当住所（シャトル／コスモ／綾瀬市）も一致。
+    * グループ管理: 担当件数が条件どおり（佐藤まさし1,460 / 難波445 / 宇田川445 / 渡辺349）。
+    * **権限ガード**: 検証用アカウントのロールと所属を一時的に変更して確認。一般ユーザー→「管理者権限のアカウントのみ」、他事務所の管理者→「佐藤まさし事務所の管理者のみ」で拒否されることを確認し、確認後に元へ戻した。
+    * 回帰確認: ルール境界テスト40件・グループ隔離テスト18件とも全通過。地図画面もマーカー509件・タイル描画・重なりバッジすべて正常で、コンソールエラー0件。
+    * `npx tsc -b` / `npm run build` / `npm run lint`（38件でベースライン維持）。
+* **次のステップ**: Phase 5（ネイティブ統合：位置情報・カメラの権限文言、セーフエリア、強制アップデート機構、アイコン・スプラッシュ）、Phase 6（内部テスト配信。**Apple / Google の資格情報が必要なため着手前に要確認**）、Phase 7（データ移行・切替）。あわせて旧FirebaseキーのMaps JS API制限がGoogle側で反映されたかの再確認。
+
+### 2026-08-24 (Claude Code) その34
+* **タスク**: Phase 5（ネイティブ統合）の実装と実機検証
+* **内容**（コミット `02c33e3`）:
+  * **権限**: `@capacitor/geolocation` / `@capacitor/camera` を導入し、`Info.plist` と `AndroidManifest.xml` に利用目的・権限を追加。
+    * `src/lib/geolocation.ts` と `src/lib/photos.ts` で Web とネイティブの差を吸収した。ネイティブで `navigator.geolocation` を直接呼ぶとOSの権限要求の経路が無く、iOSでは利用目的が未設定だとアプリごと落ちる（その31で実機ログから確認済みだった事象）。
+    * **バックグラウンド位置情報は意図的に要求していない**。常時許可は両ストアの審査が一段厳しくなる（Google Playは用途説明の動画提出を求める）一方、本アプリのナビは画面を開いている間だけ動けば足りるため。
+    * 写真は `PhotoPicker` に集約し、ネイティブでは「撮影する」「写真から選ぶ」を出し分ける。現場でその場撮影する使い方が中心のため。
+    * iOS の `UIRequiredDeviceCapabilities` が `armv7`（32bit端末向け）のままだったので `arm64` に修正した。
+  * **セーフエリア**: `body` にパディングを当てていたため、**地図が下へずれて上部に白帯が出て、画面下も見切れていた**（実機で確認）。地図を全面に敷き、検索バーやボタン側でインセットを吸収する方式へ変更。あわせて、`PinBottomSheet` が使っていた `pb-safe` が**未定義で効いていなかった**ことも判明したため、ユーティリティを `index.css` に定義した。
+  * **強制アップデート**: `src/hooks/useAppVersionGate.ts` と `settings/appVersion` による下限バージョン確認を追加。ネイティブは古い版が端末に残り続けるため、Firestoreのスキーマが育っている本アプリでは不整合（権限判定に必要なフィールドを欠いた書き込み等）を防ぐ仕組みが要る。**設定が無い／読めない場合は「制限なし」に倒している**（設定漏れでアプリが使えなくなる方が損害が大きいため）。`scripts/seed_app_version.mjs` で下限を設定できる。
+  * **アイコン・スプラッシュ**: `assets/` にソース画像を追加し、`@capacitor/assets` で両OS分（Android 100点 / iOS 13点）を生成。アプリのアクセントカラー（indigo）と地図ピンのモチーフに合わせた。
+  * **バージョン**: iOS `MARKETING_VERSION` と Android `versionName` を `1.0.0` に統一。
+* **検証（iOSシミュレータ / iPhone 17、スクリーンショット取得済み）**:
+  * 権限ダイアログが日本語の利用目的文つきで表示され、ログから `Missing UsageDescription key` が消えたことを確認。
+  * 許可後、`simctl location` で設定した座標（厚木中央公園）に現在地の青いドットが表示されることを確認。ポスターも1,475枚分が正常表示。
+  * 地図が全面表示になり、検索バーがダイナミックアイランドを避けて配置されることを確認（修正前は上部に白帯が出ていた）。
+  * 下限を `2.0.0` に設定すると「現在のバージョン 1.0.0 ／ 必要なバージョン 2.0.0 以上」で利用が止まり、`1.0.0` に戻すと通常表示に戻ることを確認。
+  * Android も APK ビルド成功（4.5MB → 9.6MB。プラグインとアイコン追加分）。
+* **未検証**: カメラの実動作。シミュレータにカメラが無いため、実機での確認が必要（Phase 6の内部テストで実施可能）。Android の機能全体もエミュレータが非力で未完了のままで、実機確認が必要。
+* **次のステップ**: Phase 6（内部テスト配信）。**Apple Developer / Google Play Console の資格情報と署名設定が必要なため、着手前にユーザーへ必要物を提示する**。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-25 (Claude Code) その35
+* **タスク**: 更新案内の1週間再表示の追加と、Phase 6（内部テスト配信）の準備
+* **内容**:
+  * **更新案内の再表示（コミット `973efb4` / `9f7ebae`）**: 「あとで」を選んだまま放置されると古い版が残り続けるため、記憶を永久にせず**1週間で失効**させるようにした。記憶をバージョン文字列から `{ version, at }` に変更（旧形式も読める）。時間経過はUI操作では再現しづらいため、判定を `src/lib/updatePrompt.ts` の `shouldShowUpdatePrompt()` として純粋関数に切り出し、`npm run test:update-prompt`（7件）で検証している。現在時刻はモジュール読み込み時に一度だけ取得する（レンダーのたびに読むと結果が不安定になるうえ、判定は「起動時点で1週間たっていたか」で足りるため）。
+  * **署名設定（コミット `12a0a71`）**:
+    * 既存のプロビジョニングプロファイル（別アプリ `jp.kanagawa16.partymember` のもの）から **Apple Team ID `46346RA3CT`（Masashi Satou）** が判明したため、Xcodeプロジェクトに設定。`ios/ExportOptions.plist`（app-store-connect 方式・自動署名）も追加した。
+    * 現状あるのは **Apple Development 証明書のみで、Distribution 証明書は未作成**。Xcodeの自動署名で作成できるが Admin 権限が要る。
+    * Android は `keystore.properties` があれば署名し、無ければ未署名でビルドする方式にした（開発時に鍵が無くても困らないようにするため）。鍵と資格情報は `.gitignore` で除外し、作成手順は `android/keystore.properties.example` に記載。**鍵は未作成**。
+    * **ビルド確認**: iOS の Release アーカイブ成功（未署名）、Android の `assembleRelease` / `bundleRelease` 成功（未署名、AAB 6.6MB）。
+  * **⚠️ プライバシーポリシーの不足を発見**: ユーザーから提示された https://satoumasashi.com/privacypolicy/ を取得して内容を確認したところ、**ウェブサイト向けの記載のみで、位置情報・カメラ・アプリ・端末への言及が一切無い**。両ストアともプライバシーポリシーはアプリの収集内容を網羅している必要があり、申告内容と食い違うと差し戻しになる。同じページの末尾に追記する形の文案を `docs/store-submission.md` に用意した（URLが変わらないため、ストアには従来どおりのURLを登録できる）。
+  * **申告内容の確定**: コードを実際に確認したうえで、Google Play のデータセーフティと Apple の App Privacy に入力する内容を整理した。
+    * **重要な確認**: ユーザーの現在地は画面表示と経路探索にのみ使われ、**Firestore・Storage のいずれにも保存していない**（`src/App.tsx` の `currentLocation` はコンポーネントの状態としてのみ保持）。このため「位置情報は収集しない」と申告できる。経路探索でGoogleへ送信される点はプライバシーポリシーに記載する。
+    * トラッキングは無し（広告・解析SDKは未導入。Firebase Analytics は `src/lib/firebase.ts` で明示的に無効化済み）。
+    * 掲示場所の所有者の氏名・連絡先は**第三者の個人情報をスタッフが入力している**ため、取得時の同意の取り方について運用面の整理を推奨する旨も記載した（ストアの必須要件ではないが法務上の論点）。
+* **ユーザー対応待ち**: (1) プライバシーポリシーへの追記、(2) App Store Connect でのアプリ作成（Bundle ID `com.satoumasashi.postermap`）、(3) Apple Distribution 証明書の作成、(4) Play Console でのアプリ作成、(5) Play App Signing の有効化とアップロード鍵の作成、(6) 内部テスターの登録（各最大100人）。
+* **次のステップ**: 上記が揃い次第、アーカイブ作成とアップロード。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-25 (Claude Code) その36
+* **タスク**: アプリ専用プライバシーポリシーの作成・公開
+* **内容**（コミット `cee5e8c` / main へ `5abf3d7` として取り込み）:
+  * **独自に作成した理由**: 既存の https://satoumasashi.com/privacypolicy/ を取得して確認したところ、ウェブサイト向けの内容のみで、位置情報・カメラ・アプリ・端末への言及が一切なかった。両ストアともプライバシーポリシーはアプリの収集内容を網羅している必要があり、申告内容と食い違うと差し戻しになるため、アプリ専用のものを新規に作成した。ウェブサイト側のポリシーは従来どおりでよく、本ポリシーの冒頭で「本アプリにのみ適用される」旨を明記している。
+  * **保持方法**: `public/privacy.html` として**静的HTML**で持つ。Reactアプリに依存しないため、**ログイン不要で開け、アプリのJSが動かない状況でも表示できる**（ストア審査では未ログインでの閲覧が前提になる）。文面の変更はコードと同じ流れ（コミット→デプロイ）で反映でき、変更履歴もGitに残る。
+  * **公開URL**: `https://poster-map-app.vercel.app/privacy`（`vercel.json` のリライトで `/privacy.html` を配信）。**本番へデプロイ済みで、未ログインでのHTTP 200を確認済み**。
+  * ログイン画面の下部からリンクした。リンク先は実ファイル名（`/privacy.html`）にしている。ネイティブアプリではVercelのリライトが効かず、同梱されたファイルを直接開く必要があるため。
+  * **記載内容は実装を確認して作成した**。とくに次は事実として書いている:
+    * 利用者の位置情報はサーバーに保存しない（`src/App.tsx` の `currentLocation` はコンポーネントの状態としてのみ保持）
+    * バックグラウンドでの位置情報取得は行わない
+    * 広告配信・行動追跡は行わない（Firebase Analytics は無効化済み）
+    * データの保管場所は日本国内（Firestore・Storage・Functions すべて `asia-northeast1` であることを実際に確認）
+  * 掲示場所の所有者など**第三者の個人情報の扱い**と、その方からの開示・訂正・削除請求の窓口についても章を設けた。
+  * ブランチ運用: プライバシーポリシーはグループ機能とは独立しているため、`main` へ cherry-pick して本番デプロイし、その後 `main` を作業ブランチへマージした（`vercel.json` が main に無く競合したため、将来のマージで再衝突しないよう同一内容で作成した）。
+* **次のステップ**: ユーザー側での (1) App Store Connect でのアプリ作成、(2) Apple Distribution 証明書の作成、(3) Play Console でのアプリ作成、(4) Play App Signing の有効化とアップロード鍵の作成、(5) 内部テスターの登録。揃い次第アーカイブとアップロードを行う。
+
+### 2026-08-25 (Claude Code) その37
+* **タスク**: Bundle ID の変更と、Phase 6（内部テスト配信）の実行
+* **内容**:
+  * **Bundle ID を `app.satoumasashi.postermap` に変更（コミット `e6dfff9`）**: ユーザー指定。当初 GCP のプロジェクト名に合わせた `satoumasashi-poster-map` の要望があったが、**Androidのパッケージ名はJavaの識別子でありハイフンが使えない**ため不可能であること、Firebase との紐付けは Web SDK 経由なので Bundle ID と GCP プロジェクト名に技術的な関係が無いことを説明し、逆ドメイン形式で確定した。iOS・Android 両方（Javaパッケージのディレクトリ移動を含む）を変更し、**IPA の `CFBundleIdentifier` と AAB 内の AndroidManifest を展開して**新IDのみになっていることを確認した。
+  * **Android の署名（コミット `8bc36b2`）**: アップロード鍵 `android/poster-map-upload.jks` を生成（alias: `poster-map`、2054年まで有効）。SHA-1 / SHA-256 の指紋を docs に記録。鍵と `keystore.properties` は `.gitignore` で除外しており、**このMacにしか存在しないためバックアップが必須**である旨をユーザーへ伝えた。Play App Signing は有効化済みとの回答を得ている。
+  * **⚠️ 配布物からデバッグ用ファイルを削除（コミット `a062e09`）**: IPA の中身を検証していて、`public/map-test.html`（2026年7月のCORS調査で作った検証ページ）に**Firebaseキーと Map ID が直書きされたまま**残っており、本番Webで公開（HTTP 200）され、アプリのバンドルにも同梱されていることが判明した。該当キーは既にFirebase専用APIへ制限済みのため影響は限定的だが削除し、IPA と AAB を再生成して両方から消えたことを確認した。
+  * **App Store Connect API キーの管理（コミット `a282d4a`）**: ユーザーがプロジェクト直下に置いた `AuthKey_767NSJKV27.p8` について、まず **Git に流出していないこと（未追跡・履歴にも無し）を確認**したうえで `~/.appstoreconnect/private_keys/` へ移動し、ディレクトリ700・ファイル600に設定。**ファイル名は変更していない**（Appleのツールは `AuthKey_<キーID>.p8` の形式で鍵を探すため、改名すると見つけられなくなる）。`.gitignore` に `*.p8` / `AuthKey_*` / `ios/appstore.env` を追加した。
+  * **✅ iOS の初回アップロード完了（コミット `a395766`）**:
+    * Xcodeへのアカウント登録が済んだ結果、自動署名で **Apple Distribution 証明書（Cloud Managed）とApp Store用プロファイルが生成**され、アーカイブ・IPA書き出しに成功。`codesign` と `embedded.mobileprovision` を検査し、`Apple Distribution: Masashi Satou (46346RA3CT)` による署名・App Store配布方式（端末限定でない）であることを確認した。
+    * `altool --validate-app` で **VERIFY SUCCEEDED（エラーなし）**、`--upload-app` で **UPLOAD SUCCEEDED**。
+    * App Store Connect API を直接叩いて確認したところ、**ビルド1の処理は完了（processingState: VALID）**。有効期限は 2026-11-23（TestFlightの90日制限）。
+    * App Store Connect 上のアプリ名は「ポスター管理アプリ｜神奈川16区」（App ID `6804988572`）。
+  * **リリース自動化**: `scripts/release_ios.sh`（ビルド→同期→アーカイブ→書き出し→検証→アップロードを1コマンド）と `scripts/release_android.sh`（署名済みAAB生成）を作成した。**ビルド番号は同じ値で2回アップロードできない**ため、2回目以降は `CURRENT_PROJECT_VERSION` / `versionCode` を上げる必要がある旨をスクリプト内とdocsに明記した。
+* **残作業**: (1) Play Console への AAB アップロード（`build/upload/postermap-1.0.0-build1.aab`）、(2) 内部テスターの登録（iOS は App Store Connect のユーザーとして、Android はメールアドレス）、(3) 署名鍵のバックアップ、(4) 実機でのカメラ動作確認（シミュレータでは不可）。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-26 (Claude Code) その38
+* **タスク**: Google Play へのアップロードをAPI経由で実行
+* **内容**（コミット `a1e5f2e`）:
+  * Play Developer API（`androidpublisher.googleapis.com`）を有効化し、アップロード専用のサービスアカウント `play-publisher@satoumasashi-poster-map.iam.gserviceaccount.com` を作成。鍵は `~/.playconsole/play-publisher.json` に600で配置し、リポジトリには含めない。
+  * `scripts/upload_play.mjs`（`npm run upload:play`）を作成。編集セッション作成 → AABアップロード → 内部テストトラックへ割り当て → コミット を実行する。**途中で失敗した場合は編集セッションを破棄する**ため、Play側に中途半端な状態が残らない。
+  * **権限付与でつまずいた点**: 最初の付与では403（PERMISSION_DENIED）が続いた。認証（トークン取得）は成功しており `UNAUTHENTICATED` ではなかったため、鍵やスクリプトではなくPlay Console側の権限が原因と切り分けられた。約8分の再試行でも変わらず、ユーザーが付与し直したところ通った。403時には「パッケージ名の一致」「招待が保留中でないか」「API利用規約への同意」を確認するよう案内する文言をスクリプトに組み込んである。
+  * **✅ アップロード完了**: versionCode 1 を internal トラックへ反映。APIで状態を確認し、`internal / versionCode 1 / status: completed` およびリリースノートの登録を確認済み。
+* **これで iOS・Android とも初回配信が完了した**（iOS はビルド1が TestFlight で VALID、Android は内部テストトラックで completed）。
+* **残作業**: (1) 内部テスターの登録（iOS は App Store Connect のユーザーとして、Android はメールアドレス）、(2) 署名鍵のバックアップ（`android/poster-map-upload.jks` と `keystore.properties` はこのMacにしか無い）、(3) 実機でのカメラ動作確認。その後 Phase 7（データ移行・切替）。
+
+### 2026-08-27 (Claude Code) その39
+* **タスク**: グループIDのテストと、種類の選択肢・タグの絞り込み対応
+* **内容**:
+  * **テストアカウントの発行**: 難波事務所（`nanba`、一般ユーザー）として `test.nanba@satoumasashi.com` を作成。担当種別が2つある事務所を選び、種別による絞り込みも確認できるようにした。作成後に実際にログインして、445件（厚木市 × 佐藤まさし421 / 難波県議24）のみが見え、他市区町村・担当外種別・全件クエリ・ユーザー一覧がいずれも `permission-denied` になることを確認済み。
+  * **タグは対応不要だった**: `allTags` は `posters`（グループ絞り込み済み）から生成しているため、既に担当範囲のタグのみが出る状態だった。実データで裏を取り、難波事務所には「井上武・高市」のみが見え、他事務所のタグ（れいわ新選組・参政党・金沢ゆい）は出ないことを確認した。
+  * **種類の選択肢を担当範囲に絞った（コミット `d258e40`）**: 入力欄（ピンの編集フォーム・検索の絞り込み）に出す種類を、所属事務所が扱えるものだけに限定。担当外を選べてしまうと保存の瞬間にルール側で拒否され「入力したのに保存できない」状態になるため、入口で防ぐ。地図のマーカー色には全種別のリストを使う（色の対応表として参照するだけのため）。
+  * **「その他」をどのグループでも扱えるようにした**: ユーザー要望。**UIだけで選べるようにするとルール側で拒否されるため、`firestore.rules` にも同じ例外を実装**した（`src/types/index.ts` の `ALWAYS_ALLOWED_TYPES` と対になる旨を双方にコメントで明記）。市区町村の条件は通常どおり効くため、担当エリア外の「その他」は見えない。
+    * **副作用として可視件数が増える**: 難波事務所は 445件 → 453件（厚木市の「その他」8件が追加）。宇田川事務所も海老名市の「その他」2件が加わる。担当エリア内の掲示物を扱えるようにするという要望の趣旨に沿った変化と判断した。
+  * **検証**: ルール境界テストを46件に拡充（「その他」の検証6件を追加）し全通過。加えて難波事務所のテストアカウントで本番Firestoreに対し、厚木市の「その他」は追加でき、海老名市の「その他」と厚木市の「ごとう祐一」は拒否されることを実地確認した。
+  * 管理画面の確認用URL `https://postermap-admin.vercel.app`（Vercelのプレビュー保護あり）を最新の内容に更新した。
+* **注意**: 配信済みのアプリ（TestFlight ビルド1 / Play versionCode 1）は**この変更を含まない**。アプリ上で確認するには再ビルドとアップロードが必要（ビルド番号の繰り上げが必須）。
+* **次のステップ**: 追加の修正要望をまとめてから再ビルドするか、すぐ配信するかの判断。その後 Phase 7（データ移行・切替）。
 ### 2026-08-29 (Claude Code) その40
 * **タスク**: ダッシュボードの集計条件の見直しと、集計値の読み取りづらさの是正（`main` ブランチ＝現行本番）
 * **背景**: ユーザーから「8/15〜8/21 の集計で新規42件・貼替/修理/撤去118件と出たが、体感では1か月で16件程度の増加しかない」との指摘。実際に本番へログインして検証したところ、**表示していたのは既定の30日間（7/29〜8/28）であり、指定した1週間ではなかった**ことが判明した。数値自体の誤りではなく、期間の取り違えと単位・定義の分かりにくさが原因。
@@ -399,3 +565,80 @@
   1. **改修後の画面の目視確認が未実施**。検証アカウント `qa.verification@satoumasashi.com` は有効だが `.env.e2e.local` のパスワードが古く、再設定も自動承認の対象外だった。
   2. **Cloud Functions のランタイムが Node.js 20 のまま**。デプロイ時の警告で判明。`firebase-tools` のランタイム定義を確認したところ **2026-04-30に非推奨、2026-10-30に廃止**で、廃止後は関数をデプロイできなくなる。約2か月しか猶予がない。`functions/package.json` の `engines.node` を `"22"` にするだけで期限は2027-04-30（廃止は2028-10-31）まで延びる。導入済みの `firebase-functions@6.6.0` / `firebase-admin@12.x` はいずれも `node >=14` を要求するだけなので、**この変更にライブラリの更新は不要**。同時に出ていた「firebase-functions が古い」警告（6.6.0 → 7.3.2）は破壊的変更を伴うため別件として切り離すのが安全。
   3. 検証アカウントは全フェーズ完了後に削除する。
+
+### 2026-08-29 (Claude Code) その41
+* **タスク**: `docs/アプリ共通仕様.md` の内容を本アプリへ実装（`feature/groups-admin`）と、Cloud Functions のランタイム更新
+* **前提**: 仕様書は Expo + NestJS + Next.js を前提に書かれているため、本アプリ（React + Vite + Capacitor + Firebase）向けに読み替えて実装した。仕様書自身が「守るべきルール集ではなく出発点」「実装が変わったら必ずここを書き換えること」と定めているため、読み替え表と実装して分かったことを仕様書の「0. 他の構成への読み替え」として追記済み。
+* **実装状況の棚卸し**:
+
+  | 仕様 | 状況 |
+  | --- | --- |
+  | 1. チュートリアル | **新規実装** |
+  | 2.1 プッシュ通知 | **未実装**（下記） |
+  | 2.2 アプリ内通知一覧 | **新規実装**（`announcements`） |
+  | 2.3 ポップアップ通知 | **新規実装** |
+  | 3. アップデート通知 | 実装済み（その35で対応。7日再表示・強制停止とも仕様どおり）|
+  | 4.1 自動ログイン | 実装済み（Firebase Auth + `indexedDBLocalPersistence`）|
+  | 4.2 パスワードマネージャー連携 | **新規実装** |
+  | 4.3 初期パスワード生成 | **新規実装** |
+  | 5. テスター連携 | 運用ルール。ルール5-7により対外連絡は発注者確認が必須のため、こちらからは連絡しない |
+
+* **主な判断**:
+  * **`SecureStore` → `localStorage`**: 仕様書が SecureStore を使うのは RN に localStorage が無いためで、機密だからではない。WebView 上では localStorage がそのまま使え、「その端末にだけ残る」性質も同じ。プライベートモード等で例外を投げるため `src/lib/deviceStore.ts` で try/catch を集約した。
+  * **お知らせは既存の「デイリー通知」に相乗りさせず、メガホンのアイコンで分けた**。既存パネルは日付スワイプの処理が入り組んでおり、そこへ差し込むと壊しやすい。ポスターの変更（アプリ由来）と事務局からの連絡（人が書いたもの）は性質も違う。
+  * **お知らせの本文はプレーンテキストとして描画**。改行を活かすためだけに HTML として描くと注入の余地を作るため、`white-space: pre-wrap` で見た目だけ再現している。
+  * **`mustChangePassword` の解除にルールの例外を1つ追加**。`users` は佐藤まさし事務所の管理者しか書けない設計なので、そのままでは本人がフラグを下ろせない。`affectedKeys().hasOnly(['mustChangePassword'])` かつ「false にすることだけ」の2条件に絞ったため、`role` や `groupId` の書き換えには使えない。
+  * **お知らせはグループで絞っていない**。事務所をまたいだ連絡ができなくなるため。代わりに管理画面に「特定の事務所にだけ関係する内容は本文に書くこと」と明記した。
+* **検証**:
+  * ルール境界テスト **46→56件、全通過**（お知らせ5件・`mustChangePassword` 5件を追加）。とくに「本人でも他フィールドを同時には変えられない」「この例外を使って groupId は書き換えられない」が拒否されることを確認。
+  * 初期パスワードを2万件生成し、要件違反0件・重複0件。先頭が大文字になる割合は38%で理論値37.7%と一致し、Fisher-Yates が効いていることを確認。
+  * 一時的なプレビュー画面を作り、チュートリアル／ポップアップ／お知らせ一覧／パスワード変更の4画面を実機幅（420px）で描画確認し、確認後に撤去。
+  * ログイン画面の属性をブラウザ上で確認（`id=login-email` / `name=username` / `autocomplete=username` ほか）。
+  * `tsc` / `build` 通過、lint 37→36件。
+* **Cloud Functions のランタイム**: `engines.node` を 20 → 22 に更新（コミット `a0359f3`、`main`）。Node 20 は 2026-10-30 に廃止されデプロイ不能になるため。`firebase-functions@6.6.0` / `firebase-admin@12.x` はいずれも `node>=14` 要求のためライブラリ更新は不要。**デプロイは未実施**。
+* **未完了 / 次のステップ**:
+  1. **プッシュ通知（仕様2.1）が未実装**。`@capacitor/push-notifications` の導入に加え、**APNs 認証キーを Apple Developer で発行し Firebase に登録する作業**（ユーザー側でしかできない）と、`google-services.json` / `GoogleService-Info.plist` の配置、送信用の Cloud Function、管理画面の送信フォームが要る。ネイティブ設定の変更を伴うため再ビルド・再申請が必要で、クローズドテスト審査中のビルドに影響する。着手の可否を確認すること。
+  2. **今回の変更はまだ配信されていない**。`feature/groups-admin` 上のコミット `209f302`。ユーザーに届けるには新しいビルドの作成と TestFlight / Play への提出が要る。
+  3. **セキュリティルールのデプロイが未実施**。`announcements` と `users` の更新ルールを本番へ反映しないとお知らせ機能は動かない（`firebase deploy --only firestore:rules`）。
+  4. Node 22 ランタイムのデプロイ（`npx firebase-tools deploy --only functions:dailyPosterReport --project satoumasashi-poster-map`）。
+
+### 2026-08-29 (Claude Code) その42
+* **タスク**: プッシュ通知（共通仕様 2.1）の実装。ユーザーから APNs 認証キー `AuthKey_T7SN9YYF72.p8` の提供を受けて着手した。
+* **設計判断**:
+  * **プラグインは `@capacitor-firebase/messaging` を採用**。公式の `@capacitor/push-notifications` は iOS で APNs のトークンをそのまま返すため、iOS 向けに APNs へ直接送る経路を別に作ることになる。前者なら両OSとも FCM のトークンに揃い、送信側を1本にできる。
+  * **トークンは `users` ではなく `pushTokens` コレクションへ1件ずつ**。`users` は佐藤まさし事務所の管理者しか書けない設計で、そこに例外を増やすより「自分の uid が入った文書だけ書ける」独立コレクションの方が安全。1人が複数端末を持つ場合にも素直に対応できる。**読み取りは誰にも許可していない**（送信は Admin SDK なので支障なし。読ませると「誰がどの端末を使っているか」が全メンバーに見えてしまう）。ログアウト時に削除する。
+  * **送信は `PUSH_NOTIFICATIONS_ENABLED=true` のときだけ**（共通仕様どおり）。誤送信は取り消せないため既定は送らない側に倒した。500件ずつ送り、届かなくなったトークンはその場で削除する。
+  * **許可を求めるのは起動直後ではなくログイン後**。何のアプリか分からないまま尋ねると拒否されやすく、iOS は一度拒否されると設定アプリからしか戻せない。
+* **Apple / Firebase 側に加えた変更**:
+  * Firebase プロジェクトに **iOS アプリ**（`1:390119901860:ios:cf6ba03911bd2c8ba33431`）と **Android アプリ**（`1:390119901860:android:d25efca5115be8b5a33431`）を登録し、設定ファイルを配置した。従来は Web アプリのみ登録されていた。
+  * 自動生成された iOS の APIキーに**バンドルIDの制限**を付けた。Android キーは Play App Signing により署名証明書が Google のものに置き換わるため、アップロード鍵の SHA-1 で縛ると配信版が動かなくなる。**Play Console の「アプリの署名」に表示される SHA-1 が必要なので保留**（API では取得できない）。両キーとも API 制限（Firebase 系サービスのみ）は自動で入っている。
+  * App ID `app.satoumasashi.postermap` に **PUSH_NOTIFICATIONS を有効化**した（App Store Connect API 経由）。`IN_APP_PURCHASE` のみ有効な状態だった。
+  * `ios/App/App/App.entitlements`（`aps-environment`）を新設し、Debug / Release 両方の `CODE_SIGN_ENTITLEMENTS` に設定した。
+  * **`GoogleService-Info.plist` は Xcode の Resources ビルドフェーズにも登録が必要**。ファイルを置くだけではアプリに同梱されず、Firebase が実行時に見つけられない。`project.pbxproj` にファイル参照・ビルドファイル・グループ・Resources の4箇所を追加した。
+* **検証**:
+  * ルール境界テスト **56→63件、全通過**。「他人になりすましてトークンを登録できない」「他人のトークンを削除できない」「管理者でも読めない」を確認。
+  * **Android**: `assembleDebug` 成功。マージ後のマニフェストに `POST_NOTIFICATIONS` と `FirebaseMessagingService` が入ることを確認。
+  * **iOS**: シミュレータ向けビルド成功。`GoogleService-Info.plist` が `App.app` に同梱され `IS_GCM_ENABLED=true` であること、`FIRMessaging` が `App.debug.dylib` にリンクされていることを確認（Xcode 16 の Debug ビルドは本体を dylib に分けるため、`App` 本体は 71KB しかない）。
+  * **Web**: プラグイン導入後もログイン画面がコンソールエラーなしで開くことを確認。
+* **未完了 / 次のステップ**:
+  1. **APNs 認証キーの Firebase への登録が未実施**。公開APIが無くコンソール操作のみ。Firebase Console → プロジェクトの設定 → Cloud Messaging → Apple アプリの構成 → APNs 認証キーをアップロード。**キーID `T7SN9YYF72` / チームID `46346RA3CT`**。これをやるまで iOS には届かない。
+  2. **Cloud Functions のデプロイと環境変数**。`PUSH_NOTIFICATIONS_ENABLED=true` を設定しないと送信されない。`sendAnnouncementPush` と、Node 22 化した `dailyPosterReport` の両方をデプロイする。
+  3. **セキュリティルールのデプロイ**（`announcements` / `pushTokens` / `users` の更新）。
+  4. **実機での確認が必要**。プッシュ通知はシミュレータでは検証しきれない。新しいビルドを TestFlight / Play へ上げてから確認する。
+  5. Android の APIキーに、Play App Signing の SHA-1 でアプリ制限を付ける（上記）。
+
+### 2026-08-29 (Claude Code) その43
+* **タスク**: プッシュ通知の本番反映（APNs 認証キーの登録はユーザーが実施済み）
+* **完了したこと**:
+  * **Firestore ルールを本番へ反映**。`announcements` / `pushTokens` / `users` の更新ルールが有効になった。
+  * **Cloud Functions を2本ともデプロイ**。いずれも `nodejs22` / `asia-northeast1` / GEN_2 で ACTIVE。
+    * `dailyPosterReport` — Node 20 からの移行完了（2026-10-30 の廃止期限に対応済み）。
+    * `sendAnnouncementPush` — 新規。トリガーは `announcements/{announcementId}` の created、環境変数 `PUSH_NOTIFICATIONS_ENABLED=true` が入っていることを確認。
+  * **初回デプロイの失敗と対処**: 1度目は Eventarc の「Permission denied while using the Eventarc Service Agent」で失敗した。調べたところサービスエージェントには `roles/eventarc.serviceAgent` が既に付与済みで、Firestore のロケーション（`asia-northeast1`）と関数のリージョンも一致していたため、**設定の不備ではなく、2nd gen 関数を初めて使う際の権限伝播待ち**と判断。90秒待って再試行したところ成功した。
+  * `PUSH_NOTIFICATIONS_ENABLED` は `functions/.env.satoumasashi-poster-map` に置いた。機密ではなく、設定内容を残す意味があるためリポジトリに含めている。
+* **Play の現況**（確認のみ）: 内部テスト・クローズドテストとも `versionCode 3 / 1.0.1` が `completed`。オープンテスト・製品版はリリースなし。
+* **未完了 / 次のステップ**:
+  1. **プッシュ通知は新しいビルドを配信するまで届かない**。現在配信中の `versionCode 3` にはプラグインが入っていない。`versionCode 4` / `1.0.2` へ上げてビルドし直し、TestFlight / Play へ提出する必要がある。**着手の可否はユーザー判断待ち**（クローズドテスト審査中のため）。
+  2. **実機での確認が必要**。プッシュ通知はシミュレータでは検証しきれない。
+  3. Android の APIキーに Play App Signing の SHA-1 でアプリ制限を付ける（Play Console の「アプリの署名」から取得が必要。API では取れない）。
+  4. 改修後のアプリ画面の目視確認（検証アカウントのパスワードが古いまま）。

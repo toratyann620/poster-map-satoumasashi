@@ -1,0 +1,35 @@
+{
+  "indexes": [
+    {
+      "//": "ポスターのグループ絞り込み。where(city in) + where(type in) + orderBy(updatedAt desc)",
+      "collectionGroup": "posters_v2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "city", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "変更履歴のグループ絞り込み（新しい順）。一覧・ダッシュボード・日次通知で使用",
+      "collectionGroup": "activityLogs_v2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "city", "order": "ASCENDING" },
+        { "fieldPath": "posterType", "order": "ASCENDING" },
+        { "fieldPath": "changedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "変更履歴のグループ絞り込み（古い順）。4指標の再構築で全件を時系列に読む",
+      "collectionGroup": "activityLogs_v2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "city", "order": "ASCENDING" },
+        { "fieldPath": "posterType", "order": "ASCENDING" },
+        { "fieldPath": "changedAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

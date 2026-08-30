@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ActivityLog } from '../types';
 import { db } from '../lib/firebase';
+import { COL } from '../lib/collections';
+import { parseActivityLog, logScopeConstraints } from '../lib/activityLogs';
+import { useSession } from './useSession';
 import {
     collection,
     query,
@@ -45,6 +48,7 @@ export interface DailyNotificationLog extends ActivityLog {
 }
 
 export const useDailyNotifications = (userId: string | null, offsetDays: number) => {
+    const { ready, group } = useSession();
     const [logs, setLogs] = useState<DailyNotificationLog[]>([]);
     const [isUnread, setIsUnread] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -53,48 +57,36 @@ export const useDailyNotifications = (userId: string | null, offsetDays: number)
     // 対象の範囲を計算
     const range = getDayRange(offsetDays);
 
+    const scopeKey = group ? `${group.id}|${group.allowAll}|${group.cities}|${group.types}` : '';
+
     useEffect(() => {
         setTargetDateStr(range.dateStr);
+        if (!ready) return;
+        if (!group) { setLogs([]); setLoading(false); return; }
+
         setLoading(true);
 
-        // activityLogs から指定日分を取得
+        // 変更履歴から指定日分を、自グループの担当範囲に絞って取得する
         const q = query(
-            collection(db, 'activityLogs'),
+            collection(db, COL.activityLogs),
+            ...logScopeConstraints(group),
             where('changedAt', '>=', range.start),
             where('changedAt', '<=', range.end),
             orderBy('changedAt', 'desc')
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data: DailyNotificationLog[] = [];
-            snapshot.forEach((docSnap) => {
-                const d = docSnap.data();
-                data.push({
-                    id: docSnap.id,
-                    action: d.action || '更新',
-                    posterId: d.posterId || '',
-                    posterAddress: d.posterAddress || '',
-                    posterType: d.posterType || '',
-                    changedBy: d.changedBy || '',
-                    changedAt: d.changedAt || 0,
-                    diff: d.diff || '',
-                    posterStatus: d.posterStatus || [],
-                    isNeedsRepair: !!d.isNeedsRepair,
-                    isNewRegistration: !!d.isNewRegistration,
-                    statusAdded: d.statusAdded || [],
-                    statusRemoved: d.statusRemoved || [],
-                    removedChangedTo: d.removedChangedTo ?? null,
-                });
-            });
-            setLogs(data);
+            setLogs(snapshot.docs.map(parseActivityLog));
             setLoading(false);
         }, (error) => {
-            console.error('Failed to fetch daily notifications:', error);
+            console.error('日次通知の取得に失敗しました:', error);
+            setLogs([]);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [offsetDays, range.start, range.end, range.dateStr]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ready, scopeKey, offsetDays, range.start, range.end, range.dateStr]);
 
     // 既読状態を確認
     useEffect(() => {

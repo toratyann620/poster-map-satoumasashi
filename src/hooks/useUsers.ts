@@ -9,6 +9,10 @@ export interface UserData {
     name: string;
     email: string;
     role: 'admin' | 'general';
+    /** 所属グループID（例: admin / nanba）。未設定のユーザーはデータに一切アクセスできない。 */
+    groupId?: string;
+    /** 発行された初期パスワードのままで、変更を求めている状態 */
+    mustChangePassword?: boolean;
 }
 
 export const useUsers = () => {
@@ -48,7 +52,13 @@ export const useUsers = () => {
             await setDoc(doc(db, 'users', newUid), {
                 name: userData.name,
                 email: userData.email,
-                role: userData.role
+                role: userData.role,
+                // グループは必須。未設定だとルール側で全面的に拒否され、
+                // ログインはできるが何も見えない状態になる。
+                groupId: userData.groupId ?? '',
+                // 初期パスワードは口頭やメモで渡す前提の短いものなので、
+                // 本人が使い始めるときに必ず変えてもらう。
+                mustChangePassword: true,
             });
 
             return { success: true, uid: newUid };
@@ -59,6 +69,16 @@ export const useUsers = () => {
             // セカンダリアプリを確実に破棄（サインアウトしてアプリを削除）
             await secondaryAuth.signOut();
             await deleteApp(secondaryApp);
+        }
+    };
+
+    // ユーザー情報の更新（ロール・所属グループの変更）
+    const updateUser = async (uid: string, updates: Partial<Pick<UserData, 'name' | 'role' | 'groupId'>>) => {
+        try {
+            await setDoc(doc(db, 'users', uid), updates, { merge: true });
+        } catch (error: any) {
+            console.error('Error updating user:', error);
+            throw new Error(error.message);
         }
     };
 
@@ -76,6 +96,7 @@ export const useUsers = () => {
         users,
         loading,
         createUser,
+        updateUser,
         removeUser
     };
 };

@@ -499,6 +499,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
         }).reduce((sum, p) => sum + (p.quantity || 1), 0),
     [scopedPosters]);
 
+    // 撤去済みの枚数。除いた数だけを出すと総数が分からなくなるため、内訳として添える。
+    // scopedPosters は撤去済みを除いてあるので、ここは元の posters から数え直す
+    const scopedRemovedQty = useMemo(() =>
+        posters
+            .filter(p => p.removed && matchesTag(p.tags) && matchesCity(p.address) && matchesType(p.type))
+            .reduce((sum, p) => sum + (p.quantity || 1), 0),
+    [posters, matchesTag, matchesCity, matchesType]);
+
     const scopedInstalledRate = scopedTotalQty > 0
         ? Math.round((scopedInstalledQty / scopedTotalQty) * 100)
         : 0;
@@ -876,8 +884,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ posters, pinTypes = 
                                 <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wide">{typeLabel} ポスター枚数</span>
                                 <MapPin className="w-4 h-4 text-indigo-300" />
                             </div>
-                            <div className="text-3xl font-bold">{scopedTotalQty.toLocaleString()}</div>
-                            <div className="text-xs text-indigo-200 mt-0.5">撤去済みを除く</div>
+                            <div className="text-3xl font-bold">{scopedTotalQty.toLocaleString()}<span className="text-sm font-normal ml-1">枚</span></div>
+                            <div className="text-xs text-indigo-200 mt-0.5">
+                                {scopedRemovedQty > 0
+                                    ? `撤去済み${scopedRemovedQty.toLocaleString()}枚を除く（総数 ${(scopedTotalQty + scopedRemovedQty).toLocaleString()}枚）`
+                                    : '撤去済みを除く'}
+                            </div>
                             <div className="mt-2 flex items-center gap-1 text-sm">
                                 {scopedNetChange >= 0 ? (
                                     <><TrendingUp className="w-3.5 h-3.5 text-emerald-300" /><span className="text-emerald-300 font-medium">+{scopedNetChange}</span></>

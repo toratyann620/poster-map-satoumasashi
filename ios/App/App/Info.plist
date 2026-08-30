@@ -24,6 +24,16 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>現在地を地図に表示し、近くのポスター掲示場所を確認したり、目的地までの経路を案内するために使用します。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ポスターの掲示状況をその場で撮影して記録するために使用します。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>撮影済みのポスター写真を選んで記録に添付するために使用します。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>撮影したポスター写真を端末の写真アプリに保存するために使用します。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -49,7 +59,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

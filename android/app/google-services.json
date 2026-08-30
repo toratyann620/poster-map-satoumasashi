@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "390119901860",
+    "project_id": "satoumasashi-poster-map",
+    "storage_bucket": "satoumasashi-poster-map.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:390119901860:android:d25efca5115be8b5a33431",
+        "android_client_info": {
+          "package_name": "app.satoumasashi.postermap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtDdrs_wv6z0xl05z9-ZLOj_OBvpXU3Qg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

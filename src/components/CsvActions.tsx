@@ -4,6 +4,7 @@ import Papa from 'papaparse';
 import { Download, Upload, FileText, Loader2 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { cityFromAddress, cityFromGeocoderResult } from '../lib/city';
 import type { PosterPin } from '../types';
 
 interface CsvActionsProps {
@@ -85,7 +86,7 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
 
     const handleDownloadTemplate = () => {
         const templateData = {
-            fields: ['id', 'lat', 'lng', 'type', 'status', 'address', 'placement', 'quantity', 'owner', 'contact', 'memo', 'specialNote', 'imageUrl', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'],
+            fields: ['id', 'lat', 'lng', 'type', 'status', 'address', 'city', 'placement', 'quantity', 'owner', 'contact', 'memo', 'specialNote', 'imageUrl', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'],
             data: [
                 {
                     id: '',
@@ -94,6 +95,7 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                     type: '佐藤まさし',
                     status: '設置済',
                     address: '神奈川県厚木市中町1-1-1',
+                    city: '厚木市',
                     placement: '壁面',
                     quantity: 1,
                     owner: '山田 太郎',
@@ -219,6 +221,10 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                             if (hasColumn(row, 'type')) data.type = parseTypeValueRaw(row.type || '');
                             if (hasColumn(row, 'status')) data.status = parseStatusValueRaw(row.status || '');
                             if (hasColumn(row, 'address')) data.address = row.address || '';
+                            // city は担当事務所の判定に使う。列があればその値、
+                            // 空欄なら住所から引き直す（空のまま保存すると担当事務所から見えなくなるため）
+                            if (hasColumn(row, 'city')) data.city = row.city || cityFromAddress(row.address ?? '');
+                            else if (hasColumn(row, 'address')) data.city = cityFromAddress(row.address ?? '');
                             if (hasColumn(row, 'placement')) data.placement = row.placement || '';
                             if (hasColumn(row, 'quantity')) {
                                 // 数量は数値型のため、空欄セルは 0 として扱う
@@ -252,12 +258,14 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                             let lat = parseFloat(row.lat);
                             let lng = parseFloat(row.lng);
 
+                            let geocodedCity = '';
                             if ((isNaN(lat) || isNaN(lng)) && row.address && geocoder) {
                                 try {
                                     const geoRes = await geocoder.geocode({ address: row.address });
                                     if (geoRes.results && geoRes.results[0]) {
                                         lat = geoRes.results[0].geometry.location.lat();
                                         lng = geoRes.results[0].geometry.location.lng();
+                                        geocodedCity = cityFromGeocoderResult(geoRes.results[0]);
                                         // Rate limiting delay (throttle)
                                         await new Promise(resolve => setTimeout(resolve, 250));
                                     }
@@ -280,6 +288,8 @@ export const CsvActions: React.FC<CsvActionsProps> = ({ posters, setPosters, onI
                                 type: parseTypeForNewRow(row.type || ''),
                                 status: parseStatusForNewRow(row.status || ''),
                                 address: row.address || '',
+                                // 列の値 → ジオコーディング結果 → 住所からの推定 の順に採用する
+                                city: row.city || geocodedCity || cityFromAddress(row.address || ''),
                                 placement: row.placement || '',
                                 quantity: hasValue(row.quantity) ? (parseInt(row.quantity, 10) || 1) : 1,
                                 memo: row.memo || '',

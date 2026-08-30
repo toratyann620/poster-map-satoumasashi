@@ -8,11 +8,18 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:rules": "RULES_TEST_RUN_ID=$(date +%s) JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" npx firebase-tools emulators:exec --only firestore --project demo-rules-test \"node scripts/test_rules.mjs\"",
+    "test:update-prompt": "node scripts/test_update_prompt.mjs",
+    "upload:play": "node scripts/upload_play.mjs"
   },
   "dependencies": {
+    "@capacitor-firebase/messaging": "^8.4.0",
     "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/camera": "^8.2.3",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/geolocation": "^8.2.2",
     "@capacitor/ios": "^8.5.0",
     "@googlemaps/markerclusterer": "^2.6.2",
     "@googlemaps/react-wrapper": "^1.2.0",
@@ -29,6 +36,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
     "@eslint/js": "^9.39.1",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@types/google.maps": "^3.58.1",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.5.2",

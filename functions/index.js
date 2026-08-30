@@ -1,10 +1,22 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// 参照するコレクション。Webとアプリの統合にあたり、両者とも v2 を読み書きする
+// ようになったため、日次レポートの集計元も v2 に合わせる。
+// 旧コレクション（posters / activityLogs）は切替前のデータとして残してあるが、
+// 以降は更新されないため、ここを向けたままだと古い数字を報告し続けることになる。
+//
+// ⚠️ src/lib/collections.ts の COL と対になっている。片方だけ変更しないこと。
+const COL = {
+    posters: 'posters_v2',
+    activityLogs: 'activityLogs_v2',
+};
 
 const SLACK_WEBHOOK_URL = defineSecret('SLACK_WEBHOOK_URL');
 
@@ -91,8 +103,8 @@ async function buildReport() {
     // 張替え解除・修理解除の過去分再構築には、対象ポスターの過去の全履歴が必要なため、
     // activityLogsは全件を時系列順に取得する
     const [postersSnap, allLogsSnap] = await Promise.all([
-        db.collection('posters').get(),
-        db.collection('activityLogs').orderBy('changedAt', 'asc').get(),
+        db.collection(COL.posters).get(),
+        db.collection(COL.activityLogs).orderBy('changedAt', 'asc').get(),
     ]);
 
     const posters = [];
@@ -196,4 +208,90 @@ exports.dailyPosterReport = onSchedule({
     }
     logger.info('Daily poster report generated', { message });
     await postToSlack(message);
+});
+
+// ═══════════════════════════════════════════════════════════
+// お知らせのプッシュ通知
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 管理画面から「プッシュ通知も送る」で配信されたお知らせを、
+ * 登録済みの全端末へ送る。
+ *
+ * 実際に送るのは環境変数 PUSH_NOTIFICATIONS_ENABLED が 'true' のときだけ。
+ * 開発中の誤送信は取り消せないため、既定では送らない側に倒している。
+ */
+
+/** FCM の1リクエストあたりの上限 */
+const FCM_BATCH_SIZE = 500;
+
+/** 本文は通知領域に収まる長さに切る（全文はアプリ内のお知らせで読める） */
+const truncate = (text, max) => {
+    const s = String(text ?? '').replace(/\s+/g, ' ').trim();
+    return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
+};
+
+/** 端末が消えた・アプリが消された場合に返るコード。該当トークンは消す。 */
+const DEAD_TOKEN_CODES = new Set([
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token',
+    'messaging/invalid-argument',
+]);
+
+exports.sendAnnouncementPush = onDocumentCreated({
+    document: 'announcements/{announcementId}',
+    region: 'asia-northeast1',
+}, async (event) => {
+    const announcement = event.data?.data();
+    if (!announcement || announcement.sendPush !== true) return;
+
+    if (process.env.PUSH_NOTIFICATIONS_ENABLED !== 'true') {
+        logger.info('Push skipped: PUSH_NOTIFICATIONS_ENABLED is not set to "true"', {
+            announcementId: event.params.announcementId,
+        });
+        return;
+    }
+
+    const snap = await db.collection('pushTokens').get();
+    const docsByToken = new Map();
+    snap.forEach((d) => {
+        const token = d.data()?.token;
+        if (token) docsByToken.set(token, d.ref);
+    });
+    const tokens = [...docsByToken.keys()];
+
+    if (tokens.length === 0) {
+        logger.info('Push skipped: no registered tokens');
+        return;
+    }
+
+    const message = {
+        notification: {
+            title: truncate(announcement.title, 60),
+            body: truncate(announcement.body, 160),
+        },
+        data: { announcementId: event.params.announcementId },
+    };
+
+    let sent = 0;
+    const dead = [];
+
+    for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
+        const batch = tokens.slice(i, i + FCM_BATCH_SIZE);
+        const res = await admin.messaging().sendEachForMulticast({ ...message, tokens: batch });
+        sent += res.successCount;
+        res.responses.forEach((r, idx) => {
+            if (!r.success && DEAD_TOKEN_CODES.has(r.error?.code)) dead.push(batch[idx]);
+        });
+    }
+
+    // 届かなくなったトークンを残すと、送るたびに失敗が積み上がる
+    await Promise.all(dead.map((t) => docsByToken.get(t).delete()));
+
+    logger.info('Announcement push sent', {
+        announcementId: event.params.announcementId,
+        total: tokens.length,
+        sent,
+        removed: dead.length,
+    });
 });

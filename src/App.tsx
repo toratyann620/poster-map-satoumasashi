@@ -4,28 +4,37 @@ import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
 import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
+import { useSession } from './hooks/useSession';
+import { scopedPinTypes } from './lib/groups';
+import { useAppVersionGate } from './hooks/useAppVersionGate';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
+import { AnnouncementsButton, AnnouncementPopup } from './components/Announcements';
+import { useAnnouncements } from './hooks/useAnnouncements';
+import { Tutorial } from './components/Tutorial';
+import { ChangePassword } from './components/ChangePassword';
+import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
+import { registerForPush, unregisterFromPush } from './lib/push';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
+import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
+import { watchPosition, getCurrentPosition } from './lib/geolocation';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings } from 'lucide-react';
 import { auth } from './lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
 
 function App() {
-  const [user, setUser] = useState<any>(null);
-  const [authChecking, setAuthChecking] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthChecking(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  // 認証・ユーザー情報・所属グループの解決はセッション層に集約している。
+  // グループが決まるまでポスターの取得クエリを投げられないため（条件の無いクエリは
+  // Firestore に拒否される）、個々のフックが独自に認証を待つ形はやめている。
+  const session = useSession();
+  const user = session.user;
+  const authChecking = !session.ready;
+  const versionGate = useAppVersionGate();
 
   const {
     filteredPosters,
@@ -57,6 +66,29 @@ function App() {
   );
   const [isMenuExpanded, setIsMenuExpanded] = useState(false);
 
+  // 初回だけ出す使い方の案内。判定は端末の記録だけで決まるので、
+  // 描画のたびに読まなくていいよう初期値として一度だけ読む。
+  const [showTutorial, setShowTutorial] = useState(() => !hasSeenTutorial());
+
+  const announcements = useAnnouncements();
+
+  // プッシュ通知の許可は、ログインが済んで実際に使える状態になってから求める。
+  // 起動直後に尋ねると何のアプリか分からないまま拒否されやすく、
+  // iOS は一度拒否されると設定アプリからしか戻せない。
+  useEffect(() => {
+    if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
+    void registerForPush(session.uid);
+  }, [session.ready, session.uid, session.problem, session.mustChangePassword]);
+
+  // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
+  // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
+  // 「入力したのに保存できない」状態になるため。
+  // 地図のマーカー色には全種別のリストを使う（色の対応表として参照するだけのため）。
+  const selectablePinTypes = useMemo(
+    () => scopedPinTypes(session.group, pinTypes),
+    [session.group, pinTypes],
+  );
+
   // 全ポスターから使用されているユニークなタグ一覧を生成（早期リターン前に宣言する必要あり）
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -85,44 +117,32 @@ function App() {
   // 移動中も現在地ドットをリアルタイムに追従させる（地図の中心・ズームは初回ジャンプ時と
   // 現在地ボタン押下時のみ更新し、移動のたびに地図が勝手に再センタリングされないようにする）
   useEffect(() => {
-    if (!navigator.geolocation) return;
-
     let hasCenteredOnce = false;
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+    // ネイティブでは OS の権限要求を挟む必要があるため、共通ラッパー経由で購読する
+    const stop = watchPosition(
+      (pos) => {
         setCurrentLocation(pos);
         if (!hasCenteredOnce) {
           hasCenteredOnce = true;
           setMapCenter(pos);
         }
       },
-      () => {
-        console.warn('Geolocation permission denied or failed.');
+      (reason) => {
+        // 起動時は黙って諦める（現在地ボタンを押したときに改めて案内する）
+        console.warn('現在地を取得できません:', reason);
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    return stop;
   }, []);
 
-  const locateMe = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-          setCurrentLocation(pos);
-          setMapCenter(pos);
-        },
-        () => {
-          alert('現在地の取得に失敗しました。端末の位置情報設定などを確認してください。');
-        }
-      );
-    } else {
-      alert('現在地機能はお使いのブラウザでサポートされていません。');
+  const locateMe = async () => {
+    const pos = await getCurrentPosition();
+    if (!pos) {
+      alert('現在地を取得できませんでした。\n端末の設定でこのアプリに位置情報の利用を許可してください。');
+      return;
     }
+    setCurrentLocation(pos);
+    setMapCenter(pos);
   };
 
   // ---- ピン移動モード ----
@@ -228,10 +248,14 @@ function App() {
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } }, (results, status) => {
         let addressStr = '';
+        let cityStr = '';
         if (status === 'OK' && results && results[0]) {
           addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+          // 市区町村はグループ権限の判定に使うため、住所文字列ではなく
+          // ジオコーディングの構造化データ（locality）から確定させる
+          cityStr = cityFromGeocoderResult(results[0]);
         }
-        setSelectedPoster({ lat, lng, address: addressStr, type: '佐藤まさし' });
+        setSelectedPoster({ lat, lng, address: addressStr, city: cityStr, type: '佐藤まさし' });
         setInitialViewMode(false);
         setIsSheetOpen(true);
       });
@@ -259,10 +283,12 @@ function App() {
         const geocoder = new window.google.maps.Geocoder();
         geocoder.geocode({ location: { lat: poster.lat, lng: poster.lng } }, (results, status) => {
           let addressStr = '';
+          let cityStr = '';
           if (status === 'OK' && results && results[0]) {
             addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+            cityStr = cityFromGeocoderResult(results[0]);
           }
-          setSelectedPoster(prev => ({ ...prev, address: addressStr }));
+          setSelectedPoster(prev => ({ ...prev, address: addressStr, city: cityStr }));
           setIsSheetOpen(true);
         });
       } else {
@@ -291,6 +317,7 @@ function App() {
         if (status === 'OK' && results && results[0]) {
           posterData.lat = results[0].geometry.location.lat();
           posterData.lng = results[0].geometry.location.lng();
+          posterData.city = cityFromGeocoderResult(results[0]) || cityFromAddress(posterData.address);
           finishSave(posterData, isExisting);
         } else {
           if (isExisting) {
@@ -372,10 +399,72 @@ function App() {
     return <Login />;
   }
 
-  const handleLogout = () => {
-    if (window.confirm('ログアウトしますか？')) {
-      signOut(auth);
-    }
+  // アプリのバージョンが下限を割っている場合は利用を止める。
+  // 古いクライアントが混ざると、権限判定に必要なフィールドを欠いたまま
+  // 書き込まれるなどの不整合が起きるため。
+  if (versionGate.blocked) {
+    return (
+      <div className="h-dvh w-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950 px-6">
+        <div className="max-w-sm text-center">
+          <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">アプリの更新が必要です</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+            {versionGate.message || 'ご利用を続けるには、最新版へ更新してください。'}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-6 tabular-nums">
+            現在のバージョン {versionGate.currentVersion} ／ 必要なバージョン {versionGate.minimumVersion} 以上
+          </p>
+          {versionGate.storeUrl && (
+            <a href={versionGate.storeUrl} target="_blank" rel="noreferrer"
+              className="inline-block px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors">
+              更新する
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ログインはできたが、アカウントにグループが割り当てられていない場合。
+  // この状態ではセキュリティルール側で全データが拒否されるため、
+  // 「地図が真っ白で理由が分からない」状態にせず、原因を明示する。
+  if (session.problem) {
+    const detail = session.problem === 'no-user-doc'
+      ? 'このアカウントはまだ利用が承認されていません。'
+      : 'このアカウントにはグループ（事務所）が割り当てられていません。';
+    return (
+      <div className="h-dvh w-screen flex items-center justify-center bg-gray-100 dark:bg-zinc-950 px-6">
+        <div className="max-w-sm text-center">
+          <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">ご利用いただけません</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+            {detail}<br />管理者にお問い合わせください。
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-6">{session.user?.email}</p>
+          <button
+            onClick={() => signOut(auth)}
+            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
+          >
+            ログアウト
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 初期パスワードのままなら、変更するまで先へ進ませない。
+  // グループの確認より後に置いているのは、そもそも使えないアカウントに
+  // パスワード変更をさせても意味が無いため。
+  if (session.mustChangePassword && session.uid) {
+    return <ChangePassword uid={session.uid} />;
+  }
+
+  const handleLogout = async () => {
+    if (!window.confirm('ログアウトしますか？')) return;
+    // トークンの削除はログイン中にしかできない（ルールで本人確認しているため）。
+    // 外しておかないと、この端末を次に使う人に前の人あての通知が届く。
+    await unregisterFromPush();
+    // 次に別の人がこの端末でログインしたら、また案内から始める
+    forgetTutorial();
+    await signOut(auth);
   };
 
   const handleCancelTempPin = () => {
@@ -385,6 +474,21 @@ function App() {
 
   return (
     <div className="h-dvh w-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative">
+      {/* 最新版でない場合のお知らせ。閉じられるので操作は妨げない
+          （利用を止めるのは下限を割ったときだけ） */}
+      <UpdatePrompt gate={versionGate} />
+
+      {/* 初回の使い方案内。お知らせのポップアップと重ならないよう、
+          案内が終わるまでポップアップは出さない */}
+      {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
+
+      {!showTutorial && announcements.pendingPopup && (
+        <AnnouncementPopup
+          announcement={announcements.pendingPopup}
+          onClose={() => announcements.dismissPopup(announcements.pendingPopup!.id)}
+        />
+      )}
+
       {currentView === 'admin' && userRole === 'admin' ? (
         <AdminPanel
           onClose={() => setCurrentView('map')}
@@ -425,13 +529,13 @@ function App() {
               />
 
               {/* 上部案内バナー */}
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-5 py-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center gap-2 text-sm font-medium">
+              <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-30 px-5 py-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center gap-2 text-sm font-medium">
                 <MapPin className="w-4 h-4 shrink-0" />
                 移動先の場所をタップしてください
               </div>
 
               {/* キャンセルボタン */}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+              <div className="absolute bottom-safe-6 left-1/2 -translate-x-1/2 z-30">
                 <button
                   onClick={cancelRelocation}
                   className="flex items-center gap-2 px-6 py-3.5 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 rounded-full shadow-xl border border-gray-200 dark:border-zinc-700 font-semibold hover:bg-gray-50 transition-colors"
@@ -446,10 +550,10 @@ function App() {
           {/* Floating UI Elements（移動モード・ナビゲーション中は非表示） */}
           {!isRelocating && !navigationTarget && (
             <>
-              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={pinTypes} />
+              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} />
 
               {/* Floating Buttons: Expandable Menu with Gear Icon */}
-              <div className="absolute bottom-6 left-4 z-10 flex flex-col gap-3 items-center">
+              <div className="absolute bottom-safe-6 left-4 z-10 flex flex-col gap-3 items-center">
                 {/* 展開されたメニューアイテム */}
                 <div className={`flex gap-4 items-end transition-all duration-300 origin-bottom ${
                   isMenuExpanded 
@@ -474,6 +578,14 @@ function App() {
 
                     {/* Notification Bell */}
                     <NotificationPanel userId={user?.uid ?? null} posters={posters} />
+
+                    {/* 管理者からのお知らせ。ポスターの変更を知らせるベルとは
+                        別物なので、アイコンも分けている */}
+                    <AnnouncementsButton
+                      announcements={announcements.announcements}
+                      unreadCount={announcements.unreadCount}
+                      markAllRead={announcements.markAllRead}
+                    />
 
                     {userRole === 'admin' && (
                       <button
@@ -531,7 +643,7 @@ function App() {
             poster={activePoster}
             initialViewMode={initialViewMode}
             allTags={allTags}
-            pinTypes={pinTypes}
+            pinTypes={selectablePinTypes}
             onSave={handleSave}
             onDelete={handleDelete}
             onRemove={handleRemove}

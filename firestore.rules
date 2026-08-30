@@ -2,8 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ══════════════════════════════════════════════════════════
+    // 共通ヘルパー
+    // ══════════════════════════════════════════════════════════
+
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
     // 「承認済みメンバー」= users/{uid} ドキュメントが存在するアカウント。
@@ -12,54 +20,201 @@ service cloud.firestore {
     //   (2) 管理者がユーザーを削除すれば、Authアカウントが残っていても即座に失権する
     // という2点を同時に担保する。
     function isMember() {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && exists(userPath());
     }
 
-    // 管理者判定（users/{uid} の role が admin）
+    function memberDoc() {
+      return get(userPath()).data;
+    }
+
     function isAdmin() {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isMember() && memberDoc().role == 'admin';
     }
 
-    // ログイン中のユーザー本人かを判定するヘルパー
+    // 所属グループの定義。groupId が無い / 対応するグループが存在しない場合、
+    // get() が null を返して .data の参照でルール評価がエラーになり、結果は「拒否」になる。
+    // 未設定のアカウントが素通りしないよう、あえて存在チェックを別途持たせていない。
+    function groupDoc() {
+      return get(/databases/$(database)/documents/groups/$(memberDoc().get('groupId', '__none__'))).data;
+    }
+
+    // 佐藤まさし事務所（allowAll=true）の管理者。
+    // ユーザーとグループ定義を変更できる唯一の権限。
+    //
+    // ⚠️ users への書き込みをここまで絞る理由:
+    // 単なる isAdmin() で users を書けると、他事務所の管理者が
+    // 自分の groupId を 'admin' に書き換えて全データへ昇格できてしまう。
+    function isSuperAdmin() {
+      return isAdmin() && groupDoc().allowAll == true;
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // 1. ユーザー情報 (users)
+    // ══════════════════════════════════════════════════════════
+    // 1. ユーザー情報 (users) — 現行アプリと共通
+    // ══════════════════════════════════════════════════════════
     match /users/{userId} {
-      // 閲覧: 本人、または管理者のみ許可
+      // 閲覧: 本人、または管理者
       allow read: if isOwner(userId) || isAdmin();
-      // 作成・更新・削除: 管理者のみ許可（一般ユーザーは自分自身のロール変更を含めて一切不可）
-      allow write: if isAdmin();
+      // 作成・削除: 佐藤まさし事務所の管理者のみ（上記の権限昇格対策）
+      allow create, delete: if isSuperAdmin();
+      // 更新: 原則として佐藤まさし事務所の管理者のみ。
+      // 例外として、本人が初期パスワードを変更し終えたことを記録できるようにする。
+      // 変更できるのは mustChangePassword を false にすることだけで、
+      // role や groupId には触れられないため権限昇格には使えない。
+      allow update: if isSuperAdmin()
+                    || (
+                      isOwner(userId)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword'])
+                      && request.resource.data.mustChangePassword == false
+                    );
     }
 
-    // 2. ポスター情報 (posters)
+    // ══════════════════════════════════════════════════════════
+    // 2. ポスター情報 (posters) — 現行の本番コレクション。仕様は変更しない
+    // ══════════════════════════════════════════════════════════
     match /posters/{posterId} {
-      // 閲覧・作成・更新・削除: 承認済みメンバーのみ許可
       allow read, write: if isMember();
     }
 
-    // 3. 変更履歴 (activityLogs)
+    // ══════════════════════════════════════════════════════════
+    // 3. 変更履歴 (activityLogs) — 現行の本番コレクション。仕様は変更しない
+    // ══════════════════════════════════════════════════════════
     match /activityLogs/{logId} {
-      // 閲覧: 承認済みメンバー全員に許可
-      //（通知画面・4指標の集計が全ユーザーの画面で使われているため。
-      //  従来は管理者のみ許可されており、一般ユーザーでは集計が空になっていた）
       allow read: if isMember();
-      // 作成: 承認済みメンバー全員に許可（ポスター更新時に自動で書き込まれるため）
       allow create: if isMember();
       // 更新・削除: 履歴の改ざんを防ぐため、管理者であっても不可
       allow update, delete: if false;
     }
 
+    // ══════════════════════════════════════════════════════════
     // 4. アプリ設定 (settings/pinTypes など)
+    // ══════════════════════════════════════════════════════════
     match /settings/{settingId} {
-      // 閲覧: 承認済みメンバー全員（ピンの種類一覧の取得に必要）
       allow read: if isMember();
-      // 変更: 管理者のみ
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 5. 通知の既読状態 (notificationReads)
+    // ══════════════════════════════════════════════════════════
+    // ドキュメントIDは `{uid}_{YYYY-MM-DD}`。自分の既読状態だけを読み書きできる。
+    // 従来はルールが無く既定の拒否になっており、既読管理が機能していなかった。
+    match /notificationReads/{readId} {
+      allow read, write: if isMember() && readId.split('_')[0] == request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 5-2. お知らせ (announcements)
+    // ══════════════════════════════════════════════════════════
+    // 全メンバーが読める。事務所をまたいだ連絡ができなくなるため、
+    // グループでは絞っていない。書けるのは佐藤まさし事務所の管理者のみ。
+    match /announcements/{announcementId} {
+      allow read: if isMember();
+      allow write: if isSuperAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 5-3. プッシュ通知のトークン (pushTokens)
+    // ══════════════════════════════════════════════════════════
+    // ドキュメントIDは端末のFCMトークン。1人が複数の端末を持つことがある。
+    //
+    // 読み取りは誰にも許可しない。送信は Cloud Functions（Admin SDK）が行い、
+    // ルールを通らないため支障が無い。クライアントに読ませると、
+    // 「誰がどの端末を使っているか」の一覧が全メンバーに見えてしまう。
+    match /pushTokens/{token} {
+      allow read: if false;
+      allow create, update: if isMember() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isMember() && resource.data.uid == request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 6. グループ定義 (groups)
+    // ══════════════════════════════════════════════════════════
+    match /groups/{groupId} {
+      // 閲覧: 承認済みメンバー全員。
+      // クライアントが自分の権限範囲に合致するクエリを組み立てるために必要。
+      allow read: if isMember();
+      // 変更: 佐藤まさし事務所の管理者のみ
+      allow write: if isSuperAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 7. ポスター情報 v2 (posters_v2) — グループ権限あり
+    // ══════════════════════════════════════════════════════════
+
+    // ドキュメントがグループの権限範囲に入るか。
+    // allowAll のグループは無条件で通し、それ以外は「市区町村 × 種別」の両方が
+    // 一致することを要求する。city / type が欠けているドキュメントは
+    // hasAll() が false になり、allowAll 以外のグループからは一切触れられない。
+    // どのグループでも扱える種別。担当外の掲示物を記録する受け皿が必要なため、
+    // 「その他」だけはグループ定義に無くても許可する。
+    // 市区町村の条件は通常どおり効くので、担当エリア外までは見えない。
+    //
+    // ⚠️ src/types/index.ts の ALWAYS_ALLOWED_TYPES と対になっている。片方だけ変更しないこと。
+    function isAlwaysAllowedType(t) {
+      return t == 'その他';
+    }
+
+    function inScope(d) {
+      return isMember() && (
+        groupDoc().allowAll == true
+        || (
+          d.keys().hasAll(['city', 'type'])
+          && d.city in groupDoc().cities
+          && (d.type in groupDoc().types || isAlwaysAllowedType(d.type))
+        )
+      );
+    }
+
+    // 権限判定に使う2フィールドが、判定可能な形で入っていることを要求する。
+    function hasValidScopeFields(d) {
+      return d.keys().hasAll(['city', 'type'])
+        && d.city is string
+        && d.type is string
+        && d.type != '';
+    }
+
+    match /posters_v2/{posterId} {
+      allow read: if inScope(resource.data);
+
+      allow create: if hasValidScopeFields(request.resource.data)
+                    && inScope(request.resource.data);
+
+      // ⚠️ 変更「前」と変更「後」の両方が権限範囲内であることを要求する。
+      // これが無いと、自分の管轄のポスターの city / type を書き換えて
+      // 他事務所の管轄へ送り出したり、逆に引き込んだりできてしまう。
+      allow update: if hasValidScopeFields(request.resource.data)
+                    && inScope(resource.data)
+                    && inScope(request.resource.data);
+
+      allow delete: if inScope(resource.data);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 8. 変更履歴 v2 (activityLogs_v2) — グループ権限あり
+    // ══════════════════════════════════════════════════════════
+
+    // 変更履歴にも住所・種別・所有者名が含まれるため、ポスター本体と同じ範囲に絞る。
+    // フィールド名がポスターと異なる（posterType）ため専用の判定を用意する。
+    function logInScope(d) {
+      return isMember() && (
+        groupDoc().allowAll == true
+        || (
+          d.keys().hasAll(['city', 'posterType'])
+          && d.city in groupDoc().cities
+          && (d.posterType in groupDoc().types || isAlwaysAllowedType(d.posterType))
+        )
+      );
+    }
+
+    match /activityLogs_v2/{logId} {
+      allow read: if logInScope(resource.data);
+      allow create: if logInScope(request.resource.data);
+      // 更新・削除: 履歴の改ざんを防ぐため、管理者であっても不可
+      allow update, delete: if false;
     }
   }
 }

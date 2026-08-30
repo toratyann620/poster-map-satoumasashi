@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  TestFlight / App Store Connect へアップロードするための書き出し設定。
+	  使い方:
+	    xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+	      -configuration Release -archivePath build/App.xcarchive archive
+	    xcodebuild -exportArchive -archivePath build/App.xcarchive \
+	      -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
+	-->
+	<key>method</key>
+	<string>app-store-connect</string>
+
+	<key>teamID</key>
+	<string>46346RA3CT</string>
+
+	<!-- 署名はXcodeの自動管理に任せる（配布用証明書とプロファイルを自動生成させる） -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+
+	<!-- ビットコードは廃止済み。明示的に無効にしておく -->
+	<key>uploadBitcode</key>
+	<false/>
+
+	<!-- クラッシュ解析用のシンボルはアップロードする -->
+	<key>uploadSymbols</key>
+	<true/>
+
+	<!-- TestFlight配布時にアプリの内部構成を最適化しない（不具合切り分けを容易にするため） -->
+	<key>compileBitcode</key>
+	<false/>
+</dict>
+</plist>
