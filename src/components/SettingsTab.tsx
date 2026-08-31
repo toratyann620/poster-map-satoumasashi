@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Settings, ToggleLeft, ToggleRight, Plus, Trash2, Tag, Zap } from 'lucide-react';
 import { usePinTypes } from '../hooks/usePinTypes';
-import { POSTER_STATUS_OPTIONS } from '../types';
-import { MAX_PRESETS, emptyPreset, readPresets, writePresets, type PinPreset } from '../lib/pinPresets';
+import { MAX_PRESETS } from '../lib/pinPresets';
+import { PinPresetEditor } from './PinPresetEditor';
 
 // カラーパレット（追加時に選べる色）
 const COLOR_OPTIONS = [
@@ -30,17 +30,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     onToggleShowRemoved,
 }) => {
     const { pinTypes, loading, addPinType, removePinType } = usePinTypes();
-    // ピン打ちモードのボタンに割り当てる登録内容。端末ごとに保存する
-    const [presets, setPresets] = useState<PinPreset[]>(() => readPresets());
-
-    const savePresets = (next: PinPreset[]) => {
-        setPresets(next);
-        writePresets(next);
-    };
-    const updatePreset = (i: number, patch: Partial<PinPreset>) =>
-        savePresets(presets.map((p, k) => (k === i ? { ...p, ...patch } : p)));
-    const toggleIn = (list: string[], v: string) =>
-        list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
     const [newName, setNewName] = useState('');
     const [newColor, setNewColor] = useState(COLOR_OPTIONS[0].value);
     const [isAdding, setIsAdding] = useState(false);
@@ -74,84 +63,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
                     よく使う登録内容を{MAX_PRESETS}つまで決めておけます。ピン打ちモードでは、
                     ここで決めた内容のボタンがマップに並び、押すと現在地にその内容でピンが立ちます。
-                    この設定はこの端末にだけ保存されます。
+                    この設定はこの端末にだけ保存されます。地図のピン打ちモードからも変更できます。
                 </p>
-
-                <div className="space-y-4">
-                    {presets.map((preset, i) => (
-                        <div key={i} className="border border-gray-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
-                            <div className="flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-bold flex items-center justify-center shrink-0">
-                                    {i + 1}
-                                </span>
-                                <input
-                                    value={preset.label}
-                                    onChange={(e) => updatePreset(i, { label: e.target.value })}
-                                    placeholder={`ボタンの名前（未入力なら「${preset.type}」）`}
-                                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                                />
-                                <button
-                                    onClick={() => savePresets(presets.filter((_, k) => k !== i))}
-                                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
-                                    aria-label="削除"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">種類</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {pinTypes.map((t) => (
-                                        <button key={t.name} onClick={() => updatePreset(i, { type: t.name })}
-                                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${preset.type === t.name
-                                                ? 'text-white border-transparent'
-                                                : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}
-                                            style={preset.type === t.name ? { backgroundColor: t.color } : undefined}>
-                                            {t.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">ステータス（複数可）</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {POSTER_STATUS_OPTIONS.map((st) => (
-                                        <button key={st} onClick={() => updatePreset(i, { status: toggleIn(preset.status, st) })}
-                                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${preset.status.includes(st)
-                                                ? 'bg-indigo-600 border-indigo-600 text-white'
-                                                : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}>
-                                            {st}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">タグ（カンマ区切り）</p>
-                                <input
-                                    value={preset.tags.join(', ')}
-                                    onChange={(e) => updatePreset(i, {
-                                        tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
-                                    })}
-                                    placeholder="例: 高市早苗, 参政党"
-                                    className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                                />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {presets.length < MAX_PRESETS && (
-                    <button
-                        onClick={() => savePresets([...presets, emptyPreset()])}
-                        className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-zinc-700 text-sm font-medium text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition-colors w-full justify-center"
-                    >
-                        <Plus className="w-4 h-4" />
-                        登録内容を追加（あと{MAX_PRESETS - presets.length}つ）
-                    </button>
-                )}
+                <PinPresetEditor pinTypes={pinTypes} />
             </div>
 
             {/* ===== 表示設定 ===== */}

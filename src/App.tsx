@@ -17,6 +17,7 @@ import { Tutorial } from './components/Tutorial';
 import { ChangePassword } from './components/ChangePassword';
 import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
 import { readPresets, presetLabel, type PinPreset } from './lib/pinPresets';
+import { PinPresetSheet } from './components/PinPresetEditor';
 import { registerForPush, unregisterFromPush } from './lib/push';
 import { MyPage } from './components/MyPage';
 import { useTasks } from './hooks/useTasks';
@@ -81,6 +82,7 @@ function App() {
   const [isQuickMode, setIsQuickMode] = useState(false);
   const [presets, setPresets] = useState<PinPreset[]>(() => readPresets());
   const [droppingIndex, setDroppingIndex] = useState<number | null>(null);
+  const [showPresetEditor, setShowPresetEditor] = useState(false);
 
   // 詳細シートが「展開」の状態で開いているか。新規追加と編集はこの状態で開く
   // （PinBottomSheet 側の初期状態の決め方と揃えてある）
@@ -566,6 +568,14 @@ function App() {
           案内が終わるまでポップアップは出さない */}
       {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
 
+      {showPresetEditor && (
+        <PinPresetSheet
+          pinTypes={selectablePinTypes}
+          onChange={setPresets}
+          onClose={() => setShowPresetEditor(false)}
+        />
+      )}
+
       {showMyPage && (
         <MyPage
           posters={posters}
@@ -661,9 +671,16 @@ function App() {
               {/* ピン打ちモードの帯とボタン */}
               {isQuickMode && (
                 <>
-                  <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-amber-500 text-white rounded-full shadow-lg flex items-center gap-2 text-sm font-bold">
+                  <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-amber-500 text-white rounded-full shadow-lg flex items-center gap-1.5 text-sm font-bold whitespace-nowrap">
                     <Zap className="w-4 h-4 shrink-0" />
                     ピン打ちモード
+                    <button
+                      onClick={() => setShowPresetEditor(true)}
+                      className="ml-1 p-0.5 rounded-full hover:bg-white/20 transition-colors"
+                      aria-label="登録内容を変更する"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setIsQuickMode(false)}
                       className="ml-1 p-0.5 rounded-full hover:bg-white/20 transition-colors"
@@ -675,9 +692,15 @@ function App() {
 
                   <div className="absolute bottom-safe-24 left-1/2 -translate-x-1/2 z-30 w-full px-5 flex flex-col gap-2.5 items-stretch max-w-sm">
                     {presets.length === 0 ? (
-                      <div className="px-4 py-3 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl text-sm text-center text-gray-600 dark:text-gray-300">
-                        管理パネルの「設定」で、よく使う登録内容を決めてください
-                      </div>
+                      <button
+                        onClick={() => setShowPresetEditor(true)}
+                        className="px-4 py-3.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl text-sm text-center text-gray-700 dark:text-gray-200 font-medium"
+                      >
+                        よく使う登録内容を決める
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-normal">
+                          種類・ステータス・タグを3つまで
+                        </span>
+                      </button>
                     ) : presets.map((preset, i) => (
                       <button
                         key={i}
