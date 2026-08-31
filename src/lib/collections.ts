@@ -25,6 +25,8 @@ export const COL = {
     settings: 'settings',
     /** 管理者からのお知らせ（新規） */
     announcements: 'announcements',
+    /** 作業の依頼（新規。グループ単位） */
+    tasks: 'tasks',
 } as const;
 
 /** 移行元となる現行の本番コレクション（移行スクリプトからのみ参照する） */

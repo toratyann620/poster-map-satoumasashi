@@ -320,6 +320,52 @@ await t('🔒 users ドキュメントを持たないアカウントは登録で
     pushDoc('strangerWithAuthOnly'))));
 
 // ═══════════════════════════════════════════════════════════
+section('作業の依頼 (tasks)');
+
+const task = (over) => ({
+  groupId: 'nanba', title: '張り替えのお願い', body: '', kind: '張替え',
+  status: 'open', createdBy: 'seed', createdAt: 1, ...over,
+});
+
+await t('自事務所あての依頼を作れる', () =>
+  assertSucceeds(setDoc(doc(as('nanbaAdmin'), 'tasks/t1'), task())));
+
+await t('同じ事務所の一般ユーザーが読める', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), 'tasks/t1'))));
+
+await t('担当者でなくても完了にできる（代わりに済ませることがあるため）', () =>
+  assertSucceeds(updateDoc(doc(as('nanbaUser'), 'tasks/t1'),
+    { status: 'done', completedBy: '難波事務所の一般', completedAt: 2 })));
+
+await t('佐藤まさし事務所は他事務所の依頼も読める', () =>
+  assertSucceeds(getDoc(doc(as('super1'), 'tasks/t1'))));
+
+await t('佐藤まさし事務所は他事務所あての依頼を作れる', () =>
+  assertSucceeds(setDoc(doc(as('super1'), 'tasks/t2'), task({ groupId: 'nanba', createdBy: '佐藤事務所' }))));
+
+await t('🔒 他事務所の依頼は読めない', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'tasks/t_other'), { ...task(), groupId: 'udagawa' });
+  });
+  await assertFails(getDoc(doc(as('nanbaUser'), 'tasks/t_other')));
+});
+
+await t('🔒 他事務所あての依頼は作れない', () =>
+  assertFails(setDoc(doc(as('nanbaAdmin'), 'tasks/t3'), task({ groupId: 'udagawa' }))));
+
+await t('🔒 依頼を別の事務所へ付け替えられない', () =>
+  assertFails(updateDoc(doc(as('nanbaAdmin'), 'tasks/t1'), { groupId: 'udagawa' })));
+
+await t('🔒 一般ユーザーは依頼を削除できない', () =>
+  assertFails(deleteDoc(doc(as('nanbaUser'), 'tasks/t1'))));
+
+await t('管理者は依頼を削除できる', () =>
+  assertSucceeds(deleteDoc(doc(as('nanbaAdmin'), 'tasks/t2'))));
+
+await t('🔒 users ドキュメントを持たないアカウントは依頼を読めない', () =>
+  assertFails(getDoc(doc(as('strangerWithAuthOnly'), 'tasks/t1'))));
+
+// ═══════════════════════════════════════════════════════════
 section('現行の本番コレクション（動作を変えていないこと）');
 
 await t('承認済みメンバーは現行 posters を読み書きできる', async () => {

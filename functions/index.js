@@ -1,5 +1,6 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
@@ -252,46 +253,136 @@ exports.sendAnnouncementPush = onDocumentCreated({
         return;
     }
 
+    await sendPush({
+        title: truncate(announcement.title, 60),
+        body: truncate(announcement.body, 160),
+        data: { announcementId: event.params.announcementId },
+        label: 'announcement',
+    });
+});
+
+/**
+ * 登録済みの端末へ通知を送る。
+ *
+ * `uids` を渡すとその人の端末だけに送る。省略すると全端末へ送る。
+ * 届かなくなったトークンはその場で消す。残すと送るたびに失敗が積み上がる。
+ */
+async function sendPush({ title, body, data = {}, uids = null, label = 'push' }) {
     const snap = await db.collection('pushTokens').get();
     const docsByToken = new Map();
     snap.forEach((d) => {
-        const token = d.data()?.token;
-        if (token) docsByToken.set(token, d.ref);
+        const v = d.data();
+        if (!v?.token) return;
+        if (uids && !uids.has(v.uid)) return;
+        docsByToken.set(v.token, d.ref);
     });
     const tokens = [...docsByToken.keys()];
 
     if (tokens.length === 0) {
-        logger.info('Push skipped: no registered tokens');
-        return;
+        logger.info(`Push skipped: no matching tokens (${label})`);
+        return { total: 0, sent: 0, removed: 0 };
     }
-
-    const message = {
-        notification: {
-            title: truncate(announcement.title, 60),
-            body: truncate(announcement.body, 160),
-        },
-        data: { announcementId: event.params.announcementId },
-    };
 
     let sent = 0;
     const dead = [];
-
     for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
         const batch = tokens.slice(i, i + FCM_BATCH_SIZE);
-        const res = await admin.messaging().sendEachForMulticast({ ...message, tokens: batch });
+        const res = await admin.messaging().sendEachForMulticast({
+            notification: { title, body }, data, tokens: batch,
+        });
         sent += res.successCount;
         res.responses.forEach((r, idx) => {
             if (!r.success && DEAD_TOKEN_CODES.has(r.error?.code)) dead.push(batch[idx]);
         });
     }
-
-    // 届かなくなったトークンを残すと、送るたびに失敗が積み上がる
     await Promise.all(dead.map((t) => docsByToken.get(t).delete()));
 
-    logger.info('Announcement push sent', {
-        announcementId: event.params.announcementId,
-        total: tokens.length,
-        sent,
-        removed: dead.length,
+    logger.info(`Push sent (${label})`, { total: tokens.length, sent, removed: dead.length });
+    return { total: tokens.length, sent, removed: dead.length };
+}
+
+// ═══════════════════════════════════════════════════════════
+// 作業依頼（タスク）のプッシュ通知
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 依頼が作られたときに、担当者へ通知する。
+ * 担当者が決まっていない依頼は、その事務所の全員へ送る。
+ */
+exports.sendTaskPush = onDocumentCreated({
+    document: 'tasks/{taskId}',
+    region: 'asia-northeast1',
+}, async (event) => {
+    const task = event.data?.data();
+    if (!task || task.notify !== true) return;
+
+    if (process.env.PUSH_NOTIFICATIONS_ENABLED !== 'true') {
+        logger.info('Task push skipped: PUSH_NOTIFICATIONS_ENABLED is not "true"', { taskId: event.params.taskId });
+        return;
+    }
+
+    let uids = null;
+    if (task.assigneeUid) {
+        uids = new Set([task.assigneeUid]);
+    } else {
+        // 担当者未指定は事務所の全員あて。所属で絞らないと他事務所にも届く
+        const members = await db.collection('users').where('groupId', '==', task.groupId).get();
+        uids = new Set(members.docs.map((d) => d.id));
+    }
+
+    const where = task.address ? `（${truncate(task.address, 40)}）` : '';
+    await sendPush({
+        title: task.assigneeUid ? `${task.kind}の依頼が届きました` : `${task.kind}の依頼があります`,
+        body: truncate(`${task.title}${where}`, 160),
+        data: { taskId: event.params.taskId },
+        uids,
+        label: 'task',
     });
+});
+
+// ═══════════════════════════════════════════════════════════
+// ユーザーアカウントの削除
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * ログインアカウントごとユーザーを削除する。
+ *
+ * Auth の削除はクライアントSDKでは他人に対して行えないため、ここで受ける。
+ * 呼べるのは佐藤まさし事務所（allowAll）の管理者だけ。
+ * users ドキュメントの削除と条件を揃えており、片方だけ通ることはない。
+ */
+exports.deleteUserAccount = onCall({ region: 'asia-northeast1' }, async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) throw new HttpsError('unauthenticated', 'ログインが必要です。');
+
+    const caller = await db.collection('users').doc(callerUid).get();
+    if (!caller.exists) throw new HttpsError('permission-denied', '利用が承認されていません。');
+    const callerData = caller.data();
+    if (callerData.role !== 'admin') throw new HttpsError('permission-denied', '管理者のみ実行できます。');
+
+    const callerGroup = await db.collection('groups').doc(callerData.groupId ?? '__none__').get();
+    if (!callerGroup.exists || callerGroup.data().allowAll !== true) {
+        throw new HttpsError('permission-denied', '佐藤まさし事務所の管理者のみ実行できます。');
+    }
+
+    const targetUid = String(request.data?.uid ?? '');
+    if (!targetUid) throw new HttpsError('invalid-argument', '対象のユーザーが指定されていません。');
+    if (targetUid === callerUid) throw new HttpsError('failed-precondition', '自分自身は削除できません。');
+
+    // 端末のトークンを先に消す。アカウントが消えた後だと持ち主を辿れなくなる
+    const tokens = await db.collection('pushTokens').where('uid', '==', targetUid).get();
+    await Promise.all(tokens.docs.map((d) => d.ref.delete()));
+
+    await db.collection('users').doc(targetUid).delete();
+
+    try {
+        await admin.auth().deleteUser(targetUid);
+    } catch (e) {
+        // Authに無い場合（既に消えている等）は、権限の剥奪が済んでいれば目的は果たしている
+        if (e?.code !== 'auth/user-not-found') throw e;
+        logger.warn('Auth user was already absent', { targetUid });
+    }
+
+    logger.info('User account deleted', { targetUid, by: callerUid });
+    return { ok: true };
 });

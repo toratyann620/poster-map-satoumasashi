@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { signOut } from 'firebase/auth';
 import {
     Table2, MapPinOff, Users, Building2, History, LayoutDashboard,
-    LineChart, Settings, LogOut, ExternalLink, ShieldAlert, Megaphone,
+    LineChart, Settings, LogOut, ExternalLink, ShieldAlert, Megaphone, ClipboardList,
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useSession } from '../hooks/useSession';
@@ -24,14 +24,17 @@ import { GroupsTab } from './GroupsTab';
 import { HistoryTab } from './HistoryTab';
 import { AnnouncementsTab } from './AnnouncementsTab';
 import { useAnnouncements } from '../hooks/useAnnouncements';
+import { TasksTab } from './TasksTab';
+import { useTasks } from '../hooks/useTasks';
 
-type TabId = 'posters' | 'city' | 'users' | 'groups' | 'announcements' | 'history' | 'dashboard' | 'analytics' | 'settings';
+type TabId = 'posters' | 'city' | 'users' | 'groups' | 'tasks' | 'announcements' | 'history' | 'dashboard' | 'analytics' | 'settings';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
     { id: 'posters', label: 'ポスター管理', Icon: Table2 },
     { id: 'city', label: '市区町村の手当て', Icon: MapPinOff },
     { id: 'users', label: 'ユーザー管理', Icon: Users },
     { id: 'groups', label: 'グループ管理', Icon: Building2 },
+    { id: 'tasks', label: '作業の依頼', Icon: ClipboardList },
     { id: 'announcements', label: 'お知らせ', Icon: Megaphone },
     { id: 'history', label: '変更履歴', Icon: History },
     { id: 'dashboard', label: 'ダッシュボード', Icon: LayoutDashboard },
@@ -128,6 +131,8 @@ const AdminShell: React.FC<{
     const { logs } = useActivityLogs(1000);
     const { logsAsc } = useAllActivityLogs();
     const { announcements } = useAnnouncements();
+    const { tasks, createTask, completeTask, reopenTask, removeTask } = useTasks();
+    const session = useSession();
 
     // モバイル側と同じ保存先（localStorage）を使う
     const [showRemovedPins, setShowRemovedPins] = useState(
@@ -235,6 +240,17 @@ const AdminShell: React.FC<{
                                 onSave={saveGroup}
                                 onRemove={removeGroup}
                             />
+                        )}
+
+                        {tab === 'tasks' && (
+                            <div className="overflow-y-auto h-full">
+                                <TasksTab
+                                    tasks={tasks} posters={posters} users={users} groups={groups}
+                                    isSuperAdmin={session.isSuperAdmin} myGroupId={session.groupId}
+                                    onCreate={createTask} onComplete={completeTask}
+                                    onReopen={reopenTask} onRemove={removeTask}
+                                />
+                            </div>
                         )}
 
                         {tab === 'announcements' && (

@@ -5,9 +5,18 @@
       "collectionGroup": "posters_v2",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "city", "order": "ASCENDING" },
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
@@ -15,9 +24,18 @@
       "collectionGroup": "activityLogs_v2",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "city", "order": "ASCENDING" },
-        { "fieldPath": "posterType", "order": "ASCENDING" },
-        { "fieldPath": "changedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "posterType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "changedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
@@ -25,9 +43,32 @@
       "collectionGroup": "activityLogs_v2",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "city", "order": "ASCENDING" },
-        { "fieldPath": "posterType", "order": "ASCENDING" },
-        { "fieldPath": "changedAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "posterType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "changedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],

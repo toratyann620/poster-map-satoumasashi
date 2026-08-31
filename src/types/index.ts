@@ -87,6 +87,43 @@ export type FilterState = {
     tags: string[];    // 複数選択、空配列 = すべて表示
 };
 
+/** 依頼できる作業の種類 */
+export const TASK_KINDS = ['設置', '撤去', '張替え', '修理', 'その他'] as const;
+export type TaskKind = typeof TASK_KINDS[number];
+
+/**
+ * 作業の依頼（タスク）。Firestore の `tasks/{id}`。
+ *
+ * 事務所（グループ）単位で分ける。ポスターと同じ区切りにしておかないと、
+ * 「依頼は見えるのに対象のピンは開けない」状態が起きるため。
+ *
+ * `assigneeUid` が空のものは事務所の全員に向けた共通の依頼として扱う。
+ * 担当を決めずに「手が空いた人がやる」種類の依頼を、別の仕組みを足さずに表せる。
+ */
+export interface Task {
+    id: string;
+    groupId: string;
+    title: string;
+    body: string;
+    kind: TaskKind;
+    /** 対象のポスター。新規設置など、まだピンが無い依頼では空 */
+    posterId?: string;
+    /** 対象の場所。posterId がある場合はその住所を写しておく（ピンが消えても依頼は残るため） */
+    address?: string;
+    /** 担当者の uid。空なら事務所の全員向け */
+    assigneeUid?: string;
+    assigneeName?: string;
+    /** 期限（YYYY-MM-DD）。空なら期限なし */
+    dueDate?: string;
+    status: 'open' | 'done';
+    createdBy: string;
+    createdAt: number;
+    completedBy?: string;
+    completedAt?: number;
+    /** 作成時にプッシュ通知を送るか。送信は Cloud Functions が受け持つ */
+    notify?: boolean;
+}
+
 /**
  * 管理者が出すお知らせ。Firestore の `announcements/{id}`。
  *

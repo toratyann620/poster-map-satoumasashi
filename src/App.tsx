@@ -17,12 +17,14 @@ import { Tutorial } from './components/Tutorial';
 import { ChangePassword } from './components/ChangePassword';
 import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
 import { registerForPush, unregisterFromPush } from './lib/push';
+import { MyPage } from './components/MyPage';
+import { useTasks } from './hooks/useTasks';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
 import { watchPosition, getCurrentPosition } from './lib/geolocation';
 import type { PosterPin } from './types';
-import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings } from 'lucide-react';
+import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings, ClipboardList } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
@@ -71,6 +73,9 @@ function App() {
   const [showTutorial, setShowTutorial] = useState(() => !hasSeenTutorial());
 
   const announcements = useAnnouncements();
+  const [showMyPage, setShowMyPage] = useState(false);
+  // バッジに出す「自分あての未対応件数」。マイページを開かなくても気づけるようにする
+  const { myTasks } = useTasks();
 
   // プッシュ通知の許可は、ログインが済んで実際に使える状態になってから求める。
   // 起動直後に尋ねると何のアプリか分からないまま拒否されやすく、
@@ -482,6 +487,21 @@ function App() {
           案内が終わるまでポップアップは出さない */}
       {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
 
+      {showMyPage && (
+        <MyPage
+          posters={posters}
+          logs={activityLogs}
+          onClose={() => setShowMyPage(false)}
+          onOpenPoster={(p) => {
+            setShowMyPage(false);
+            setMapCenter({ lat: p.lat, lng: p.lng });
+            setSelectedPoster(p);
+            setInitialViewMode(true);
+            setIsSheetOpen(true);
+          }}
+        />
+      )}
+
       {!showTutorial && announcements.pendingPopup && (
         <AnnouncementPopup
           announcement={announcements.pendingPopup}
@@ -581,6 +601,20 @@ function App() {
 
                     {/* 管理者からのお知らせ。ポスターの変更を知らせるベルとは
                         別物なので、アイコンも分けている */}
+                    {/* マイページ。自分あての依頼と、これまでの作業を見る */}
+                    <button
+                      onClick={() => setShowMyPage(true)}
+                      title="マイページ"
+                      className="relative bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 dark:hover:bg-zinc-700 active:scale-95 transition-all"
+                    >
+                      <ClipboardList className="w-5 h-5" />
+                      {myTasks.length > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-sm">
+                          {myTasks.length > 99 ? '99+' : myTasks.length}
+                        </span>
+                      )}
+                    </button>
+
                     <AnnouncementsButton
                       announcements={announcements.announcements}
                       unreadCount={announcements.unreadCount}

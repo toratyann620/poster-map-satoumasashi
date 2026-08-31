@@ -131,6 +131,36 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════
+    // 5-4. 作業の依頼 (tasks)
+    // ══════════════════════════════════════════════════════════
+    // 事務所（グループ）単位で分ける。ポスターと同じ区切りにしておかないと、
+    // 「依頼は見えるのに対象のピンは開けない」状態が起きる。
+    //
+    // 佐藤まさし事務所（allowAll）は全事務所の依頼を扱える。
+    // この分岐が resource.data を参照しないため、条件を付けない一覧取得も通る。
+    function taskInScope(d) {
+      return isMember() && (
+        groupDoc().allowAll == true
+        || d.groupId == memberDoc().get('groupId', '__none__')
+      );
+    }
+
+    match /tasks/{taskId} {
+      allow read: if taskInScope(resource.data);
+
+      allow create: if taskInScope(request.resource.data)
+                    && request.resource.data.keys().hasAll(['groupId', 'title', 'status'])
+                    && request.resource.data.status == 'open';
+
+      // 完了操作は事務所の誰でも行える（担当者以外が代わりに済ませることがあるため）。
+      // ただし所属事務所の付け替えは禁止する。依頼ごと別の事務所へ移せてしまうため。
+      allow update: if taskInScope(resource.data)
+                    && request.resource.data.groupId == resource.data.groupId;
+
+      allow delete: if isAdmin() && taskInScope(resource.data);
+    }
+
+    // ══════════════════════════════════════════════════════════
     // 6. グループ定義 (groups)
     // ══════════════════════════════════════════════════════════
     match /groups/{groupId} {

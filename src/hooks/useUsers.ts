@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { db, firebaseConfig, makeAuth } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions, firebaseConfig, makeAuth } from '../lib/firebase';
 
 export interface UserData {
     id: string; // auth uid
@@ -83,12 +84,21 @@ export const useUsers = () => {
     };
 
     // ユーザー情報の削除 (Firestoreドキュメントの削除のみ。Authアカウント自体を削除するにはAdmin SDKが必要なため)
+    /**
+     * ユーザーを削除する。
+     *
+     * ログインアカウント（Auth）の削除はクライアントSDKでは他人に対して行えないため、
+     * Cloud Function に委ねる。Firestore のドキュメントも関数側でまとめて消すので、
+     * 「権限は消えたがアカウントは残る」という中途半端な状態にならない。
+     */
     const removeUser = async (uid: string) => {
         try {
-            await deleteDoc(doc(db, 'users', uid));
-        } catch (error: any) {
+            const call = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'deleteUserAccount');
+            await call({ uid });
+        } catch (error: unknown) {
+            const message = (error as { message?: string })?.message ?? '削除に失敗しました。';
             console.error('Error deleting user:', error);
-            throw new Error(error.message);
+            throw new Error(message);
         }
     };
 

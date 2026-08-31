@@ -32,7 +32,8 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
 };
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [] }) => {
-    const { users, loading: usersLoading, createUser, removeUser } = useUsers();
+    const { users, loading: usersLoading, createUser, updateUser, removeUser } = useUsers();
+    const [busyUid, setBusyUid] = useState<string | null>(null);
     const { groups } = useGroups();
     const { logs, loading: logsLoading } = useActivityLogs(200);
     const { userRole, posters } = usePosterData();
@@ -113,13 +114,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
         }
     };
 
+    /** 権限・所属の変更。反映は users の購読で自動的に画面へ返ってくる */
+    const changeUser = async (uid: string, updates: { role?: 'admin' | 'general'; groupId?: string }) => {
+        setBusyUid(uid);
+        try { await updateUser(uid, updates); }
+        catch (e) { window.alert((e as Error)?.message ?? '変更に失敗しました。'); }
+        finally { setBusyUid(null); }
+    };
+
     const handleDeleteUser = async (user: UserData) => {
         if (user.role === 'admin' && users.filter(u => u.role === 'admin').length === 1) {
             alert('最後の一人の管理者は削除できません。');
             return;
         }
 
-        if (window.confirm(`ユーザー「${user.name}」(${user.email}) を削除しますか？\n※Firestore上のデータのみ削除されます。Auth側の完全削除はFirebaseコンソールから行ってください。`)) {
+        if (window.confirm(`ユーザー「${user.name}」(${user.email}) を削除しますか？\n\nログインアカウントごと削除され、取り消しはできません。`)) {
             try {
                 await removeUser(user.id);
             } catch (err) {
@@ -412,9 +421,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                         <td className="p-4 text-gray-900 dark:text-white font-medium">{user.name}</td>
                                                         <td className="p-4 text-gray-600 dark:text-gray-400">{user.email}</td>
                                                         <td className="p-4">
-                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${user.role === 'admin' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}>
-                                                                {user.role === 'admin' ? '管理者' : '一般'}
-                                                            </span>
+                                                            {/* Firebase コンソールを開かずに権限と所属を変えられるようにする */}
+                                                            <div className="flex flex-col gap-1.5">
+                                                                <select
+                                                                    value={user.role}
+                                                                    disabled={busyUid === user.id}
+                                                                    onChange={(e) => changeUser(user.id, { role: e.target.value as 'admin' | 'general' })}
+                                                                    className="px-2 py-1 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-gray-900 dark:text-white disabled:opacity-50"
+                                                                >
+                                                                    <option value="general">一般</option>
+                                                                    <option value="admin">管理者</option>
+                                                                </select>
+                                                                <select
+                                                                    value={user.groupId ?? ''}
+                                                                    disabled={busyUid === user.id}
+                                                                    onChange={(e) => changeUser(user.id, { groupId: e.target.value })}
+                                                                    className="px-2 py-1 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-gray-900 dark:text-white disabled:opacity-50"
+                                                                >
+                                                                    <option value="">未割当</option>
+                                                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                                                </select>
+                                                            </div>
                                                         </td>
                                                         <td className="p-4 text-right text-emerald-600 dark:text-emerald-400 font-semibold">{m.newCount || '-'}</td>
                                                         <td className="p-4 text-right text-orange-600 dark:text-orange-400 font-semibold">{m.removedCount || '-'}</td>

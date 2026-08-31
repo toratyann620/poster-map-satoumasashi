@@ -2,6 +2,7 @@ import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, initializeAuth, indexedDBLocalPersistence, type Auth } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from 'firebase/functions';
 import { Capacitor } from "@capacitor/core";
 // Analytics は Firebase Installations API / Dynamic Config API を必要とするため、
 // GCP APIキー制限との競合を避けるため無効化しています。
@@ -57,6 +58,8 @@ try {
 }
 export const db = firestoreDb;
 export const storage = getStorage(app);
+// Cloud Functions の呼び出し口。関数は asia-northeast1 に置いてある
+export const functions = getFunctions(app, 'asia-northeast1');
 
 // Analytics は無効化（Firebase Installations API / Dynamic Config API が GCP で制限されているため）
 export const analytics = null;
