@@ -21,7 +21,6 @@
     "@capacitor/core": "^8.5.0",
     "@capacitor/geolocation": "^8.2.2",
     "@capacitor/ios": "^8.5.0",
-    "@googlemaps/markerclusterer": "^2.6.2",
     "@googlemaps/react-wrapper": "^1.2.0",
     "@tailwindcss/vite": "^4.2.1",
     "browser-image-compression": "^2.0.2",

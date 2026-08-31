@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 import { Wrapper, Status } from '@googlemaps/react-wrapper';
-import { MarkerClusterer, type Renderer, type Cluster } from '@googlemaps/markerclusterer';
+import { AGGREGATE_ZOOM, aggregateByTown, type TownAggregate } from '../lib/townAggregation';
 import { Navigation, Car, Footprints, Bike, X } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
@@ -219,38 +219,37 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     return container;
 }
 
-// ズームアウト時に近接するピンをまとめる「件数バッジ付き集計マーカー」の見た目を作る
-const clusterRenderer: Renderer = {
-    render: (cluster: Cluster) => {
-        const count = cluster.count;
-        const size = count < 10 ? 40 : count < 50 ? 48 : count < 200 ? 56 : 64;
-        const div = document.createElement('div');
-        div.style.cssText = `
-            width: ${size}px;
-            height: ${size}px;
-            background-color: #4F46E5;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 700;
-            font-size: ${count < 100 ? '14px' : '12px'};
-            font-family: -apple-system, sans-serif;
-            border: 3px solid white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-            cursor: pointer;
-        `;
-        div.textContent = String(count);
+/**
+ * 町域ごとの集計ピン。件数を数字で描く。
+ *
+ * 形は個別ピンと同じしずく型にして、中央の白丸に件数を入れる。
+ * 色は件数で変えない（種類の色分けと取り違えるため）。
+ *
+ * 桁数でフォントサイズを落として白丸からはみ出さないようにする。
+ * SVG をそのまま DOM に置くので、拡大してもぼやけない
+ * （deck.gl のように一度ラスタライズする描画方式では、実寸の2倍で
+ *   書き出す必要があるが、ここではその手当ては要らない）。
+ */
+const AGGREGATE_PIN_HEIGHT = 48;
 
-        const AdvancedMarkerElement = (window.google.maps as any).marker?.AdvancedMarkerElement;
-        return new AdvancedMarkerElement({
-            position: cluster.position,
-            content: div,
-            zIndex: 900,
-        });
-    },
-};
+function buildAggregateMarkerEl(town: TownAggregate): HTMLElement {
+    const count = town.count;
+    const fontSize = count < 100 ? 11 : count < 1000 ? 9 : 8;
+    const width = Math.round(AGGREGATE_PIN_HEIGHT * (40 / 56));
+
+    const el = document.createElement('div');
+    el.style.cssText = `cursor: pointer; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));`;
+    el.title = `${town.town}（${count}件）`;
+    el.innerHTML = `
+        <svg width="${width}" height="${AGGREGATE_PIN_HEIGHT}" viewBox="0 0 40 56" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20 0C9 0 0 8.7 0 19.4c0 12.6 12.4 24.2 18.6 35.8a1.6 1.6 0 0 0 2.8 0C27.6 43.6 40 32 40 19.4 40 8.7 31 0 20 0z"
+                  fill="#4f46e5" stroke="#ffffff" stroke-width="2"/>
+            <circle cx="20" cy="18" r="9" fill="#ffffff"/>
+            <text x="20" y="21" text-anchor="middle" font-size="${fontSize}" font-weight="700"
+                  font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fill="#4f46e5">${count}</text>
+        </svg>`;
+    return el;
+}
 
 const MapInner: React.FC<MapComponentProps> = ({
     posters,
@@ -277,7 +276,11 @@ const MapInner: React.FC<MapComponentProps> = ({
     const markersRef = useRef<any[]>([]);
     // ポスターピン用: id -> {marker, signature} で保持し、内容が変わったピンだけ作り直す（差分更新）
     const posterMarkersRef = useRef<Map<string, { marker: any, signature: string }>>(new Map());
-    const clustererRef = useRef<MarkerClusterer | null>(null);
+    // 集計ピン（町域ごと）。ズームで表示が切り替わるたびに作り直す。
+    // 破棄のために map を差し替えるだけなので、その一点だけ型を持たせる
+    const aggregateMarkersRef = useRef<{ map: google.maps.Map | null }[]>([]);
+    // 現在のズーム。AGGREGATE_ZOOM 未満なら集計ピン、以上なら個別ピンを描く
+    const [zoom, setZoom] = useState<number>(14);
     // 完全に同一座標のピンが重なっている場合の「展開表示」対象グループ（緯度経度キー）。null = どれも展開していない
     const [spreadGroupKey, setSpreadGroupKey] = useState<string | null>(null);
     const overlapMarkersRef = useRef<any[]>([]);
@@ -347,7 +350,9 @@ const MapInner: React.FC<MapComponentProps> = ({
         if (!map) return;
         const listener = map.addListener('zoom_changed', () => {
             setSpreadGroupKey(null);
+            setZoom(map.getZoom() ?? 14);
         });
+        setZoom(map.getZoom() ?? 14);
         return () => {
             google.maps.event.removeListener(listener);
         };
@@ -452,7 +457,8 @@ const MapInner: React.FC<MapComponentProps> = ({
     // Sync Markers (AdvancedMarkerElement)
     // ポスター件数が多くなっても軽快に動作するよう、以下の2点を行う:
     // 1. 内容が変わっていないピンは作り直さず、差分（追加・変更・削除）だけ処理する
-    // 2. MarkerClusterer でズームアウト時に近接ピンを件数バッジへ集約し、描画コストを抑える
+    // 2. ポスターのピンを描く。広い縮尺（AGGREGATE_ZOOM 未満）では町域ごとの
+    //    集計ピンへまとめ、寄せると個別のピンに切り替わる
     useEffect(() => {
         if (!map) return;
 
@@ -463,10 +469,6 @@ const MapInner: React.FC<MapComponentProps> = ({
         if (!AdvancedMarkerElement) {
             console.warn('AdvancedMarkerElement not available. Check mapId and library versions.');
             return;
-        }
-
-        if (!clustererRef.current) {
-            clustererRef.current = new MarkerClusterer({ map, renderer: clusterRenderer });
         }
 
         // ポスター1件用のマーカーを生成し、長押し・タップのイベントを付与する共通処理
@@ -545,7 +547,16 @@ const MapInner: React.FC<MapComponentProps> = ({
             setSpreadGroupKey(null);
         }
 
-        const singlePosters = posters.filter(p => !overlapGroupKeys.has(groupKeyOf(p)));
+        // 広い縮尺では町域ごとの集計ピンにまとめる。ただし選択中・移動中のピンだけは
+        // 個別に描き続ける。これが無いと、ピンを選んだまま地図を引いた瞬間に対象を見失う。
+        const isAggregate = zoom < AGGREGATE_ZOOM;
+        const keepIndividually = new Set<string>();
+        if (selectedPoster?.id) keepIndividually.add(selectedPoster.id);
+        if (relocatingPoster?.id) keepIndividually.add(relocatingPoster.id);
+
+        const singlePosters = posters.filter(p =>
+            !overlapGroupKeys.has(groupKeyOf(p))
+            && (!isAggregate || keepIndividually.has(p.id)));
 
         const nextIds = new Set(singlePosters.map(p => p.id));
         const toRemove: any[] = [];
@@ -579,24 +590,11 @@ const MapInner: React.FC<MapComponentProps> = ({
             const { marker } = createPosterMarker(poster, { isFloating, isDropped });
 
             posterMarkersRef.current.set(poster.id, { marker, signature });
-            if (isFloating) {
-                // 移動中のピンはクラスタに埋もれないよう、常に個別マーカーとして直接表示する
-                marker.map = map;
-            } else {
-                toAdd.push(marker);
-            }
+            toAdd.push(marker);
         });
 
-        if (toRemove.length > 0) {
-            toRemove.forEach(m => { m.map = null; });
-            clustererRef.current.removeMarkers(toRemove, true);
-        }
-        if (toAdd.length > 0) {
-            clustererRef.current.addMarkers(toAdd, true);
-        }
-        if (toRemove.length > 0 || toAdd.length > 0) {
-            clustererRef.current.render();
-        }
+        toRemove.forEach(m => { m.map = null; });
+        toAdd.forEach(m => { m.map = map; });
 
         // ==================== 完全に同一座標で重なっているピンの表示 ====================
         // 通常のクラスタリングは画面上のピクセル距離で判定するため、同一座標のピンはズームインしても
@@ -606,6 +604,8 @@ const MapInner: React.FC<MapComponentProps> = ({
 
         groupedByPosition.forEach((group, key) => {
             if (group.length < 2) return;
+            // 集計表示中は重なりピンも出さない（町域の集計ピンに含めて数える）
+            if (isAggregate) return;
             const center = { lat: group[0].lat, lng: group[0].lng };
 
             if (spreadGroupKey === key) {
@@ -694,6 +694,39 @@ const MapInner: React.FC<MapComponentProps> = ({
                 overlapMarkersRef.current.push(marker);
             }
         });
+
+        // ==================== 町域ごとの集計ピン ====================
+        // 広い縮尺では、ピンを町域（市区町村＋町名）ごとにまとめて件数を出す。
+        // 距離でまとめる方式と違い、件数がそのまま「この地区に何枚あるか」になり、
+        // 縮尺を変えてもまとまり方が動かない。
+        aggregateMarkersRef.current.forEach(m => { m.map = null; });
+        aggregateMarkersRef.current = [];
+
+        if (isAggregate) {
+            const targets = posters.filter(p => !keepIndividually.has(p.id));
+            aggregateByTown(targets).forEach(town => {
+                const el = buildAggregateMarkerEl(town);
+                const marker = new AdvancedMarkerElement({
+                    position: { lat: town.lat, lng: town.lng },
+                    title: `${town.town}（${town.count}件）`,
+                    content: el,
+                    zIndex: 900,
+                });
+
+                // 掘り下げ: 個別ピンが出る縮尺まで寄せ、その町域の代表座標へ移動する。
+                // 素の DOM の click ではなく Google 側のイベントを使う。DOM の click は
+                // 地図まで伝わってしまい、地図タップ（新規ピンの追加）も同時に起きるため。
+                const drillDown = () => {
+                    map.setZoom(AGGREGATE_ZOOM);
+                    map.panTo({ lat: town.lat, lng: town.lng });
+                };
+                marker.element?.addEventListener('gmp-click', drillDown);
+                marker.addListener('click', drillDown); // 古い環境向けのフォールバック
+
+                marker.map = map;
+                aggregateMarkersRef.current.push(marker);
+            });
+        }
 
         // 新規追加中の「仮ピン」を地図上に描画（markersRef は仮ピン専用。毎回作り直すため先に破棄する）
         markersRef.current.forEach(m => { m.map = null; });
@@ -829,7 +862,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 infoWindowRef.current = null;
             }
         }
-    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey]);
+    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey, zoom]);
 
     // Current Location Marker
     useEffect(() => {
