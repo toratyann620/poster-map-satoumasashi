@@ -230,7 +230,9 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
  * （deck.gl のように一度ラスタライズする描画方式では、実寸の2倍で
  *   書き出す必要があるが、ここではその手当ては要らない）。
  */
-const AGGREGATE_PIN_HEIGHT = 48;
+// 個別ピン（32px の丸）より一回り大きい程度に留める。
+// 大きすぎると町域が密集した地域でピンどうしが重なる。
+const AGGREGATE_PIN_HEIGHT = 40;
 
 function buildAggregateMarkerEl(town: TownAggregate): HTMLElement {
     const count = town.count;

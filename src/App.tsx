@@ -16,6 +16,7 @@ import { useAnnouncements } from './hooks/useAnnouncements';
 import { Tutorial } from './components/Tutorial';
 import { ChangePassword } from './components/ChangePassword';
 import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
+import { readPresets, presetLabel, type PinPreset } from './lib/pinPresets';
 import { registerForPush, unregisterFromPush } from './lib/push';
 import { MyPage } from './components/MyPage';
 import { useTasks } from './hooks/useTasks';
@@ -24,7 +25,7 @@ import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
 import { watchPosition, getCurrentPosition } from './lib/geolocation';
 import type { PosterPin } from './types';
-import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings, ClipboardList } from 'lucide-react';
+import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings, ClipboardList, Zap } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 import { usePinTypes } from './hooks/usePinTypes';
@@ -74,6 +75,23 @@ function App() {
 
   const announcements = useAnnouncements();
   const [showMyPage, setShowMyPage] = useState(false);
+
+  // ピン打ちモード。現在地にボタンひとつでピンを立てるための簡易入力モード。
+  // 標準モードと違い、種類・ステータス・タグはあらかじめ決めた内容を使う。
+  const [isQuickMode, setIsQuickMode] = useState(false);
+  const [presets, setPresets] = useState<PinPreset[]>(() => readPresets());
+  const [droppingIndex, setDroppingIndex] = useState<number | null>(null);
+
+  // 詳細シートが「展開」の状態で開いているか。新規追加と編集はこの状態で開く
+  // （PinBottomSheet 側の初期状態の決め方と揃えてある）
+  const isSheetExpanded = isSheetOpen && (!selectedPoster?.id || !initialViewMode);
+
+  // ピン打ちモードのボタンを、種類の色で塗るための対応表
+  const colorsMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    pinTypes.forEach(pt => { m[pt.name] = pt.color; });
+    return m;
+  }, [pinTypes]);
   // バッジに出す「自分あての未対応件数」。マイページを開かなくても気づけるようにする
   const { myTasks } = useTasks();
 
@@ -379,13 +397,74 @@ function App() {
     const isRestore = idOrAction.endsWith(':restore');
     const id = isRestore ? idOrAction.replace(':restore', '') : idOrAction;
     if (isRestore) {
-      updatePoster(id, { removed: false });
+      // 理由も消す。撤去を取り消した後に古い理由が残っていると誤解を生む
+      updatePoster(id, { removed: false, removalReason: '' });
     } else {
-      if (window.confirm('このポスターを「撤去」しますか？\nデータは残りますがマップから非表示になります。')) {
-        updatePoster(id, { removed: true });
+      // 理由は後から「なぜ無くなったのか」を辿る手がかりになるので、撤去のたびに書いてもらう。
+      // 必須にはしない。現地で手を止めさせると、そもそも撤去の記録が残らなくなるため。
+      const reason = window.prompt(
+        'このポスターを「撤去」します。\nデータは残りますがマップから非表示になります。\n\n撤去の理由を入力してください（任意）',
+        '',
+      );
+      if (reason !== null) {
+        updatePoster(id, { removed: true, removalReason: reason.trim() });
         setIsSheetOpen(false);
         setTimeout(() => setSelectedPoster(null), 300);
       }
+    }
+  };
+
+  /**
+   * 現在地に、決めておいた内容でピンを立てる。
+   *
+   * 位置は必ずその場で取り直す。直前に取得した現在地を使い回すと、
+   * 歩きながら続けて登録したときに前の地点へ立ってしまう。
+   */
+  const dropPinHere = async (preset: PinPreset, index: number) => {
+    if (droppingIndex !== null) return;
+    setDroppingIndex(index);
+    try {
+      const pos = await getCurrentPosition();
+      if (!pos) {
+        window.alert('現在地を取得できませんでした。位置情報の許可をご確認ください。');
+        return;
+      }
+      const { lat, lng } = pos;
+
+      // 住所は逆引きする。取れなくても登録は止めない（後から直せる）
+      let address = '';
+      let city = '';
+      if (window.google) {
+        try {
+          const geocoder = new window.google.maps.Geocoder();
+          const res = await geocoder.geocode({ location: { lat, lng } });
+          const best = res.results?.[0];
+          if (best) {
+            address = best.formatted_address.replace(/^日本、?\s*/, '');
+            city = cityFromGeocoderResult(best) || cityFromAddress(address);
+          }
+        } catch { /* 住所が取れなくても座標だけで登録する */ }
+      }
+
+      const newId = await addPoster({
+        lat, lng, address, city,
+        type: preset.type,
+        status: preset.status.length ? preset.status : ['設置済'],
+        tags: preset.tags,
+        quantity: 1,
+        placement: '', owner: '', contact: '', memo: '', specialNote: '',
+        imageUrl: '', imageUrls: [],
+      } as any);
+
+      setMapCenter({ lat, lng });
+      if (newId) {
+        setJustDroppedPinId(newId);
+        setTimeout(() => setJustDroppedPinId(null), 1600);
+      }
+    } catch (e) {
+      window.alert((e as Error)?.message ?? '現在地を取得できませんでした。');
+    } finally {
+      setDroppingIndex(null);
     }
   };
 
@@ -570,7 +649,52 @@ function App() {
           {/* Floating UI Elements（移動モード・ナビゲーション中は非表示） */}
           {!isRelocating && !navigationTarget && (
             <>
-              <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} />
+              {/* 検索窓を隠す条件は2つ。
+                  ・ピン打ちモード中: 現在地に立てるだけの操作なので、地図を広く使いたい
+                  ・詳細シートが展開しているとき: シートは画面の85%を占め、その上端
+                    （15vh≒128pt）が3行ある検索窓（≒150pt）と重なる。薄く見えたまま
+                    重ねるより、隠した方が読み違えない */}
+              {!isQuickMode && !isSheetExpanded && (
+                <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} />
+              )}
+
+              {/* ピン打ちモードの帯とボタン */}
+              {isQuickMode && (
+                <>
+                  <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 bg-amber-500 text-white rounded-full shadow-lg flex items-center gap-2 text-sm font-bold">
+                    <Zap className="w-4 h-4 shrink-0" />
+                    ピン打ちモード
+                    <button
+                      onClick={() => setIsQuickMode(false)}
+                      className="ml-1 p-0.5 rounded-full hover:bg-white/20 transition-colors"
+                      aria-label="標準モードに戻る"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="absolute bottom-safe-24 left-1/2 -translate-x-1/2 z-30 w-full px-5 flex flex-col gap-2.5 items-stretch max-w-sm">
+                    {presets.length === 0 ? (
+                      <div className="px-4 py-3 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl text-sm text-center text-gray-600 dark:text-gray-300">
+                        管理パネルの「設定」で、よく使う登録内容を決めてください
+                      </div>
+                    ) : presets.map((preset, i) => (
+                      <button
+                        key={i}
+                        onClick={() => dropPinHere(preset, i)}
+                        disabled={droppingIndex !== null}
+                        className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl shadow-xl font-bold text-white transition-all active:scale-95 disabled:opacity-60"
+                        style={{ backgroundColor: colorsMap[preset.type] || '#4F46E5' }}
+                      >
+                        {droppingIndex === i
+                          ? <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          : <MapPin className="w-5 h-5 shrink-0" />}
+                        <span className="truncate">ここに「{presetLabel(preset)}」を立てる</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {/* Floating Buttons: Expandable Menu with Gear Icon */}
               <div className="absolute bottom-safe-6 left-4 z-10 flex flex-col gap-3 items-center">
@@ -601,6 +725,19 @@ function App() {
 
                     {/* 管理者からのお知らせ。ポスターの変更を知らせるベルとは
                         別物なので、アイコンも分けている */}
+                    {/* ピン打ちモードへの切り替え。現在地にボタンひとつでピンを立てる */}
+                    <button
+                      onClick={() => {
+                        setPresets(readPresets());
+                        setIsQuickMode(true);
+                        setIsMenuExpanded(false);
+                      }}
+                      title="ピン打ちモード"
+                      className="bg-amber-500 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:bg-amber-600 active:scale-95 transition-all"
+                    >
+                      <Zap className="w-5 h-5" />
+                    </button>
+
                     {/* マイページ。自分あての依頼と、これまでの作業を見る */}
                     <button
                       onClick={() => setShowMyPage(true)}
@@ -666,7 +803,9 @@ function App() {
               </div>
 
               {/* ポスター枚数ウィジェット（全ユーザー） */}
-              <PosterCountWidget posters={posters} activityLogs={activityLogs} />
+              {/* ピン打ちモード中は隠す。ボタンが画面下に並ぶので場所が競合し、
+                  枚数を見たい場面でもないため */}
+              {!isQuickMode && <PosterCountWidget posters={posters} activityLogs={activityLogs} />}
             </>
           )}
 

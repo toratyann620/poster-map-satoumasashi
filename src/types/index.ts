@@ -74,6 +74,7 @@ export interface PosterPin {
     imageUrls?: string[];    // 複数写真 (Storage URL配列)
     tags?: string[];         // カスタムタグ (複数指定可能)
     removed?: boolean;       // 撤去フラグ（trueの場合マップ非表示、DBにデータは残る）
+    removalReason?: string;  // 撤去した理由。撤去済みを表示する設定のときに詳細から確認できる
     createdAt: number;       // 作成日時 (timestamp)
     updatedAt: number;       // 更新日時 (timestamp)
     createdBy: string;       // 登録者

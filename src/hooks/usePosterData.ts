@@ -156,9 +156,12 @@ export const usePosterData = () => {
             });
             const diff = `枚数: ${posterData.quantity || 1}枚`;
             await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', city, userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
+            // 立てたばかりのピンを目立たせる演出に使うため、IDを返す
+            return docRef.id;
         } catch (e) {
             console.error('Error adding document: ', e);
             alert(describeWriteError(e, '登録'));
+            return null;
         }
     };
 

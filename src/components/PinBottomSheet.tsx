@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
@@ -382,7 +382,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                         <div className="mt-4 flex flex-wrap gap-2 pointer-events-none">
                             {poster?.removed && (
                                 <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                    撤去済み
+                                    撤去済み{poster.removalReason ? `・${poster.removalReason}` : ''}
                                 </span>
                             )}
                             {status.map(s => {
@@ -431,6 +431,15 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     </div>
                                 ) : null}
  
+                                {sheetState === 'expanded' && poster?.removed && poster.removalReason && (
+                                    <div>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">撤去の理由</p>
+                                        <p className="text-base text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+                                            {poster.removalReason}
+                                        </p>
+                                    </div>
+                                )}
+
                                 {sheetState === 'expanded' && (
                                     <div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">ステータス</p>
@@ -487,6 +496,19 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     <Edit2 className="w-5 h-5 mr-2" />
                                     修正
                                 </button>
+                                {/* Google マップで開く。インストールされていればアプリが起動し、
+                                    この地点が目的地として表示される */}
+                                {poster?.id && typeof poster.lat === 'number' && typeof poster.lng === 'number' && (
+                                    <a
+                                        href={`https://www.google.com/maps/dir/?api=1&destination=${poster.lat},${poster.lng}&travelmode=driving`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex-1 flex items-center justify-center px-4 py-3 border border-blue-400 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-sm font-medium"
+                                    >
+                                        <ExternalLink className="w-4 h-4 mr-1.5" />
+                                        Googleマップ
+                                    </a>
+                                )}
                                 {onStartNavigation && poster?.id && typeof poster.lat === 'number' && typeof poster.lng === 'number' && (
                                     <button
                                         onClick={() => onStartNavigation(poster as PosterPin)}
