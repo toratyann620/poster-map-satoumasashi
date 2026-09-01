@@ -689,30 +689,30 @@ function App() {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-
-                  <div className="absolute bottom-safe-24 left-1/2 -translate-x-1/2 z-30 w-full px-5 flex flex-col gap-2.5 items-stretch max-w-sm">
+                  {/* ボタンは番号だけの小さな丸にする。地図を隠さず、
+                      歩きながら片手で押せる大きさ（56px）を確保する。
+                      何が登録されるかは長押し時の説明とシートの1/2/3で対応づく */}
+                  <div className="absolute bottom-safe-24 left-1/2 -translate-x-1/2 z-30 flex gap-3 items-center">
                     {presets.length === 0 ? (
                       <button
                         onClick={() => setShowPresetEditor(true)}
-                        className="px-4 py-3.5 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl text-sm text-center text-gray-700 dark:text-gray-200 font-medium"
+                        className="px-5 py-3 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl text-sm text-gray-700 dark:text-gray-200 font-medium whitespace-nowrap"
                       >
-                        よく使う登録内容を決める
-                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-normal">
-                          種類・ステータス・タグを3つまで
-                        </span>
+                        登録内容を決める
                       </button>
                     ) : presets.map((preset, i) => (
                       <button
                         key={i}
                         onClick={() => dropPinHere(preset, i)}
                         disabled={droppingIndex !== null}
-                        className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl shadow-xl font-bold text-white transition-all active:scale-95 disabled:opacity-60"
+                        title={`ここに「${presetLabel(preset)}」を立てる`}
+                        aria-label={`ここに「${presetLabel(preset)}」を立てる`}
+                        className="w-14 h-14 rounded-full shadow-xl text-white text-xl font-bold flex items-center justify-center transition-all active:scale-95 disabled:opacity-60 border-2 border-white/70"
                         style={{ backgroundColor: colorsMap[preset.type] || '#4F46E5' }}
                       >
                         {droppingIndex === i
                           ? <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                          : <MapPin className="w-5 h-5 shrink-0" />}
-                        <span className="truncate">ここに「{presetLabel(preset)}」を立てる</span>
+                          : i + 1}
                       </button>
                     ))}
                   </div>

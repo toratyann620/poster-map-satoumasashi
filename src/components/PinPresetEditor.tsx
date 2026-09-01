@@ -36,16 +36,13 @@ export const PinPresetEditor: React.FC<Props> = ({ pinTypes, onChange }) => {
         <div className="space-y-4">
             {presets.map((preset, i) => (
                 <div key={i} className="border border-gray-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-bold flex items-center justify-center shrink-0">
-                            {i + 1}
+                    <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300">
+                            <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-bold flex items-center justify-center shrink-0">
+                                {i + 1}
+                            </span>
+                            ボタン{i + 1}
                         </span>
-                        <input
-                            value={preset.label}
-                            onChange={(e) => update(i, { label: e.target.value })}
-                            placeholder={`ボタンの名前（未入力なら「${preset.type}」）`}
-                            className={field}
-                        />
                         <button
                             onClick={() => save(presets.filter((_, k) => k !== i))}
                             className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"

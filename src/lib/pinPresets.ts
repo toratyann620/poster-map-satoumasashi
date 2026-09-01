@@ -17,14 +17,12 @@ const KEY = 'pin_presets';
 export const MAX_PRESETS = 3;
 
 export interface PinPreset {
-    /** ボタンに出す短い名前 */
-    label: string;
     type: string;
     status: string[];
     tags: string[];
 }
 
-export const emptyPreset = (): PinPreset => ({ label: '', type: '佐藤まさし', status: ['設置済'], tags: [] });
+export const emptyPreset = (): PinPreset => ({ type: '佐藤まさし', status: ['設置済'], tags: [] });
 
 export const readPresets = (): PinPreset[] => {
     const raw = readString(KEY);
@@ -36,7 +34,6 @@ export const readPresets = (): PinPreset[] => {
             .filter((p): p is PinPreset => !!p && typeof p.type === 'string')
             .slice(0, MAX_PRESETS)
             .map((p) => ({
-                label: String(p.label ?? ''),
                 type: String(p.type),
                 status: Array.isArray(p.status) ? p.status.map(String) : [],
                 tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
@@ -50,5 +47,9 @@ export const writePresets = (presets: PinPreset[]): void => {
     writeString(KEY, JSON.stringify(presets.slice(0, MAX_PRESETS)));
 };
 
-/** ボタンに出す名前。未入力なら種類で代用する */
-export const presetLabel = (preset: PinPreset): string => preset.label.trim() || preset.type;
+/**
+ * ボタンの説明文。ボタン自体は番号だけを出すので、
+ * 押し間違いを防ぐための補助（title / 読み上げ）に使う。
+ */
+export const presetLabel = (preset: PinPreset): string =>
+    [preset.type, ...preset.status, ...preset.tags.map((t) => `#${t}`)].join('・');
