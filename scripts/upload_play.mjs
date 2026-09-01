@@ -33,6 +33,8 @@ const API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
 const UPLOAD_API = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3';
 
 const aabPath = process.argv[2] ?? 'build/upload/postermap-1.0.0-build1.aab';
+// リリース名に使うバージョン。生成物のファイル名（postermap-1.0.3-build5.aab）から取る
+const VERSION = (aabPath.match(/postermap-([0-9.]+)-build/) ?? [, ''])[1];
 
 if (!fs.existsSync(KEY_PATH)) {
     console.error(`サービスアカウントの鍵が見つかりません: ${KEY_PATH}`);
@@ -136,11 +138,14 @@ try {
                 track: tr,
                 releases: [{
                     versionCodes: [String(bundle.versionCode)],
+                    // 明示しないと、同じトラックに残っている下書きの名前がそのまま
+                    // 引き継がれ、Play Console に古いバージョンが表示される
+                    name: VERSION ? `${VERSION} (${bundle.versionCode})` : String(bundle.versionCode),
                     status: st,
                     releaseNotes: [{
                         language: 'ja-JP',
                         text: process.env.RELEASE_NOTES
-                            ?? '初回リリース。ポスター掲示場所の地図表示・記録・経路案内に対応しています。',
+                            ?? `${VERSION} の更新です。`,
                     }],
                 }],
             }),
