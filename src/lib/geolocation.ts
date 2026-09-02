@@ -35,6 +35,11 @@ export const ensureLocationPermission = async (): Promise<boolean> => {
 
 const OPTIONS = { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 };
 
+// 一発取得（現在地ボタン・ピン打ち）用。
+// 常時 watchPosition が動いているので、直近30秒の測位はそのまま使ってよい。
+// maximumAge を短くすると毎回GPSを取り直すことになり、屋外でも十数秒待たされる。
+const ONESHOT_OPTIONS = { enableHighAccuracy: true, maximumAge: 30000, timeout: 8000 };
+
 /**
  * 現在地の継続取得を開始する。返り値を呼ぶと停止する。
  * 権限が無い場合は onError を呼び、購読は行わない。
@@ -91,13 +96,13 @@ export const getCurrentPosition = async (): Promise<Coords | null> => {
             navigator.geolocation.getCurrentPosition(
                 (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
                 () => resolve(null),
-                OPTIONS,
+                ONESHOT_OPTIONS,
             );
         });
     }
 
     try {
-        const p = await Geolocation.getCurrentPosition(OPTIONS);
+        const p = await Geolocation.getCurrentPosition(ONESHOT_OPTIONS);
         return { lat: p.coords.latitude, lng: p.coords.longitude };
     } catch (e) {
         console.warn('現在地の取得に失敗しました:', e);

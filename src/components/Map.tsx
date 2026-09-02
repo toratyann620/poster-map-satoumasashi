@@ -28,6 +28,10 @@ interface MapComponentProps {
     currentLocation?: { lat: number, lng: number } | null;
     pinTypes?: { name: string, color: string }[];
     onLocateMe?: () => void;
+    /** 地図を手で動かしたときに呼ぶ。現在地への追従を解除するために使う */
+    onUserPan?: () => void;
+    /** 現在地に追従中か。ボタンの見た目に反映する（ナビ中の isFollowing とは別物） */
+    followingLocation?: boolean;
     justDroppedPinId?: string | null;
     navigationTarget?: PosterPin | null;
     navigationMode?: NavigationMode;
@@ -266,6 +270,8 @@ const MapInner: React.FC<MapComponentProps> = ({
     currentLocation,
     pinTypes = [],
     onLocateMe,
+    onUserPan,
+    followingLocation,
     justDroppedPinId,
     navigationTarget,
     navigationMode = 'DRIVING',
@@ -300,12 +306,14 @@ const MapInner: React.FC<MapComponentProps> = ({
     const onMarkerClickRef = useRef(onMarkerClick);
     const onPinLongPressRef = useRef(onPinLongPress);
     const onCancelTempPinRef = useRef(onCancelTempPin);
+    const onUserPanRef = useRef(onUserPan);
     const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
     useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
     useEffect(() => { onMarkerClickRef.current = onMarkerClick; }, [onMarkerClick]);
     useEffect(() => { onPinLongPressRef.current = onPinLongPress; }, [onPinLongPress]);
     useEffect(() => { onCancelTempPinRef.current = onCancelTempPin; }, [onCancelTempPin]);
+    useEffect(() => { onUserPanRef.current = onUserPan; }, [onUserPan]);
 
     useEffect(() => {
         if (ref.current && !map) {
@@ -355,8 +363,15 @@ const MapInner: React.FC<MapComponentProps> = ({
             setZoom(map.getZoom() ?? 14);
         });
         setZoom(map.getZoom() ?? 14);
+
+        // 指で地図を動かしたら現在地への追従をやめる。Googleマップと同じ挙動。
+        // 追従による panTo ではこのイベントは出ないので、手の操作だけを拾える。
+        const dragListener = map.addListener('dragstart', () => {
+            onUserPanRef.current?.();
+        });
         return () => {
             google.maps.event.removeListener(listener);
+            google.maps.event.removeListener(dragListener);
         };
     }, [map]);
 
@@ -1017,8 +1032,10 @@ const MapInner: React.FC<MapComponentProps> = ({
                     {onLocateMe && (
                         <button
                             onClick={onLocateMe}
-                            className="p-2 bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 rounded-full shadow-lg border border-gray-100 dark:border-zinc-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer"
-                            title="現在地へ移動"
+                            className={`p-2 rounded-full shadow-lg border transition-all hover:scale-105 active:scale-95 flex items-center justify-center w-10 h-10 cursor-pointer ${followingLocation
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 border-gray-100 dark:border-zinc-700'}`}
+                            title={followingLocation ? '現在地に追従中（地図を動かすと解除されます）' : '現在地へ移動して追従する'}
                         >
                             <Navigation className="w-5 h-5" />
                         </button>
@@ -1113,7 +1130,11 @@ export const MapWrapper: React.FC<MapComponentProps> = (props) => {
 
     return (
         <div className="w-full h-full relative" style={{ minHeight: 'calc(100dvh - 4rem)' }}>
-            <Wrapper apiKey={MAP_API_KEY} render={render} libraries={["places", "marker"]}>
+            {/* language / region を固定する。指定しないと端末の言語で読み込まれ、
+                英語設定の端末では逆引きが "Atsugi" のように返る。
+                city はグループ権限の判定に使うため、日本語の市区町村名でないと
+                書き込みが拒否されたり、範囲の判定が狂ったりする。 */}
+            <Wrapper apiKey={MAP_API_KEY} render={render} libraries={["places", "marker"]} language="ja" region="JP">
                 <MapInner {...props} />
             </Wrapper>
         </div>

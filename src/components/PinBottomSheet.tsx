@@ -377,12 +377,24 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                         </button>
                     </div>
 
+                    {/* 撤去の理由。撤去済みのピンを開いたときは、折りたたみでも
+                        展開でも必ず見えるようにする。設定で撤去済みを表示している
+                        人にとっては、この一行が「なぜ無くなったか」を辿る唯一の手がかりになる */}
+                    {poster?.removed && poster.removalReason && (
+                        <div className="mt-4 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/40">
+                            <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-0.5">撤去の理由</p>
+                            <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+                                {poster.removalReason}
+                            </p>
+                        </div>
+                    )}
+
                     {/* 閲覧モード時の Peek 状態でも表示する要素 (ステータスバッジなど) */}
                     {isViewMode && sheetState === 'peek' && (
                         <div className="mt-4 flex flex-wrap gap-2 pointer-events-none">
                             {poster?.removed && (
                                 <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                    撤去済み{poster.removalReason ? `・${poster.removalReason}` : ''}
+                                    撤去済み
                                 </span>
                             )}
                             {status.map(s => {
@@ -431,15 +443,6 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     </div>
                                 ) : null}
  
-                                {sheetState === 'expanded' && poster?.removed && poster.removalReason && (
-                                    <div>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">撤去の理由</p>
-                                        <p className="text-base text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-                                            {poster.removalReason}
-                                        </p>
-                                    </div>
-                                )}
-
                                 {sheetState === 'expanded' && (
                                     <div>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">ステータス</p>

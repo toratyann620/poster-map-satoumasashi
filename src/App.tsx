@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { MapWrapper } from './components/Map';
 import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
@@ -18,6 +18,7 @@ import { ChangePassword } from './components/ChangePassword';
 import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
 import { readPresets, presetLabel, type PinPreset } from './lib/pinPresets';
 import { PinPresetSheet } from './components/PinPresetEditor';
+import { RemovalDialog } from './components/RemovalDialog';
 import { registerForPush, unregisterFromPush } from './lib/push';
 import { MyPage } from './components/MyPage';
 import { useTasks } from './hooks/useTasks';
@@ -83,6 +84,8 @@ function App() {
   const [presets, setPresets] = useState<PinPreset[]>(() => readPresets());
   const [droppingIndex, setDroppingIndex] = useState<number | null>(null);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
+  // 撤去の確認ダイアログ。対象のポスターを入れると開く
+  const [removalTarget, setRemovalTarget] = useState<PosterPin | null>(null);
 
   // 詳細シートが「展開」の状態で開いているか。新規追加と編集はこの状態で開く
   // （PinBottomSheet 側の初期状態の決め方と揃えてある）
@@ -138,19 +141,20 @@ function App() {
   }, [selectedPoster, posters]);
 
 
-  // 初回ロード時に現在地を取得して地図をジャンプさせ、以降は watchPosition で
-  // 移動中も現在地ドットをリアルタイムに追従させる（地図の中心・ズームは初回ジャンプ時と
-  // 現在地ボタン押下時のみ更新し、移動のたびに地図が勝手に再センタリングされないようにする）
+  // 現在地に地図を追従させるか。Googleマップと同じ考え方で、地図を手で動かしたら
+  // 解除し、現在地ボタンでまた入る。電車や車での移動中に地図が置いていかれないようにする。
+  const [isFollowing, setIsFollowing] = useState(true);
+  const isFollowingRef = useRef(true);
+  useEffect(() => { isFollowingRef.current = isFollowing; }, [isFollowing]);
+
+  // 起動時に現在地へジャンプし、以降も追従中は移動に合わせて地図を動かす
   useEffect(() => {
-    let hasCenteredOnce = false;
     // ネイティブでは OS の権限要求を挟む必要があるため、共通ラッパー経由で購読する
     const stop = watchPosition(
       (pos) => {
         setCurrentLocation(pos);
-        if (!hasCenteredOnce) {
-          hasCenteredOnce = true;
-          setMapCenter(pos);
-        }
+        // ref を見るのは、購読を張り直さずに最新の追従状態を参照するため
+        if (isFollowingRef.current) setMapCenter(pos);
       },
       (reason) => {
         // 起動時は黙って諦める（現在地ボタンを押したときに改めて案内する）
@@ -168,6 +172,7 @@ function App() {
     }
     setCurrentLocation(pos);
     setMapCenter(pos);
+    setIsFollowing(true); // ボタンを押したら追従を再開する
   };
 
   // ---- ピン移動モード ----
@@ -202,6 +207,8 @@ function App() {
   };
 
   const handlePlaceSelect = (lat: number, lng: number, name?: string, address?: string, url?: string) => {
+    // 現在地への追従を切る。切らないと、次の測位で検索した場所から引き戻される
+    setIsFollowing(false);
     setMapCenter({ lat, lng });
 
     // 検索した場所の名前と住所情報を保持して、仮ピン（赤い跳ねるピン）を表示
@@ -366,6 +373,7 @@ function App() {
       if (didReposition && posterData.lat && posterData.lng) {
         // 位置が変わったことをわかりやすくするため、新しい位置へ画面を遷移させ、
         // ピンが新しく立つドロップインエフェクトを実行する
+          setIsFollowing(false);
         setMapCenter({ lat: posterData.lat, lng: posterData.lng });
         setJustDroppedPinId(posterData.id);
         setTimeout(() => setJustDroppedPinId(null), 1600);
@@ -401,19 +409,12 @@ function App() {
     if (isRestore) {
       // 理由も消す。撤去を取り消した後に古い理由が残っていると誤解を生む
       updatePoster(id, { removed: false, removalReason: '' });
-    } else {
-      // 理由は後から「なぜ無くなったのか」を辿る手がかりになるので、撤去のたびに書いてもらう。
-      // 必須にはしない。現地で手を止めさせると、そもそも撤去の記録が残らなくなるため。
-      const reason = window.prompt(
-        'このポスターを「撤去」します。\nデータは残りますがマップから非表示になります。\n\n撤去の理由を入力してください（任意）',
-        '',
-      );
-      if (reason !== null) {
-        updatePoster(id, { removed: true, removalReason: reason.trim() });
-        setIsSheetOpen(false);
-        setTimeout(() => setSelectedPoster(null), 300);
-      }
+      return;
     }
+    // 撤去は画面内のダイアログで確認する。window.prompt は WebView での
+    // 動きが環境に左右され、理由が保存されないことがあったため
+    const target = posters.find(p => p.id === id);
+    if (target) setRemovalTarget(target);
   };
 
   /**
@@ -426,14 +427,17 @@ function App() {
     if (droppingIndex !== null) return;
     setDroppingIndex(index);
     try {
-      const pos = await getCurrentPosition();
+      // 常時 watchPosition が動いているので、その値をそのまま使う。
+      // ここで getCurrentPosition を呼ぶと GPS を取り直すことになり、
+      // 屋外でも十数秒、条件が悪いと30秒近く待たされる。
+      const pos = currentLocation ?? await getCurrentPosition();
       if (!pos) {
         window.alert('現在地を取得できませんでした。位置情報の許可をご確認ください。');
         return;
       }
       const { lat, lng } = pos;
 
-      // 住所は逆引きする。取れなくても登録は止めない（後から直せる）
+      // 住所を逆引きする。電波が悪いと失敗することがある
       let address = '';
       let city = '';
       if (window.google) {
@@ -445,7 +449,30 @@ function App() {
             address = best.formatted_address.replace(/^日本、?\s*/, '');
             city = cityFromGeocoderResult(best) || cityFromAddress(address);
           }
-        } catch { /* 住所が取れなくても座標だけで登録する */ }
+        } catch { /* 下の手当てに任せる */ }
+      }
+
+      // 逆引きに失敗しても、市区町村だけは手元のピンから埋める。
+      // city はグループ権限の判定に使われるため、空のままだと書き込み自体が
+      // 拒否され、現場では「なぜか登録できない」状態になる。
+      // 近くのピンと違う市にいることは実際上ほぼ無いので、最寄りの1件から借りる。
+      if (!city) {
+        let nearestCity = '';
+        let nearestDist = Infinity;
+        posters.forEach(p => {
+          if (!p.city || typeof p.lat !== 'number') return;
+          const dy = (p.lat - lat) * 111000;
+          const dx = (p.lng - lng) * 111000 * Math.cos(lat * Math.PI / 180);
+          const d = Math.hypot(dx, dy);
+          if (d < nearestDist) { nearestDist = d; nearestCity = p.city; }
+        });
+        // 3km 以上離れていたら別の市の可能性があるので使わない
+        if (nearestDist < 3000) city = nearestCity;
+      }
+
+      if (!city) {
+        window.alert('現在地の市区町村を判定できませんでした。\n電波の良い場所で試すか、通常の追加から登録してください。');
+        return;
       }
 
       const newId = await addPoster({
@@ -568,6 +595,19 @@ function App() {
           案内が終わるまでポップアップは出さない */}
       {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
 
+      {removalTarget && (
+        <RemovalDialog
+          address={removalTarget.address}
+          onCancel={() => setRemovalTarget(null)}
+          onConfirm={(reason) => {
+            updatePoster(removalTarget.id, { removed: true, removalReason: reason });
+            setRemovalTarget(null);
+            setIsSheetOpen(false);
+            setTimeout(() => setSelectedPoster(null), 300);
+          }}
+        />
+      )}
+
       {showPresetEditor && (
         <PinPresetSheet
           pinTypes={selectablePinTypes}
@@ -583,6 +623,7 @@ function App() {
           onClose={() => setShowMyPage(false)}
           onOpenPoster={(p) => {
             setShowMyPage(false);
+              setIsFollowing(false);
             setMapCenter({ lat: p.lat, lng: p.lng });
             setSelectedPoster(p);
             setInitialViewMode(true);
@@ -617,6 +658,8 @@ function App() {
             relocatingPoster={relocatingPin}
             selectedPoster={selectedPoster}
             centerLocation={mapCenter}
+            onUserPan={() => setIsFollowing(false)}
+            followingLocation={isFollowing}
             fitBounds={fitBounds}
             currentLocation={currentLocation}
             pinTypes={pinTypes}
