@@ -118,6 +118,10 @@ export const usePosterData = () => {
                     imageUrls: d.imageUrls || [],
                     tags: d.tags || [],
                     removed: !!d.removed,
+                    // 読み取る項目は明示列挙している。新しいフィールドを足したら
+                    // ここにも追加すること。書き込めているのに画面に出ない、という
+                    // 分かりにくい不具合になる（撤去理由で実際に起きた）
+                    removalReason: d.removalReason || '',
                     createdAt: d.createdAt || Date.now(),
                     updatedAt: d.updatedAt || Date.now(),
                     createdBy: d.createdBy || '',
