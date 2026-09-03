@@ -133,7 +133,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
     return (
         <div className="absolute top-safe-4 left-4 right-4 z-10 space-y-2">
             {/* 住所・施設名検索 */}
-            <form onSubmit={handleSearchSubmit} className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3 pr-28 flex items-center gap-2 flex-1">
+            {/* 右上に事務所名のバッジが並ぶ。内側に余白を取るだけだと白い箱の中に
+                バッジが乗って見えるので、箱自体を短くして横に並べる */}
+            <form onSubmit={handleSearchSubmit} className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-2xl shadow-lg p-3 mr-[84px] flex items-center gap-2 flex-1">
                 <MapPin className="w-5 h-5 text-indigo-500 flex-shrink-0" />
                 <input
                     ref={placeInputRef}
