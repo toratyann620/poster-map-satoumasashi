@@ -365,6 +365,25 @@ await t('管理者は依頼を削除できる', () =>
 await t('🔒 users ドキュメントを持たないアカウントは依頼を読めない', () =>
   assertFails(getDoc(doc(as('strangerWithAuthOnly'), 'tasks/t1'))));
 
+await t('一般ユーザーも依頼を出せる（管理者だけの機能にしない）', () =>
+  assertSucceeds(setDoc(doc(as('nanbaUser'), 'tasks/t4'), task({ createdBy: '難波事務所の一般' }))));
+
+await t('完了の結果を残せる', () =>
+  assertSucceeds(updateDoc(doc(as('nanbaUser'), 'tasks/t4'),
+    { status: 'done', completedBy: '難波事務所の一般', completedAt: 3, completionNote: '張り替え済み' })));
+
+// ═══════════════════════════════════════════════════════════
+section('同じ事務所のメンバー参照 (users)');
+
+await t('同じ事務所のメンバーは名前を引ける（依頼の担当者を選ぶため）', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), 'users/nanbaAdmin'))));
+
+await t('🔒 他事務所の在籍者は引けない', () =>
+  assertFails(getDoc(doc(as('nanbaUser'), 'users/satoGeneral'))));
+
+await t('🔒 メンバーを見られても書き換えはできない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), 'users/nanbaAdmin'), { role: 'general' })));
+
 // ═══════════════════════════════════════════════════════════
 section('現行の本番コレクション（動作を変えていないこと）');
 

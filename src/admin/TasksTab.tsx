@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
     ClipboardList, Plus, Loader2, Trash2, CheckCircle2, RotateCcw,
-    Users as UsersIcon, Smartphone, Search, X,
+    Users as UsersIcon, Smartphone, Search, X, MessageSquare,
 } from 'lucide-react';
 import { TASK_KINDS, type PosterPin, type Task, type TaskKind } from '../types';
 import type { UserData } from '../hooks/useUsers';
@@ -16,7 +16,7 @@ interface Props {
     isSuperAdmin: boolean;
     myGroupId: string | null;
     onCreate: (input: Omit<Task, 'id' | 'status' | 'createdBy' | 'createdAt' | 'groupId'> & { groupId?: string }) => Promise<void>;
-    onComplete: (id: string) => Promise<void>;
+    onComplete: (id: string, note?: string) => Promise<void>;
     onReopen: (id: string) => Promise<void>;
     onRemove: (id: string) => Promise<void>;
 }
@@ -144,6 +144,16 @@ export const TasksTab: React.FC<Props> = ({
                 </p>
                 {task.body && <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap break-words">{task.body}</p>}
                 {task.address && <p className="text-xs text-gray-500 mt-1 break-words">{task.address}</p>}
+                {task.completionNote && (
+                    <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+                        <p className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-0.5">
+                            <MessageSquare className="w-2.5 h-2.5" />完了の結果
+                        </p>
+                        <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+                            {task.completionNote}
+                        </p>
+                    </div>
+                )}
                 <p className="text-[10px] text-gray-400 mt-1.5">
                     {fmt(task.createdAt)} {task.createdBy} が依頼
                     {task.status === 'done' && task.completedAt && ` ／ ${fmt(task.completedAt)} ${task.completedBy} が完了`}

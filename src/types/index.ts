@@ -121,6 +121,8 @@ export interface Task {
     createdAt: number;
     completedBy?: string;
     completedAt?: number;
+    /** 完了時に残す結果。任意。完了済みの一覧から確認できる */
+    completionNote?: string;
     /** 作成時にプッシュ通知を送るか。送信は Cloud Functions が受け持つ */
     notify?: boolean;
 }

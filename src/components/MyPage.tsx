@@ -2,11 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, CheckCircle2, Circle, ClipboardList, History, MapPin,
-    Users as UsersIcon, CalendarClock, Loader2,
+    Users as UsersIcon, CalendarClock, Loader2, Plus, MessageSquare,
 } from 'lucide-react';
 import type { PosterPin, Task, ActivityLog } from '../types';
 import { useSession } from '../hooks/useSession';
 import { useTasks } from '../hooks/useTasks';
+import { TaskComposer, TaskCompleteDialog } from './TaskComposer';
 
 interface Props {
     posters: PosterPin[];
@@ -99,6 +100,17 @@ const TaskRow: React.FC<{
                         <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 break-words">{task.address}</p>
                     )}
 
+                    {done && task.completionNote && (
+                        <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40">
+                            <p className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-0.5">
+                                <MessageSquare className="w-2.5 h-2.5" />完了の結果
+                            </p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+                                {task.completionNote}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-3 mt-2">
                         {poster && (
                             <button
@@ -129,9 +141,12 @@ const TaskRow: React.FC<{
  */
 export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }) => {
     const { uid, name, group, role } = useSession();
-    const { myTasks, doneTasks, completeTask, loading } = useTasks();
+    const { myTasks, doneTasks, completeTask, createTask, loading } = useTasks();
     const [tab, setTab] = useState<'tasks' | 'archive' | 'history'>('tasks');
     const [busyId, setBusyId] = useState<string | null>(null);
+    const [composing, setComposing] = useState(false);
+    // 完了にする対象。結果を書いてもらってから確定する
+    const [completing, setCompleting] = useState<Task | null>(null);
 
     const posterById = useMemo(() => new Map(posters.map((p) => [p.id, p])), [posters]);
 
@@ -147,11 +162,11 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
         [doneTasks, uid, name],
     );
 
-    const handleComplete = async (taskId: string) => {
+    const handleComplete = async (taskId: string, note: string) => {
         setBusyId(taskId);
-        try { await completeTask(taskId); }
+        try { await completeTask(taskId, note); }
         catch (e) { window.alert((e as Error)?.message ?? '完了にできませんでした。'); }
-        finally { setBusyId(null); }
+        finally { setBusyId(null); setCompleting(null); }
     };
 
     const TABS = [
@@ -200,12 +215,25 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
                 <div className="overflow-y-auto px-4 py-3.5 space-y-2.5">
                     {loading && <p className="text-sm text-gray-400 text-center py-8">読み込んでいます…</p>}
 
+                    {/* 依頼は管理者だけのものではない。現場で気づいたことを
+                        その場で誰かに頼めるよう、ここからも出せるようにしてある */}
+                    {tab === 'tasks' && !loading && (
+                        <button
+                            type="button"
+                            onClick={() => setComposing(true)}
+                            className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 dark:border-zinc-700 text-sm font-bold text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+                        >
+                            <Plus className="w-4 h-4" />
+                            作業を依頼する
+                        </button>
+                    )}
+
                     {!loading && tab === 'tasks' && (
                         myTasks.length === 0
                             ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">未対応の依頼はありません</p>
                             : myTasks.map((t) => (
                                 <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
-                                    onComplete={() => handleComplete(t.id)} onOpenPoster={onOpenPoster} busy={busyId === t.id} />
+                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id} />
                             ))
                     )}
 
@@ -240,6 +268,22 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
 
                 <div className="pb-safe shrink-0" />
             </div>
+
+            {composing && (
+                <TaskComposer
+                    posters={posters}
+                    onCreate={createTask}
+                    onClose={() => setComposing(false)}
+                />
+            )}
+
+            {completing && (
+                <TaskCompleteDialog
+                    title={completing.title}
+                    onCancel={() => setCompleting(null)}
+                    onConfirm={(note) => handleComplete(completing.id, note)}
+                />
+            )}
         </>,
         document.body,
     );

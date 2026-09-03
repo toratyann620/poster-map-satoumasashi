@@ -33,6 +33,7 @@ const parseTask = (id: string, d: Record<string, unknown>): Task => ({
     createdAt: Number(d.createdAt) || 0,
     completedBy: d.completedBy ? String(d.completedBy) : undefined,
     completedAt: d.completedAt ? Number(d.completedAt) : undefined,
+    completionNote: d.completionNote ? String(d.completionNote) : undefined,
     notify: d.notify === true,
 });
 
@@ -81,8 +82,15 @@ export const useTasks = () => {
             throw new Error('他の事務所への依頼は作成できません。');
         }
 
+        // Firestore は undefined を受け付けない。対象のポスターや担当者を
+        // 決めない依頼では、それらが undefined のまま渡ってきて
+        // 「Unsupported field value: undefined」で丸ごと失敗する。
+        const clean = Object.fromEntries(
+            Object.entries(input).filter(([, v]) => v !== undefined),
+        );
+
         await addDoc(collection(db, COL.tasks), {
-            ...input,
+            ...clean,
             groupId: targetGroup,
             status: 'open',
             createdBy: name,
@@ -90,12 +98,16 @@ export const useTasks = () => {
         });
     }, [group, isSuperAdmin, name]);
 
-    /** 完了にする。誰が済ませたかを残す（担当者以外が代わりに済ませることがあるため） */
-    const completeTask = useCallback(async (taskId: string) => {
+    /**
+     * 完了にする。誰が済ませたかを残す（担当者以外が代わりに済ませることがあるため）。
+     * 結果は任意。「張り替えたが1枚破損」のような申し送りを残せるようにしてある。
+     */
+    const completeTask = useCallback(async (taskId: string, completionNote = '') => {
         await updateDoc(doc(db, COL.tasks, taskId), {
             status: 'done',
             completedBy: name,
             completedAt: Date.now(),
+            completionNote,
         });
     }, [name]);
 
@@ -105,6 +117,7 @@ export const useTasks = () => {
             status: 'open',
             completedBy: '',
             completedAt: 0,
+            completionNote: '',
         });
     }, []);
 

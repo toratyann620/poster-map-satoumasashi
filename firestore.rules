@@ -56,8 +56,13 @@ service cloud.firestore {
     // 1. ユーザー情報 (users) — 現行アプリと共通
     // ══════════════════════════════════════════════════════════
     match /users/{userId} {
-      // 閲覧: 本人、または管理者
-      allow read: if isOwner(userId) || isAdmin();
+      // 閲覧: 本人、管理者、または同じ事務所のメンバー。
+      //
+      // 最後の条件は、一般ユーザーが依頼を出すときに担当者を選べるようにするため。
+      // 名前が引けないと「誰に頼むか」を選べず、依頼が全員あてしか作れなくなる。
+      // 見えるのは同じ事務所の人だけで、他事務所の在籍者は分からない。
+      allow read: if isOwner(userId) || isAdmin()
+                  || (isMember() && resource.data.groupId == memberDoc().get('groupId', '__none__'));
       // 作成・削除: 佐藤まさし事務所の管理者のみ（上記の権限昇格対策）
       allow create, delete: if isSuperAdmin();
       // 更新: 原則として佐藤まさし事務所の管理者のみ。
