@@ -702,6 +702,15 @@ function App() {
           {/* Floating UI Elements（移動モード・ナビゲーション中は非表示） */}
           {!isRelocating && !navigationTarget && (
             <>
+              {/* 所属している事務所。どのグループで見ているかが分からないと、
+                  ピンが少ないときに「絞り込まれている」のか「本当に無い」のかを
+                  判断できない。検索窓より前面に置く（z-20 > z-10） */}
+              {session.group && (
+                <div className="absolute top-safe-4 right-4 z-20 px-2.5 py-1 rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md shadow-md border border-gray-100 dark:border-zinc-700 text-[11px] font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap pointer-events-none">
+                  {session.group.name}
+                </div>
+              )}
+
               {/* 検索窓を隠す条件は2つ。
                   ・ピン打ちモード中: 現在地に立てるだけの操作なので、地図を広く使いたい
                   ・詳細シートが展開しているとき: シートは画面の85%を占め、その上端
