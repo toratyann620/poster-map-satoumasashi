@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { MapPin, LogIn } from 'lucide-react';
+import { MapPin, LogIn, UserPlus } from 'lucide-react';
+import { AccountRequestForm } from './AccountRequestForm';
 
 export const Login: React.FC = () => {
+    const [mode, setMode] = useState<'login' | 'request'>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,9 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="mt-8 w-full sm:max-w-md">
+                {mode === 'request' ? (
+                    <AccountRequestForm onBack={() => setMode('login')} />
+                ) : (
                 <div className="bg-white dark:bg-zinc-900 py-8 px-6 shadow-xl rounded-2xl sm:px-10">
                     <form className="space-y-6" onSubmit={handleSubmit}>
                         {error && (
@@ -114,11 +119,21 @@ export const Login: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* アカウントは管理者が発行する運用のため、自己登録は提供しない */}
-                        <p className="text-center text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                            アカウントは管理者が発行します。<br />
-                            ログインできない場合は管理者にお問い合わせください。
-                        </p>
+                        {/* 申請を出すところまでが自己申告。実際の発行は管理者の承認後に行われる */}
+                        <div className="pt-1 border-t border-gray-100 dark:border-zinc-800">
+                            <button
+                                type="button"
+                                onClick={() => setMode('request')}
+                                className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-indigo-200 dark:border-indigo-800 rounded-xl text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 font-bold transition-colors"
+                            >
+                                <UserPlus className="w-5 h-5 mr-2" />
+                                新規登録を申請する
+                            </button>
+                            <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                                アカウントは管理者の承認後に発行されます。<br />
+                                ログインできない場合は管理者にお問い合わせください。
+                            </p>
+                        </div>
 
                         {/* ログイン前から参照できるようにしておく（ストア審査でも確認される）。
                             リンク先は実ファイル名にする。ネイティブアプリではVercelのリライトが
@@ -135,6 +150,7 @@ export const Login: React.FC = () => {
                         </p>
                     </form>
                 </div>
+                )}
             </div>
         </div>
     );

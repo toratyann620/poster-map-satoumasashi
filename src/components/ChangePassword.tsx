@@ -4,7 +4,6 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { KeyRound } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { COL } from '../lib/collections';
-import { INITIAL_PASSWORD_LENGTH } from '../lib/password';
 
 /**
  * 初期パスワードのままログインしたユーザーに、変更を求める画面。
@@ -73,7 +72,7 @@ export const ChangePassword: React.FC<{ uid: string }> = ({ uid }) => {
                     パスワードを変更してください
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                    管理者が発行した{INITIAL_PASSWORD_LENGTH}文字の初期パスワードのままです。<br />
+                    発行された初期パスワードのままです。<br />
                     ご自分のパスワードに変更してからお使いください。
                 </p>
             </div>

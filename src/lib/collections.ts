@@ -27,6 +27,8 @@ export const COL = {
     announcements: 'announcements',
     /** 作業の依頼（新規。グループ単位） */
     tasks: 'tasks',
+    /** ログイン画面から届く新規登録の申請（新規。書き込みは Cloud Functions のみ） */
+    accountRequests: 'accountRequests',
 } as const;
 
 /** 移行元となる現行の本番コレクション（移行スクリプトからのみ参照する） */

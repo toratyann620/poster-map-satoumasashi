@@ -165,3 +165,39 @@ export interface ActivityLog {
     statusRemoved?: string[];     // この更新で新たに外れたステータス（日次レポート集計用）
     removedChangedTo?: boolean | null; // 撤去フラグが変化した場合の変化後の値（変化していなければnull、日次レポート集計用）
 }
+
+/**
+ * ログイン画面から届く新規登録の申請。
+ *
+ * 書き込みは Cloud Functions（submitAccountRequest / reviewAccountRequest）だけが行う。
+ * クライアントからは佐藤まさし事務所の管理者が読むことしかできない。
+ */
+export interface AccountRequest {
+    id: string;
+    name: string;
+    email: string;
+    /** 申請者が入力したグループID */
+    groupId: string;
+    /** 申請時点のグループ名（グループ名が変わっても申請時の記録を残すため写しておく） */
+    groupName?: string;
+    /** 申請者が書いた連絡事項。任意 */
+    note?: string;
+    /**
+     * 申請されたメールアドレスに既にアカウントがあるか。
+     * 申請者には返さず、管理画面でのみ分かるようにしている
+     * （在籍者を外から総当たりで調べられないようにするため）。
+     */
+    emailInUse?: boolean;
+    status: 'pending' | 'approved' | 'rejected';
+    createdAt: number;
+    /** 承認時に決めた権限 */
+    role?: 'admin' | 'general';
+    /** 承認で作られたアカウントの uid */
+    createdUid?: string;
+    reviewedBy?: string;
+    reviewedAt?: number;
+    rejectReason?: string;
+    /** 案内メールを送れたか。false のときは初期パスワードを手渡しする運用になる */
+    mailSent?: boolean;
+    mailError?: string;
+}

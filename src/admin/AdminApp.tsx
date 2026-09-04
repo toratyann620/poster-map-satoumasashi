@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { signOut } from 'firebase/auth';
 import {
     Table2, MapPinOff, Users, Building2, History, LayoutDashboard,
-    LineChart, Settings, LogOut, ExternalLink, ShieldAlert, Megaphone, ClipboardList,
+    LineChart, Settings, LogOut, ExternalLink, ShieldAlert, Megaphone, ClipboardList, UserPlus,
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useSession } from '../hooks/useSession';
@@ -26,13 +26,16 @@ import { AnnouncementsTab } from './AnnouncementsTab';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { TasksTab } from './TasksTab';
 import { useTasks } from '../hooks/useTasks';
+import { AccountRequestsTab } from './AccountRequestsTab';
+import { useAccountRequests } from '../hooks/useAccountRequests';
 
-type TabId = 'posters' | 'city' | 'users' | 'groups' | 'tasks' | 'announcements' | 'history' | 'dashboard' | 'analytics' | 'settings';
+type TabId = 'posters' | 'city' | 'users' | 'requests' | 'groups' | 'tasks' | 'announcements' | 'history' | 'dashboard' | 'analytics' | 'settings';
 
 const TABS: { id: TabId; label: string; Icon: React.ElementType }[] = [
     { id: 'posters', label: 'ポスター管理', Icon: Table2 },
     { id: 'city', label: '市区町村の手当て', Icon: MapPinOff },
     { id: 'users', label: 'ユーザー管理', Icon: Users },
+    { id: 'requests', label: '新規登録の申請', Icon: UserPlus },
     { id: 'groups', label: 'グループ管理', Icon: Building2 },
     { id: 'tasks', label: '作業の依頼', Icon: ClipboardList },
     { id: 'announcements', label: 'お知らせ', Icon: Megaphone },
@@ -132,6 +135,7 @@ const AdminShell: React.FC<{
     const { logsAsc } = useAllActivityLogs();
     const { announcements } = useAnnouncements();
     const { tasks, createTask, completeTask, reopenTask, removeTask } = useTasks();
+    const { pending: pendingRequests, reviewed: reviewedRequests, review: reviewRequest } = useAccountRequests();
     const session = useSession();
 
     // モバイル側と同じ保存先（localStorage）を使う
@@ -166,6 +170,12 @@ const AdminShell: React.FC<{
                                 {t.id === 'city' && cityIssues > 0 && (
                                     <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold tabular-nums">
                                         {cityIssues}
+                                    </span>
+                                )}
+                                {/* 承認されるまで申請者は何もできないため、放置されないよう件数を出す */}
+                                {t.id === 'requests' && pendingRequests.length > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold tabular-nums">
+                                        {pendingRequests.length}
                                     </span>
                                 )}
                             </button>
@@ -229,6 +239,17 @@ const AdminShell: React.FC<{
                                 onUpdate={updateUser}
                                 onRemove={removeUser}
                             />
+                        )}
+
+                        {tab === 'requests' && (
+                            <div className="overflow-y-auto h-full">
+                                <AccountRequestsTab
+                                    pending={pendingRequests}
+                                    reviewed={reviewedRequests}
+                                    groups={groups}
+                                    onReview={reviewRequest}
+                                />
+                            </div>
                         )}
 
                         {tab === 'groups' && (

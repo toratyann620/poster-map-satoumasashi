@@ -386,3 +386,311 @@ exports.deleteUserAccount = onCall({ region: 'asia-northeast1' }, async (request
     logger.info('User account deleted', { targetUid, by: callerUid });
     return { ok: true };
 });
+
+// ═══════════════════════════════════════════════════════════
+// アカウント発行の申請（accountRequests）
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 申請の受付と承認は、すべてこの関数群を通す。
+ *
+ * Firestore のルールで `accountRequests` への書き込みを直接許可すると、
+ * ログイン前＝未認証からの書き込みを開けることになり、外部から
+ * 際限なく書き込める口ができてしまう。Admin SDK 経由に限定して、
+ * 検証・重複確認・流量制限をサーバ側で必ず通るようにしている。
+ */
+
+const nodemailer = require('nodemailer');
+
+/**
+ * メール送信の接続情報。
+ *
+ * SMTP の URI を1本だけ持たせる形にしてあるので、Gmail(Workspace) でも
+ * SendGrid でも Resend でも、送信元を変えるときに関数の書き換えが要らない。
+ *   例: smtps://user%40example.com:APP_PASSWORD@smtp.gmail.com:465
+ *
+ * 未設定（`unset` のまま）のときは送信せず、発行した初期パスワードを
+ * 管理画面に返す。メールの手配が済むまで運用が止まらないようにするため。
+ */
+const SMTP_URL = defineSecret('SMTP_URL');
+const MAIL_FROM = defineSecret('MAIL_FROM');
+
+/** ログイン画面のURL。メールの案内文に載せる */
+const APP_URL = 'https://poster-map-app.vercel.app/';
+
+const isMailConfigured = () => {
+    const url = SMTP_URL.value();
+    return !!url && url !== 'unset' && url.startsWith('smtp');
+};
+
+const escapeHtml = (s) => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/** 制御文字を落として1行にする。メールのヘッダに改行を差し込まれるのを防ぐ */
+const oneLine = (s, max = 100) => String(s ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+
+async function sendMail({ to, subject, text, html }) {
+    if (!isMailConfigured()) {
+        logger.warn('Mail skipped: SMTP_URL is not configured');
+        return { sent: false, reason: 'not-configured' };
+    }
+    const transporter = nodemailer.createTransport(SMTP_URL.value());
+    const configuredFrom = MAIL_FROM.value();
+    const from = configuredFrom && configuredFrom !== 'unset' ? configuredFrom : undefined;
+    await transporter.sendMail({ from, to, subject: oneLine(subject, 150), text, html });
+    logger.info('Mail sent', { to });
+    return { sent: true };
+}
+
+/** 見間違えやすい文字（0/O, 1/l/I）を除いた英数字。口頭でも伝えられるようにする */
+const PW_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+const generatePassword = (length = 10) => {
+    const { randomBytes } = require('node:crypto');
+    return [...randomBytes(length)].map((b) => PW_ALPHABET[b % PW_ALPHABET.length]).join('');
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** 呼び出し元が佐藤まさし事務所（allowAll）の管理者であることを確かめる */
+async function requireSuperAdmin(request) {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) throw new HttpsError('unauthenticated', 'ログインが必要です。');
+
+    const caller = await db.collection('users').doc(callerUid).get();
+    if (!caller.exists) throw new HttpsError('permission-denied', '利用が承認されていません。');
+    const callerData = caller.data();
+    if (callerData.role !== 'admin') throw new HttpsError('permission-denied', '管理者のみ実行できます。');
+
+    const callerGroup = await db.collection('groups').doc(callerData.groupId ?? '__none__').get();
+    if (!callerGroup.exists || callerGroup.data().allowAll !== true) {
+        throw new HttpsError('permission-denied', '佐藤まさし事務所の管理者のみ実行できます。');
+    }
+    return { uid: callerUid, name: callerData.name ?? '管理者' };
+}
+
+/**
+ * ログイン画面からの新規登録の申請を受け付ける。
+ *
+ * 未ログインから呼ばれる唯一の関数なので、外から叩かれる前提で作ってある。
+ *  - 入力の長さと形式を必ず検証する
+ *  - 同じメールアドレスからの連投と、未処理の申請の総数に上限を設ける
+ *  - 「そのメールアドレスは既に登録済み」かどうかを申請者には返さない
+ *    （在籍者を外から総当たりで調べられてしまうため）。
+ *    代わりに申請へ印を付け、管理画面側にだけ分かるようにする。
+ */
+exports.submitAccountRequest = onCall({ region: 'asia-northeast1' }, async (request) => {
+    const name = oneLine(request.data?.name, 50);
+    const email = oneLine(request.data?.email, 120).toLowerCase();
+    const groupId = oneLine(request.data?.groupId, 40);
+    const note = oneLine(request.data?.note, 300);
+
+    if (!name) throw new HttpsError('invalid-argument', '氏名を入力してください。');
+    if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'メールアドレスの形式が正しくありません。');
+    if (!groupId) throw new HttpsError('invalid-argument', 'グループIDを入力してください。');
+
+    // グループの存在確認。存在しないIDでも同じ文言を返し、
+    // 有効なグループIDを外から総当たりで探れないようにする
+    const group = await db.collection('groups').doc(groupId).get();
+    if (!group.exists) {
+        throw new HttpsError('invalid-argument', 'グループIDが確認できませんでした。事務所から共有されたIDをご確認ください。');
+    }
+
+    const now = Date.now();
+    const requests = db.collection('accountRequests');
+
+    // 同じメールアドレスからの連投を防ぐ。
+    // メールアドレスの一致だけで引いて、時刻の判定はここで行う。
+    // where を2つ重ねると accountRequests に複合インデックスが要るうえ、
+    // インデックスが未作成だとこの関数ごと失敗する（実際に踏んだ）。
+    // 1つのアドレスに対する申請はごく少数なので、全件引いても差し支えない。
+    const sameEmail = await requests.where('email', '==', email).get();
+    const withinHour = sameEmail.docs.some((d) => Number(d.data().createdAt) > now - 60 * 60 * 1000);
+    if (withinHour) {
+        throw new HttpsError('already-exists', 'このメールアドレスの申請は受付済みです。承認をお待ちください。');
+    }
+
+    // 未処理の申請が溜まりすぎている場合は受け付けない（書き込みの踏み台にされないため）
+    const pending = await requests.where('status', '==', 'pending').count().get();
+    if (pending.data().count >= 200) {
+        throw new HttpsError('resource-exhausted', '現在申請を受け付けられません。事務所へ直接お問い合わせください。');
+    }
+
+    // 既にアカウントがあるかは申請者に返さず、管理画面側にだけ分かるようにする
+    let emailInUse = false;
+    try {
+        await admin.auth().getUserByEmail(email);
+        emailInUse = true;
+    } catch (e) {
+        if (e?.code !== 'auth/user-not-found') throw e;
+    }
+
+    const ref = await requests.add({
+        name, email, groupId, note,
+        groupName: group.data().name ?? groupId,
+        emailInUse,
+        status: 'pending',
+        createdAt: now,
+    });
+
+    logger.info('Account request received', { requestId: ref.id, groupId, emailInUse });
+
+    // 管理者に気づいてもらう。承認されるまで申請者は何もできないため、
+    // 放置されるのがいちばん困る
+    if (process.env.PUSH_NOTIFICATIONS_ENABLED === 'true') {
+        try {
+            const admins = await db.collection('users')
+                .where('role', '==', 'admin')
+                .where('groupId', '==', 'admin')
+                .get();
+            if (!admins.empty) {
+                await sendPush({
+                    title: '新規登録の申請が届きました',
+                    body: truncate(`${name}（${group.data().name ?? groupId}）`, 160),
+                    data: { accountRequestId: ref.id },
+                    uids: new Set(admins.docs.map((d) => d.id)),
+                    label: 'account-request',
+                });
+            }
+        } catch (e) {
+            // 通知の失敗で申請そのものを失敗させない
+            logger.warn('Account request push failed', { error: String(e) });
+        }
+    }
+
+    return { ok: true };
+});
+
+/**
+ * 申請を承認／却下する。
+ *
+ * 承認するとログインアカウントを作り、初期パスワードをメールで送る。
+ * Auth アカウントの作成はクライアントSDKでもできるが、それだと
+ * 権限の確認をクライアントに委ねることになるためここで行う。
+ *
+ * メールが未設定・送信失敗のときは初期パスワードを戻り値で返す。
+ * 管理画面に表示して口頭で伝えられるようにしておき、
+ * メールの手配待ちやSMTP障害で運用が止まらないようにする。
+ */
+exports.reviewAccountRequest = onCall({
+    region: 'asia-northeast1',
+    secrets: [SMTP_URL, MAIL_FROM],
+}, async (request) => {
+    const caller = await requireSuperAdmin(request);
+
+    const requestId = oneLine(request.data?.requestId, 60);
+    const approve = request.data?.approve === true;
+    if (!requestId) throw new HttpsError('invalid-argument', '対象の申請が指定されていません。');
+
+    const ref = db.collection('accountRequests').doc(requestId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', '申請が見つかりませんでした。');
+    const req = snap.data();
+    if (req.status !== 'pending') throw new HttpsError('failed-precondition', 'この申請はすでに処理済みです。');
+
+    // ── 却下 ──────────────────────────────────────────────
+    if (!approve) {
+        const rejectReason = oneLine(request.data?.rejectReason, 200);
+        await ref.update({
+            status: 'rejected', rejectReason,
+            reviewedBy: caller.name, reviewedAt: Date.now(),
+        });
+        logger.info('Account request rejected', { requestId, by: caller.uid });
+        return { ok: true, approved: false };
+    }
+
+    // ── 承認 ──────────────────────────────────────────────
+    const role = request.data?.role === 'admin' ? 'admin' : 'general';
+    const groupId = oneLine(request.data?.groupId, 40) || req.groupId;
+
+    const group = await db.collection('groups').doc(groupId).get();
+    if (!group.exists) throw new HttpsError('invalid-argument', 'グループが見つかりませんでした。');
+
+    const password = generatePassword();
+    let uid;
+    try {
+        const created = await admin.auth().createUser({
+            email: req.email, password, displayName: req.name,
+        });
+        uid = created.uid;
+    } catch (e) {
+        if (e?.code === 'auth/email-already-exists') {
+            throw new HttpsError('already-exists', 'このメールアドレスのアカウントは既に存在します。ユーザー管理から確認してください。');
+        }
+        throw e;
+    }
+
+    await db.collection('users').doc(uid).set({
+        name: req.name,
+        email: req.email,
+        role,
+        groupId,
+        // 発行した初期パスワードのままなので、初回ログイン時に変更を求める
+        mustChangePassword: true,
+    });
+
+    await ref.update({
+        status: 'approved', role, groupId, createdUid: uid,
+        reviewedBy: caller.name, reviewedAt: Date.now(),
+    });
+
+    const groupName = group.data().name ?? groupId;
+    const roleLabel = role === 'admin' ? '管理者' : '一般ユーザー';
+    const subject = 'ポスターマップ｜アカウント発行のご案内';
+    const text = [
+        `${req.name} 様`, '',
+        'ポスターマップへの登録が承認されました。',
+        '下記のIDと初期パスワードでログインしてください。', '',
+        `  ログインURL          : ${APP_URL}`,
+        `  ID（メールアドレス） : ${req.email}`,
+        `  初期パスワード       : ${password}`,
+        `  所属                 : ${groupName}`,
+        `  権限                 : ${roleLabel}`, '',
+        '※ 初回ログイン時にパスワードの変更をお願いします。',
+        '※ このメールにはパスワードが記載されています。確認後は削除してください。', '',
+        'ご不明な点は事務所までお問い合わせください。',
+    ].join('\n');
+    const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.8;color:#111">
+<p>${escapeHtml(req.name)} 様</p>
+<p>ポスターマップへの登録が承認されました。<br>下記のIDと初期パスワードでログインしてください。</p>
+<table style="border-collapse:collapse;margin:16px 0">
+<tr><td style="padding:4px 16px 4px 0;color:#666">ログインURL</td><td style="padding:4px 0"><a href="${APP_URL}">${APP_URL}</a></td></tr>
+<tr><td style="padding:4px 16px 4px 0;color:#666">ID（メールアドレス）</td><td style="padding:4px 0"><b>${escapeHtml(req.email)}</b></td></tr>
+<tr><td style="padding:4px 16px 4px 0;color:#666">初期パスワード</td><td style="padding:4px 0"><b style="font-family:monospace;font-size:16px">${escapeHtml(password)}</b></td></tr>
+<tr><td style="padding:4px 16px 4px 0;color:#666">所属</td><td style="padding:4px 0">${escapeHtml(groupName)}</td></tr>
+<tr><td style="padding:4px 16px 4px 0;color:#666">権限</td><td style="padding:4px 0">${roleLabel}</td></tr>
+</table>
+<p style="color:#666;font-size:13px">※ 初回ログイン時にパスワードの変更をお願いします。<br>
+※ このメールにはパスワードが記載されています。確認後は削除してください。</p>
+<p>ご不明な点は事務所までお問い合わせください。</p>
+</div>`;
+
+    let mail = { sent: false, reason: 'not-configured' };
+    try {
+        mail = await sendMail({ to: req.email, subject, text, html });
+    } catch (e) {
+        // メールが送れなくてもアカウントは発行済み。ここで失敗にすると
+        // 「アカウントはあるのに申請が未処理のまま」というずれが残る
+        logger.error('Account mail failed', { requestId, error: String(e) });
+        mail = { sent: false, reason: String(e?.message ?? e) };
+    }
+    await ref.update({ mailSent: mail.sent, mailError: mail.sent ? '' : String(mail.reason ?? '') });
+
+    logger.info('Account request approved', {
+        requestId, uid, role, groupId, mailSent: mail.sent, by: caller.uid,
+    });
+
+    // メールが送れていない場合に限り、口頭で伝えられるよう初期パスワードを返す
+    return {
+        ok: true, approved: true, uid,
+        email: req.email,
+        password: mail.sent ? '' : password,
+        mailSent: mail.sent,
+        mailError: mail.sent ? '' : String(mail.reason ?? ''),
+    };
+});
