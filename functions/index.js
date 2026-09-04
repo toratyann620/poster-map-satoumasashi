@@ -407,7 +407,17 @@ const nodemailer = require('nodemailer');
  *
  * SMTP の URI を1本だけ持たせる形にしてあるので、Gmail(Workspace) でも
  * SendGrid でも Resend でも、送信元を変えるときに関数の書き換えが要らない。
- *   例: smtps://user%40example.com:APP_PASSWORD@smtp.gmail.com:465
+ *
+ * 現在の設定（Xserver）:
+ *   smtps://contact%40satoumasashi.com:<パスワード>@sv13238.xserver.jp:465
+ *
+ * ⚠️ ユーザー名とパスワードは必ず URL エンコードして入れること。
+ *    `@` `#` `$` `/` `:` はそのまま書くと URI の区切りとして解釈され、
+ *    「接続はできるのに認証だけ落ちる」分かりにくい失敗になる。
+ * ⚠️ ホストは `satoumasashi.com` ではなく `sv13238.xserver.jp` を使う。
+ *    ドメイン名だと証明書のホスト名が一致せず接続できない（実測で確認）。
+ * ⚠️ シークレットを更新したら `firebase deploy --only functions` が要る。
+ *    関数はデプロイ時のバージョンを掴んだままなので、更新だけでは反映されない。
  *
  * 未設定（`unset` のまま）のときは送信せず、発行した初期パスワードを
  * 管理画面に返す。メールの手配が済むまで運用が止まらないようにするため。

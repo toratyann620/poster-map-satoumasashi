@@ -826,3 +826,14 @@
   2. **申請 → 承認で発行**: ログイン画面「新規登録を申請する」（`submitAccountRequest`）→ 管理画面「新規登録の申請」で権限と所属を決めて承認（`reviewAccountRequest`）。
      こちらは本人へメールで届く（`SMTP_URL` 未登録の間は管理画面に初期パスワードを表示）。
 * **検証（追加）**: アプリと同じ縦長の画面で、ログイン画面からの申請 → アプリ内の管理者パネルの申請タブ → 承認して発行、まで通した。検証用データは削除済み（Auth 13件 / users 13件で一致）。
+
+### 2026-09-05 (Claude Code) その51
+* **タスク**: 案内メールの送信設定（`contact@satoumasashi.com`）
+* **調べたこと**: ドメインの MX / SPF から **Xserver（`sv13238.xserver.jp`）** と判明。
+  接続の可否を先に試し、`sv13238.xserver.jp:465 (SSL)` と `:587 (STARTTLS)` の両方で認証が通ることを確認。**465(SSL) を採用**。
+  * ⚠️ **ホストに `satoumasashi.com` は使えない**。証明書のホスト名が一致せず `Hostname/IP does not match certificate's altnames` で接続できない。必ず `sv13238.xserver.jp` を使う。
+* **設定**: シークレット `SMTP_URL`（`smtps://contact%40satoumasashi.com:<エンコード済みパスワード>@sv13238.xserver.jp:465`）と `MAIL_FROM`（`ポスターマップ <contact@satoumasashi.com>`）。
+  * ⚠️ **ユーザー名とパスワードは URL エンコードが必須**。今回のパスワードには `^` `$` `#` が含まれる。エンコードせずに書くと URI の区切りとして解釈され、**接続はできるのに認証だけ落ちる**という分かりにくい失敗になる。
+  * ⚠️ **シークレットを更新したらデプロイし直すこと**。関数はデプロイ時のバージョンを掴んだままで、更新しただけでは反映されない（`stale version of secret` と警告が出る）。
+* **途中のつまずき**: `node -e '...' PW='...'` と書いてしまい、`PW=` が環境変数ではなく**位置引数**として渡っていた。結果 `process.env.PW` が undefined になり、パスワードが文字列 `undefined` のままシークレットに入っていた。認証エラーで気づいた。
+* **検証**: ①手元から `contact@satoumasashi.com` あてにテスト送信（`250 Ok: queued`）②アプリと同じ画面でログイン画面から申請 → アプリ内の管理者パネルで承認 → **Cloud Functions から実際に案内メールが送信され**、申請ドキュメントに `mailSent: true` が記録されることを確認。検証用のアカウントと申請は削除済み（Auth 13件 / users 13件で一致、`accountRequests` 0件）。
