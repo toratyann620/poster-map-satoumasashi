@@ -699,3 +699,88 @@ exports.reviewAccountRequest = onCall({
         mailError: mail.sent ? '' : String(mail.reason ?? ''),
     };
 });
+
+/**
+ * 管理画面からのユーザー発行。
+ *
+ * 以前はクライアントで「セカンダリのFirebaseアプリを作って
+ * createUserWithEmailAndPassword → users ドキュメントを書く」という2段構えだった。
+ * これには2つ問題があった。
+ *
+ *  1. 既存のメールアドレスだと `auth/email-already-in-use` が英語のまま画面に出て、
+ *     何が起きたのか・どうすればよいのかが分からない。
+ *  2. Auth の作成に成功して users の書き込みに失敗すると、
+ *     **ログインアカウントだけが残る**。そのユーザーは一覧に出ないのに
+ *     同じメールアドレスでは作り直せず、管理画面から復旧できなくなる。
+ *
+ * サーバ側の1操作にまとめ、取り残しが起きたときは
+ * 「そのログインアカウントを引き取って登録し直す」経路を用意した。
+ */
+exports.provisionUser = onCall({ region: 'asia-northeast1' }, async (request) => {
+    const caller = await requireSuperAdmin(request);
+
+    const name = oneLine(request.data?.name, 50);
+    const email = oneLine(request.data?.email, 120).toLowerCase();
+    const role = request.data?.role === 'admin' ? 'admin' : 'general';
+    const groupId = oneLine(request.data?.groupId, 40);
+    const password = String(request.data?.password ?? '');
+    // 取り残されたログインアカウントを引き取ってよい、という管理者の明示的な同意
+    const adopt = request.data?.adopt === true;
+
+    if (!name) throw new HttpsError('invalid-argument', '氏名を入力してください。');
+    if (!EMAIL_RE.test(email)) throw new HttpsError('invalid-argument', 'メールアドレスの形式が正しくありません。');
+    if (password.length < 6) throw new HttpsError('invalid-argument', 'パスワードは6文字以上にしてください。');
+
+    const group = await db.collection('groups').doc(groupId).get();
+    if (!group.exists) throw new HttpsError('invalid-argument', '所属グループが見つかりませんでした。');
+
+    let existing = null;
+    try {
+        existing = await admin.auth().getUserByEmail(email);
+    } catch (e) {
+        if (e?.code !== 'auth/user-not-found') throw e;
+    }
+
+    let uid;
+    let status;
+
+    if (existing) {
+        const doc = await db.collection('users').doc(existing.uid).get();
+        if (doc.exists) {
+            // 本当の重複。一覧に出ているはずなので、そちらで直してもらう
+            const who = doc.data().name || email;
+            throw new HttpsError(
+                'already-exists',
+                `このメールアドレスは既に「${who}」さんが使っています。`
+                + '下のユーザー一覧から権限や所属を変更するか、パスワードの再発行を行ってください。',
+            );
+        }
+        // ログインアカウントだけが残っている状態。引き取ってよいか管理者に確かめる
+        if (!adopt) {
+            return { status: 'orphan', uid: existing.uid, email };
+        }
+        await admin.auth().updateUser(existing.uid, { password, displayName: name });
+        uid = existing.uid;
+        status = 'adopted';
+    } else {
+        try {
+            const created = await admin.auth().createUser({ email, password, displayName: name });
+            uid = created.uid;
+        } catch (e) {
+            if (e?.code === 'auth/invalid-password') {
+                throw new HttpsError('invalid-argument', 'パスワードが条件を満たしていません。6文字以上にしてください。');
+            }
+            throw e;
+        }
+        status = 'created';
+    }
+
+    await db.collection('users').doc(uid).set({
+        name, email, role, groupId,
+        // 発行した初期パスワードのままなので、初回ログイン時に変更を求める
+        mustChangePassword: true,
+    });
+
+    logger.info('User provisioned', { uid, email, role, groupId, status, by: caller.uid });
+    return { status, uid };
+});

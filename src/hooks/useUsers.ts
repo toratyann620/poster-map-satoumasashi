@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { initializeApp, deleteApp } from 'firebase/app';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions, firebaseConfig, makeAuth } from '../lib/firebase';
+import { db, functions } from '../lib/firebase';
 
 export interface UserData {
     id: string; // auth uid
@@ -14,6 +12,13 @@ export interface UserData {
     groupId?: string;
     /** 発行された初期パスワードのままで、変更を求めている状態 */
     mustChangePassword?: boolean;
+}
+
+export interface ProvisionResult {
+    /** created=新規作成 / adopted=残っていたログインアカウントを引き取った / orphan=引き取ってよいか確認が要る */
+    status: 'created' | 'adopted' | 'orphan';
+    uid: string;
+    email?: string;
 }
 
 export const useUsers = () => {
@@ -37,40 +42,32 @@ export const useUsers = () => {
         return () => unsubscribe();
     }, []);
 
-    // 新規ユーザー追加（セカンダリアプリを使用して現在の管理者のログインを維持）
-    const createUser = async (userData: Omit<UserData, 'id'>, password: string) => {
-        // 一時的なセカンダリアプリインスタンスを作成
-        const secondaryApp = initializeApp(firebaseConfig, `SecondaryApp_${Date.now()}`);
-        // ネイティブでも動くよう、Web/ネイティブを判別する共通ヘルパーを使う
-        const secondaryAuth = makeAuth(secondaryApp);
-
-        try {
-            // 新規ユーザーを Auth に作成
-            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, userData.email, password);
-            const newUid = userCredential.user.uid;
-
-            // Firestoreの users コレクションに書き込み
-            await setDoc(doc(db, 'users', newUid), {
-                name: userData.name,
-                email: userData.email,
-                role: userData.role,
-                // グループは必須。未設定だとルール側で全面的に拒否され、
-                // ログインはできるが何も見えない状態になる。
-                groupId: userData.groupId ?? '',
-                // 初期パスワードは口頭やメモで渡す前提の短いものなので、
-                // 本人が使い始めるときに必ず変えてもらう。
-                mustChangePassword: true,
-            });
-
-            return { success: true, uid: newUid };
-        } catch (error: any) {
-            console.error('Error creating user:', error);
-            throw new Error(error.message);
-        } finally {
-            // セカンダリアプリを確実に破棄（サインアウトしてアプリを削除）
-            await secondaryAuth.signOut();
-            await deleteApp(secondaryApp);
-        }
+    /**
+     * 新規ユーザーを発行する。
+     *
+     * Auth の作成と users ドキュメントの作成を、Cloud Function 側の1操作にまとめている。
+     * 以前はクライアントでセカンダリのFirebaseアプリを立てて2段で行っていたが、
+     * 途中で失敗すると**ログインアカウントだけが残り**、そのメールアドレスでは
+     * 二度と作り直せない（一覧にも出ない）状態になっていた。
+     *
+     * 戻り値の `status` が `orphan` のときは、既にログインアカウントだけが
+     * 残っている。引き取ってよいか利用者に確かめてから `adopt: true` で呼び直す。
+     */
+    const createUser = async (
+        userData: Omit<UserData, 'id'>,
+        password: string,
+        options?: { adopt?: boolean },
+    ): Promise<ProvisionResult> => {
+        const call = httpsCallable<Record<string, unknown>, ProvisionResult>(functions, 'provisionUser');
+        const res = await call({
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            groupId: userData.groupId ?? '',
+            password,
+            adopt: options?.adopt === true,
+        });
+        return res.data;
     };
 
     // ユーザー情報の更新（ロール・所属グループの変更）

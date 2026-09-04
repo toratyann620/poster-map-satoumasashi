@@ -99,9 +99,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
         }
 
         try {
-            await createUser({ name, email, role, groupId }, password);
+            let result = await createUser({ name, email, role, groupId }, password);
+
+            // ログインアカウントだけが取り残されている場合。引き取ってよいか確かめてから続ける
+            if (result.status === 'orphan') {
+                const proceed = window.confirm(
+                    `${email} のログインアカウントだけが残っています。\n\n`
+                    + 'このアカウントを引き取って登録し直しますか？\n'
+                    + '（パスワードも今回のものに設定し直します）'
+                );
+                if (!proceed) { setErrorMsg('作成を中止しました。'); return; }
+                result = await createUser({ name, email, role, groupId }, password, { adopt: true });
+            }
+
             const gName = groups.find(g => g.id === groupId)?.name ?? groupId;
-            setSuccessMsg(`ユーザー「${name}」を ${gName} 所属で作成しました。`);
+            const how = result.status === 'adopted' ? '残っていたログインアカウントを引き取って登録しました' : '作成しました';
+            setSuccessMsg(`ユーザー「${name}」を ${gName} 所属で${how}。`);
             setName('');
             setEmail('');
             setPassword('');

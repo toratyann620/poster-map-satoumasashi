@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { UserPlus, Trash2, Shield, User as UserIcon, Loader2, Info, RefreshCw, KeyRound } from 'lucide-react';
 import { generateInitialPassword, INITIAL_PASSWORD_LENGTH } from '../lib/password';
-import type { UserData } from '../hooks/useUsers';
+import type { ProvisionResult, UserData } from '../hooks/useUsers';
 import type { Group } from '../types';
 
 interface UsersTabProps {
     users: UserData[];
     groups: Group[];
     currentUid: string | null;
-    onCreate: (data: Omit<UserData, 'id'>, password: string) => Promise<unknown>;
+    onCreate: (data: Omit<UserData, 'id'>, password: string, options?: { adopt?: boolean }) => Promise<ProvisionResult>;
     onUpdate: (uid: string, updates: Partial<Pick<UserData, 'name' | 'role' | 'groupId'>>) => Promise<void>;
     onRemove: (uid: string) => Promise<void>;
 }
@@ -34,8 +34,23 @@ export const UsersTab: React.FC<UsersTabProps> = ({ users, groups, currentUid, o
         if (!groupId) { setError('所属グループを選んでください。'); return; }
         setCreating(true);
         try {
-            await onCreate({ name, email, role, groupId }, password);
-            setSuccess(`${name} さんのアカウントを作成しました（${groupName(groupId)}）。初期パスワード「${password}」を本人にお伝えください。初回ログイン時に本人が変更します。`);
+            let result = await onCreate({ name, email, role, groupId }, password);
+
+            // ログインアカウントだけが取り残されている場合。
+            // 過去に作成が途中で失敗すると起こりうる。引き取ってよいか確かめてから続ける
+            if (result.status === 'orphan') {
+                const proceed = window.confirm(
+                    `${email} のログインアカウントだけが残っています。\n\n`
+                    + 'ユーザー一覧には出ていませんが、Firebase の認証には登録されています。\n'
+                    + 'このアカウントを引き取って登録し直しますか？\n'
+                    + '（パスワードも今回の初期パスワードに設定し直します）'
+                );
+                if (!proceed) { setError('作成を中止しました。'); return; }
+                result = await onCreate({ name, email, role, groupId }, password, { adopt: true });
+            }
+
+            const how = result.status === 'adopted' ? '残っていたログインアカウントを引き取って登録しました' : 'アカウントを作成しました';
+            setSuccess(`${name} さんの${how}（${groupName(groupId)}）。初期パスワード「${password}」を本人にお伝えください。初回ログイン時に本人が変更します。`);
             setName(''); setEmail(''); setPassword(generateInitialPassword()); setRole('general');
         } catch (err) {
             setError((err as Error)?.message ?? 'アカウントの作成に失敗しました。');
@@ -53,8 +68,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ users, groups, currentUid, o
 
     const remove = async (u: UserData) => {
         if (!window.confirm(
-            `${u.name} さんのアクセス権を削除します。\n\n` +
-            `ログイン用のアカウント自体は残りますが、データには一切アクセスできなくなります。\n` +
+            `${u.name} さんのアカウントを削除します。\n\n` +
+            `ログイン用のアカウントごと削除され、ログインもデータの閲覧もできなくなります。\n` +
             `よろしいですか？`
         )) return;
         setBusyUid(u.id);
