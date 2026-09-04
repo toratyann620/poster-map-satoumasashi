@@ -775,6 +775,9 @@
        App Store Connect API 経由。手順を残すためスクリプト化した）。
   * **確認済み**: 本番で `Content-Type: application/json` を返すこと、**Apple のCDN
     （`app-site-association.cdn-apple.com`、実機が実際に読む経路）にも取り込まれている**こと。
+    実機向けビルド（`-sdk iphoneos`）が通り、**署名済みバイナリに
+    `com.apple.developer.associated-domains = webcredentials:poster-map-app.vercel.app` が入り、
+    プロビジョニングプロファイル側も許可している**こと。
   * **⚠️ 未確認**: 実機での保存・自動入力そのもの。シミュレータには iCloud キーチェーンの
     資格情報が無いため確かめられない。**次のアプリ配信後に実機で確認が必要。**
     また、エンタイトルメントは新しいビルドから効くため、現在配信中の 1.0.5 では有効にならない。
