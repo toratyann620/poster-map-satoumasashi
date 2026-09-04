@@ -754,10 +754,30 @@
 ### 2026-09-04 (Claude Code) その49
 * **タスク**: ログイン状態の維持とパスワード保存機能の確認、テストアカウントの発行、ログイン画面からの新規登録申請
 * **① ログイン状態の維持** — **維持されている**。`initializeAuth(app, { persistence: indexedDBLocalPersistence })` で永続化しており、iPhone 17 シミュレータで**アプリを入れ直して再起動してもログイン画面を経ずに地図が出る**ことを確認（難波事務所として保持）。
-* **② パスワード保存（iCloudキーチェーン / Googleパスワードマネージャー）** — **入力欄の作りは正しいが、アプリ側の紐付けが未設定**。
-  * ログイン画面の `id` / `name` / `autoComplete`（`username` / `current-password`）は揃っている。**ブラウザ版では保存・自動入力が効く。**
-  * 一方、**ネイティブアプリでは効かない**。iOS は Associated Domains（`webcredentials:`）と `apple-app-site-association`、Android は `assetlinks.json` が要るが、いずれも未設定。
-  * ⚠️ Android 側は **Play アプリ署名の SHA-256** が要るが、これは API では取得できず Play Console の画面からしか読めない。
+* **② パスワード保存（iCloudキーチェーン / Googleパスワードマネージャー）** — 調べた結果、**iOSだけ紐付けが要る**ことが分かったので設定した。
+  * ログイン画面の `id` / `name` / `autoComplete`（`username` / `current-password`）は揃っている。ブラウザ版はこれで効く。
+  * **⚠️ 重要な発見: `capacitor.config.ts` の `iosScheme: 'https'` は iOS では効いていない。**
+    WKWebView が自前で扱うスキーム（http/https/file 等）はカスタムスキームハンドラに登録できず、
+    Capacitor の `CAPInstanceDescriptor.normalize()` が `WKWebView.handlesURLScheme()` で弾いて
+    既定の `capacitor` に戻す。つまり**iOSの実際のオリジンは `capacitor://poster-map-app.vercel.app`**。
+    オリジンが https でない以上、サイトに保存した資格情報は自動では出てこない。
+    → **Associated Domains が必須**。（設定ファイルのコメントは https になる前提で書かれているが、
+    iOS に関しては実態と違う。Maps のリファラー制限が通っているのは別の理由。）
+  * **Android は `androidScheme: 'https'` が効いている**（`CapConfig.validateScheme()` は http/https を許可）。
+    WebView のオリジンが `https://poster-map-app.vercel.app` そのものなので、
+    Autofill はこのサイトの資格情報として扱う。**assetlinks.json は不要**
+    （あれはアプリのネイティブ入力欄や App Links 用で、WebView 内のフォームには要らない）。
+  * **実施した設定（iOS）**:
+    1. `ios/App/App/App.entitlements` に `com.apple.developer.associated-domains` = `webcredentials:poster-map-app.vercel.app`
+    2. `public/.well-known/apple-app-site-association` を追加。拡張子が無く既定では JSON にならないため、
+       `vercel.json` の `headers` で `Content-Type: application/json` を明示。
+    3. Apple Developer の App ID に Associated Domains の機能を有効化（`scripts/enable_associated_domains.mjs`、
+       App Store Connect API 経由。手順を残すためスクリプト化した）。
+  * **確認済み**: 本番で `Content-Type: application/json` を返すこと、**Apple のCDN
+    （`app-site-association.cdn-apple.com`、実機が実際に読む経路）にも取り込まれている**こと。
+  * **⚠️ 未確認**: 実機での保存・自動入力そのもの。シミュレータには iCloud キーチェーンの
+    資格情報が無いため確かめられない。**次のアプリ配信後に実機で確認が必要。**
+    また、エンタイトルメントは新しいビルドから効くため、現在配信中の 1.0.5 では有効にならない。
 * **③ テストアカウント** — パスワード共通 `test1234`・一般ユーザー・初回パスワード変更なし。
   * `test.nanba@satoumasashi.com`（難波事務所）/ `test.udagawa@satoumasashi.com`（宇田川事務所）/ `test.watanabe@satoumasashi.com`（渡辺事務所）
 * **④ ログイン画面からの新規登録申請**（新機能）
@@ -774,5 +794,5 @@
 * **配信**: ブラウザ版デプロイ済み（本番バンドルに反映を確認）。ルールと Cloud Functions もデプロイ済み。アプリ版は未反映。
 * **未完了・要判断**
   * **メール送信の接続情報（`SMTP_URL`）が未登録**。登録するまで案内メールは飛ばず、初期パスワードは管理画面から手渡しになる。
-  * iOS/Android のパスワード保存の紐付け（Associated Domains / assetlinks）。Android は Play Console から SHA-256 が必要。
+  * **iOSのパスワード保存は次のアプリ配信から効く**（エンタイトルメントは新しいビルドが要るため）。配信後、実機での保存・自動入力の確認が必要。Android は設定不要（オリジンが本番ドメインそのもののため）。
   * Android クローズドテストの公開操作、プッシュ通知の実機確認、検証用アカウントの削除。

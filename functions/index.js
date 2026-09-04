@@ -484,7 +484,12 @@ async function requireSuperAdmin(request) {
  *    （在籍者を外から総当たりで調べられてしまうため）。
  *    代わりに申請へ印を付け、管理画面側にだけ分かるようにする。
  */
-exports.submitAccountRequest = onCall({ region: 'asia-northeast1' }, async (request) => {
+exports.submitAccountRequest = onCall({
+    region: 'asia-northeast1',
+    // 未ログインから呼べる関数なので、外から叩かれ続けたときの上限を決めておく。
+    // 申請は1日に数件あれば多い方で、同時実行が要る性質のものではない。
+    maxInstances: 5,
+}, async (request) => {
     const name = oneLine(request.data?.name, 50);
     const email = oneLine(request.data?.email, 120).toLowerCase();
     const groupId = oneLine(request.data?.groupId, 40);

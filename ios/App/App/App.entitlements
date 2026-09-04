@@ -6,5 +6,22 @@
 	     App Store 配布時には Xcode が自動で production に置き換える。 -->
 	<key>aps-environment</key>
 	<string>development</string>
+
+	<!-- パスワードの保存・自動入力（iCloudキーチェーン）に必要。
+
+	     ⚠️ capacitor.config.ts で iosScheme を 'https' にしてあるが、iOS では
+	     この指定は効かない。WKWebView が自前で扱うスキーム（http/https/file 等）は
+	     カスタムスキームハンドラに登録できず、Capacitor が既定の 'capacitor' に
+	     戻すため、実際のオリジンは capacitor://poster-map-app.vercel.app になる。
+	     オリジンが https でない以上、サイトに保存した資格情報は自動では出てこない。
+
+	     この関連ドメインの宣言と、
+	     https://poster-map-app.vercel.app/.well-known/apple-app-site-association
+	     の webcredentials の対で、はじめてアプリとサイトが同じものとして扱われる。
+	     どちらか片方だけでは機能しない。 -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:poster-map-app.vercel.app</string>
+	</array>
 </dict>
 </plist>
