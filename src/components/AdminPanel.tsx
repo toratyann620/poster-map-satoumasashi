@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useUsers } from '../hooks/useUsers';
 import { useGroups } from '../hooks/useGroups';
+import { useSession } from '../hooks/useSession';
+import { useAccountRequests } from '../hooks/useAccountRequests';
+import { AccountRequestsTab } from '../admin/AccountRequestsTab';
 import type { UserData } from '../hooks/useUsers';
 import { useActivityLogs } from '../hooks/useActivityLogs';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
@@ -23,7 +26,7 @@ interface AdminPanelProps {
     pinTypes?: { name: string, color: string }[];
 }
 
-type Tab = 'users' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog' | 'settings';
+type Tab = 'users' | 'requests' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog' | 'settings';
 
 const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; Icon: React.ElementType }> = {
     '追加': { bg: 'bg-emerald-100 dark:bg-emerald-900/40', text: 'text-emerald-700 dark:text-emerald-400', label: '追加', Icon: PlusCircle },
@@ -33,6 +36,8 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [] }) => {
     const { users, loading: usersLoading, createUser, updateUser, removeUser } = useUsers();
+    const session = useSession();
+    const { pending: pendingRequests, reviewed: reviewedRequests, review: reviewRequest } = useAccountRequests();
     const [busyUid, setBusyUid] = useState<string | null>(null);
     const { groups } = useGroups();
     const { logs, loading: logsLoading } = useActivityLogs(200);
@@ -209,6 +214,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                     <User className="w-4 h-4" />
                     ユーザー管理
                 </button>
+                {/* 申請の承認は佐藤まさし事務所の管理者だけが行える。
+                    それ以外の管理者には一覧が引けないため、タブ自体を出さない */}
+                {session.isSuperAdmin && (
+                    <button
+                        onClick={() => setActiveTab('requests')}
+                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                            activeTab === 'requests'
+                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        <UserPlus className="w-4 h-4" />
+                        新規登録の申請
+                        {pendingRequests.length > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold tabular-nums">
+                                {pendingRequests.length}
+                            </span>
+                        )}
+                    </button>
+                )}
                 <button
                     onClick={() => setActiveTab('history')}
                     className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -291,6 +316,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                 )}
 
                 {/* ===== ユーザー管理タブ ===== */}
+                {activeTab === 'requests' && session.isSuperAdmin && (
+                    <AccountRequestsTab
+                        pending={pendingRequests}
+                        reviewed={reviewedRequests}
+                        groups={groups}
+                        onReview={reviewRequest}
+                    />
+                )}
+
                 {activeTab === 'users' && (
                     <>
                         {/* 新規作成フォーム */}
