@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, initializeAuth, indexedDBLocalPersistence, type Auth } from "firebase/auth";
-import { getFirestore, initializeFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from 'firebase/functions';
 import { Capacitor } from "@capacitor/core";
@@ -47,10 +47,18 @@ export const makeAuth = (targetApp: FirebaseApp): Auth => {
 export const auth = makeAuth(app);
 
 // Initialize Firestore with Long-Polling to bypass corporate firewalls/WebSocket blockers
+//
+// localCache（IndexedDBへの永続キャッシュ）を有効にしている。
+// ポスターは1,500件を超え、起動のたびに全件をネットワークから読み直すと
+// 遅く、通信量もかさむ。キャッシュがあれば2回目以降の起動は手元のデータで
+// 即座に描画され、ネットワークからは差分だけが届く。
+// タブを複数開いても壊れないよう multipleTabManager を指定する
+// （既定の単一タブ管理だと、2つ目のタブで初期化に失敗する）。
 let firestoreDb;
 try {
     firestoreDb = initializeFirestore(app, {
-        experimentalForceLongPolling: true
+        experimentalForceLongPolling: true,
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     });
 } catch (e) {
     // Fallback if already initialized

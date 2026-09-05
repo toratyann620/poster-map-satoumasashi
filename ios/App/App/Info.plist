@@ -67,6 +67,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- iPadでも常に全画面で起動させる。
+	     これが無いと Split View / Slide Over / Stage Manager の対象になり、
+	     前回小さいウインドウで使った状態が残って「全画面にならない」ように見える
+	     （実際にテスターから報告があった）。地図が主役のアプリなので、
+	     画面分割よりも常時全画面を優先する。 -->
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

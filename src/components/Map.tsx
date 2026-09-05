@@ -293,6 +293,11 @@ const MapInner: React.FC<MapComponentProps> = ({
     const [zoom, setZoom] = useState<number>(14);
     // 完全に同一座標のピンが重なっている場合の「展開表示」対象グループ（緯度経度キー）。null = どれも展開していない
     const [spreadGroupKey, setSpreadGroupKey] = useState<string | null>(null);
+    // 地図の表示範囲。idle（操作が止まった瞬間）ごとに更新し、
+    // 範囲外のマーカーを作らないために使う。値そのものは ref に持ち、
+    // 再描画の合図としてカウンタだけを state にする
+    const boundsRef = useRef<google.maps.LatLngBounds | null>(null);
+    const [viewportVersion, setViewportVersion] = useState(0);
     const overlapMarkersRef = useRef<any[]>([]);
 
     const colorsMap = React.useMemo(() => {
@@ -371,7 +376,14 @@ const MapInner: React.FC<MapComponentProps> = ({
         const dragListener = map.addListener('dragstart', () => {
             onUserPanRef.current?.();
         });
+        // 静止するたびに表示範囲を取り直す。マーカーの生成をこの範囲内に
+        // 絞ることで、寄った縮尺でも作る DOM が画面周辺のぶんだけで済む
+        const idleListener = map.addListener('idle', () => {
+            boundsRef.current = map.getBounds() ?? null;
+            setViewportVersion((v) => v + 1);
+        });
         return () => {
+            google.maps.event.removeListener(idleListener);
             google.maps.event.removeListener(listener);
             google.maps.event.removeListener(dragListener);
         };
@@ -572,10 +584,28 @@ const MapInner: React.FC<MapComponentProps> = ({
         const keepIndividually = new Set<string>();
         if (selectedPoster?.id) keepIndividually.add(selectedPoster.id);
         if (relocatingPoster?.id) keepIndividually.add(relocatingPoster.id);
+        if (justDroppedPinId) keepIndividually.add(justDroppedPinId);
+
+        // 個別ピンは「いま見えている範囲＋余白」にあるものだけ作る。
+        // 全件（1,500件超）を DOM マーカーにすると、寄った縮尺で一斉に生成されて
+        // タブレットや古い端末で目に見えて重くなる。余白を半画面ぶん取ってあるので、
+        // 少し動かした程度では欠けが見えず、静止（idle）のたびに補充される。
+        // 範囲がまだ取れていない起動直後は絞らない（何も出ない一瞬を作らないため）。
+        const bounds = boundsRef.current;
+        const inViewport = (p: PosterPin): boolean => {
+            if (!bounds) return true;
+            const sw = bounds.getSouthWest();
+            const ne = bounds.getNorthEast();
+            const latPad = (ne.lat() - sw.lat()) * 0.5;
+            const lngPad = (ne.lng() - sw.lng()) * 0.5;
+            return p.lat >= sw.lat() - latPad && p.lat <= ne.lat() + latPad
+                && p.lng >= sw.lng() - lngPad && p.lng <= ne.lng() + lngPad;
+        };
 
         const singlePosters = posters.filter(p =>
             !overlapGroupKeys.has(groupKeyOf(p))
-            && (!isAggregate || keepIndividually.has(p.id)));
+            && (!isAggregate || keepIndividually.has(p.id))
+            && (keepIndividually.has(p.id) || inViewport(p)));
 
         const nextIds = new Set(singlePosters.map(p => p.id));
         const toRemove: any[] = [];
@@ -625,6 +655,8 @@ const MapInner: React.FC<MapComponentProps> = ({
             if (group.length < 2) return;
             // 集計表示中は重なりピンも出さない（町域の集計ピンに含めて数える）
             if (isAggregate) return;
+            // 範囲外の重なりピンも作らない（個別ピンと同じ理由）
+            if (!inViewport(group[0])) return;
             const center = { lat: group[0].lat, lng: group[0].lng };
 
             if (spreadGroupKey === key) {
@@ -881,7 +913,7 @@ const MapInner: React.FC<MapComponentProps> = ({
                 infoWindowRef.current = null;
             }
         }
-    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey, zoom]);
+    }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey, zoom, viewportVersion]);
 
     // Current Location Marker
     useEffect(() => {

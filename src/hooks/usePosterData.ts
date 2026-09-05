@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { PosterPin, FilterState, GreetingRecord } from '../types';
 import { GREETED_FILTER } from '../types';
+import { readString, writeString } from '../lib/deviceStore';
 import { db } from '../lib/firebase';
 import {
     collection,
@@ -62,6 +63,32 @@ const writeActivityLog = async (
     }
 };
 
+/** 種類の絞り込みの保存先（端末ごと）。'*' はすべて表示の印 */
+const TYPE_FILTER_KEY = 'mapTypeFilter';
+
+/**
+ * 種類の絞り込みの初期値。
+ *
+ * 以前は「すべて表示」が初期値だったが、全種類のピン（1,500件超）が
+ * 一斉に出ると重いうえ、重なって見づらいという声があった。
+ * 初回は「佐藤まさし」だけを表示し、必要な種類を絞り込みで足していく方式にする。
+ *
+ * 一度選んだ内容は端末に覚えておく。毎回の起動で選び直しになると、
+ * 佐藤まさし以外を担当している事務所では起動のたびにひと手間増えるため。
+ * 「クリア」ですべて表示にした場合も、その選択を尊重してそのまま覚える。
+ */
+const initialTypeFilter = (): string[] => {
+    const raw = readString(TYPE_FILTER_KEY);
+    if (raw === '*') return [];              // 利用者が「すべて表示」を選んでいた
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed.map(String);
+        } catch { /* 壊れていたら初期値に戻す */ }
+    }
+    return ['佐藤まさし'];
+};
+
 export const usePosterData = () => {
     const session = useSession();
     const { group, name: userName, role: userRole } = session;
@@ -70,10 +97,28 @@ export const usePosterData = () => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<FilterState>({
         keyword: '',
-        types: [],   // 空配列 = すべて表示
+        types: initialTypeFilter(),   // 空配列 = すべて表示
         status: [],  // 空配列 = すべて表示
         tags: [],    // 空配列 = すべて表示
     });
+
+    // 種類の選択は端末に覚える（上の initialTypeFilter と対）
+    useEffect(() => {
+        writeString(TYPE_FILTER_KEY, filter.types.length === 0 ? '*' : JSON.stringify(filter.types));
+    }, [filter.types]);
+
+    /**
+     * 指定した種類が絞り込みで隠れていたら、絞り込みに加えて見えるようにする。
+     * ピンを登録・変更した直後に、そのピンが画面に出ないと
+     * 「保存できていない」ように見えてしまうため。
+     */
+    const ensureTypeVisible = (type?: string) => {
+        if (!type) return;
+        setFilter((prev) => {
+            if (prev.types.length === 0 || prev.types.includes(type)) return prev;
+            return { ...prev, types: [...prev.types, type] };
+        });
+    };
 
     // グループが確定してから購読を開始する。
     // 権限範囲の条件を付けずに問い合わせると Firestore がクエリごと拒否するため、
@@ -162,6 +207,7 @@ export const usePosterData = () => {
             });
             const diff = `枚数: ${posterData.quantity || 1}枚`;
             await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', city, userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
+            ensureTypeVisible(posterData.type);
             // 立てたばかりのピンを目立たせる演出に使うため、IDを返す
             return docRef.id;
         } catch (e) {
@@ -214,6 +260,7 @@ export const usePosterData = () => {
                 statusRemoved,
                 removedChangedTo,
             });
+            ensureTypeVisible(posterType);
         } catch (e) {
             console.error('Error updating document: ', e);
             alert(describeWriteError(e, '更新'));
