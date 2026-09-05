@@ -35,8 +35,8 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
 
   await setDoc(doc(db, 'groups/admin'), { name: '佐藤まさし事務所', allowAll: true, cities: [], types: [] });
-  await setDoc(doc(db, 'groups/nanba'), { name: '難波事務所', allowAll: false, cities: ['厚木市'], types: ['佐藤まさし', '難波県議'] });
-  await setDoc(doc(db, 'groups/udagawa'), { name: '宇田川事務所', allowAll: false, cities: ['海老名市'], types: ['佐藤まさし', '長田県議'] });
+  await setDoc(doc(db, 'groups/nanba'), { name: '難波事務所', allowAll: false, cities: ['厚木市'], types: ['佐藤まさし', 'なんばたつや'] });
+  await setDoc(doc(db, 'groups/udagawa'), { name: '宇田川事務所', allowAll: false, cities: ['海老名市'], types: ['佐藤まさし', 'おさだ進治'] });
 
   await setDoc(doc(db, 'users/super1'), { name: '佐藤事務所の管理者', role: 'admin', groupId: 'admin' });
   await setDoc(doc(db, 'users/satoGeneral'), { name: '佐藤事務所の一般', role: 'general', groupId: 'admin' });
@@ -51,7 +51,7 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
   });
 
   await setDoc(doc(db, 'posters_v2/atsugi_sato'), poster({ city: '厚木市', type: '佐藤まさし' }));
-  await setDoc(doc(db, 'posters_v2/atsugi_nanba'), poster({ city: '厚木市', type: '難波県議' }));
+  await setDoc(doc(db, 'posters_v2/atsugi_nanba'), poster({ city: '厚木市', type: 'なんばたつや' }));
   await setDoc(doc(db, 'posters_v2/atsugi_goto'), poster({ city: '厚木市', type: 'ごとう祐一' }));
   await setDoc(doc(db, 'posters_v2/ebina_sato'), poster({ city: '海老名市', type: '佐藤まさし' }));
   await setDoc(doc(db, 'posters_v2/nocity_sato'), poster({ city: '', type: '佐藤まさし' }));
@@ -110,7 +110,7 @@ await t('任意のポスターを更新・削除できる', async () => {
 });
 
 // ═══════════════════════════════════════════════════════════
-section('難波事務所（厚木市 × 佐藤まさし/難波県議）— 閲覧');
+section('難波事務所（厚木市 × 佐藤まさし/なんばたつや）— 閲覧');
 
 await t('自グループ条件のポスターは読める', async () => {
   await assertSucceeds(getDoc(doc(as('nanbaUser'), `${P}/atsugi_sato`)));
@@ -135,7 +135,7 @@ await t('🔒 他グループの条件で問い合わせても拒否される', 
 
 await t('自グループ条件を明示したクエリは通る', () =>
   assertSucceeds(getDocs(query(collection(as('nanbaUser'), P),
-    where('city', 'in', ['厚木市']), where('type', 'in', ['佐藤まさし', '難波県議'])))));
+    where('city', 'in', ['厚木市']), where('type', 'in', ['佐藤まさし', 'なんばたつや'])))));
 
 // ═══════════════════════════════════════════════════════════
 section('難波事務所 — 編集・削除・新規追加');
@@ -189,7 +189,7 @@ await t('🔒 他の市区町村に「その他」は追加できない', () =>
 
 await t('「その他」を含めたクエリが通る', () =>
   assertSucceeds(getDocs(query(collection(as('nanbaUser'), P),
-    where('city', 'in', ['厚木市']), where('type', 'in', ['佐藤まさし', '難波県議', 'その他'])))));
+    where('city', 'in', ['厚木市']), where('type', 'in', ['佐藤まさし', 'なんばたつや', 'その他'])))));
 
 // ═══════════════════════════════════════════════════════════
 section('変更履歴 (activityLogs_v2)');

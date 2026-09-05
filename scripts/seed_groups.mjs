@@ -23,9 +23,9 @@ const av = (arr) => ({ arrayValue: { values: arr.map(sv) } });
 
 const GROUPS = [
   { id: 'admin',    name: '佐藤まさし事務所', allowAll: true,  cities: [],          types: [] },
-  { id: 'nanba',    name: '難波事務所',       allowAll: false, cities: ['厚木市'],   types: ['佐藤まさし', '難波県議'] },
-  { id: 'udagawa',  name: '宇田川事務所',     allowAll: false, cities: ['海老名市'], types: ['佐藤まさし', '長田県議'] },
-  { id: 'watanabe', name: '渡辺事務所',       allowAll: false, cities: ['伊勢原市'], types: ['佐藤まさし', '渡辺県議'] },
+  { id: 'nanba',    name: '難波事務所',       allowAll: false, cities: ['厚木市'],   types: ['佐藤まさし', 'なんばたつや'] },
+  { id: 'udagawa',  name: '宇田川事務所',     allowAll: false, cities: ['海老名市'], types: ['佐藤まさし', 'おさだ進治'] },
+  { id: 'watanabe', name: '渡辺事務所',       allowAll: false, cities: ['伊勢原市'], types: ['佐藤まさし', '渡辺のりゆき'] },
 ];
 
 console.log('── groups コレクションの作成 ──');

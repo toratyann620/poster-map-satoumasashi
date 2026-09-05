@@ -13,6 +13,22 @@ import { readString, writeString } from './deviceStore';
 
 const KEY = 'pin_presets';
 
+/**
+ * 種類の名称変更にともなう読み替え。
+ *
+ * プリセットは端末に保存されるため、名前を変えても各自の端末には
+ * 旧名が残り続ける。そのまま使うとグループの権限判定に通らない種類で
+ * ピンを立てようとして、現場で「保存できない」ことになる。
+ *
+ * ⚠️ Firestore 側の種類名（settings/pinTypes）を変えたら、ここにも追記すること。
+ */
+const RENAMED_TYPES: Record<string, string> = {
+    '難波県議': 'なんばたつや',
+    '長田県議': 'おさだ進治',
+    '渡辺県議': '渡辺のりゆき',
+    '山口市長': '山口たかひろ',
+};
+
 /** マップに並べられる数。これ以上増やすと地図が隠れる */
 export const MAX_PRESETS = 3;
 
@@ -34,7 +50,7 @@ export const readPresets = (): PinPreset[] => {
             .filter((p): p is PinPreset => !!p && typeof p.type === 'string')
             .slice(0, MAX_PRESETS)
             .map((p) => ({
-                type: String(p.type),
+                type: RENAMED_TYPES[String(p.type)] ?? String(p.type),
                 status: Array.isArray(p.status) ? p.status.map(String) : [],
                 tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
             }));

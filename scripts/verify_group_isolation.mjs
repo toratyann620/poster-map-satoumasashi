@@ -32,11 +32,11 @@ const arr = (a) => ({ arrayValue: { values: a.map(sv) } });
 // ── 検証用ポスターの投入（ルールを迂回する管理者権限で） ────────────
 const FIXTURES = [
   { id: 'zz_verify_atsugi_sato', city: '厚木市', type: '佐藤まさし' },
-  { id: 'zz_verify_atsugi_nanba', city: '厚木市', type: '難波県議' },
+  { id: 'zz_verify_atsugi_nanba', city: '厚木市', type: 'なんばたつや' },
   { id: 'zz_verify_atsugi_goto', city: '厚木市', type: 'ごとう祐一' },
   { id: 'zz_verify_ebina_sato', city: '海老名市', type: '佐藤まさし' },
-  { id: 'zz_verify_ebina_osada', city: '海老名市', type: '長田県議' },
-  { id: 'zz_verify_isehara_wata', city: '伊勢原市', type: '渡辺県議' },
+  { id: 'zz_verify_ebina_osada', city: '海老名市', type: 'おさだ進治' },
+  { id: 'zz_verify_isehara_wata', city: '伊勢原市', type: '渡辺のりゆき' },
   { id: 'zz_verify_nocity', city: '', type: '佐藤まさし' },
 ];
 
@@ -94,9 +94,9 @@ let db;
 try { db = initializeFirestore(app, { experimentalForceLongPolling: true }); } catch { db = getFirestore(app); }
 
 const GROUP_SCOPE = {
-  nanba: { cities: ['厚木市'], types: ['佐藤まさし', '難波県議'] },
-  udagawa: { cities: ['海老名市'], types: ['佐藤まさし', '長田県議'] },
-  watanabe: { cities: ['伊勢原市'], types: ['佐藤まさし', '渡辺県議'] },
+  nanba: { cities: ['厚木市'], types: ['佐藤まさし', 'なんばたつや'] },
+  udagawa: { cities: ['海老名市'], types: ['佐藤まさし', 'おさだ進治'] },
+  watanabe: { cities: ['伊勢原市'], types: ['佐藤まさし', '渡辺のりゆき'] },
 };
 
 let pass = 0; const fails = [];
