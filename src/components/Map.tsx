@@ -74,7 +74,9 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     const isUninstalled = statuses.includes('未設置');
     const isReplacement = statuses.includes('張替え予定');
     const isInstalled = statuses.includes('設置済');
-    const isGreeted = statuses.includes('挨拶済');
+    // 挨拶はステータスから外して独立した記録にしたため、記録の有無で判定する。
+    // ここを直さないと、地図上の挨拶済みの印が黙って消える
+    const isGreeted = (poster.greetings?.length ?? 0) > 0;
     const isNeedsRepair = statuses.includes('要修理');
 
     // コンテナ

@@ -47,6 +47,8 @@ function App() {
     setFilter,
     addPoster,
     updatePoster,
+    recordGreeting,
+    removeGreeting,
     deletePoster,
     setPosters,
     posters,
@@ -896,6 +898,9 @@ function App() {
             onDelete={handleDelete}
             onRemove={handleRemove}
             onStartNavigation={handleStartNavigation}
+            currentUserName={session.name}
+            onRecordGreeting={recordGreeting}
+            onUndoGreeting={removeGreeting}
           />
         </>
       )}

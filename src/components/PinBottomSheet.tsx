@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink, FileText, History } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import { isNativePhotos, takePhoto, pickPhotos } from '../lib/photos';
+import { GreetingSection } from './GreetingSection';
+import { PinLogTab } from './PinLogTab';
 
 /**
  * 写真の追加ボタン。Web ではファイル選択、ネイティブでは「撮影」と
@@ -98,6 +100,10 @@ interface PinBottomSheetProps {
     onDelete?: (id: string) => void;
     onRemove?: (id: string) => void;
     onStartNavigation?: (poster: PosterPin) => void;
+    /** 挨拶の記録。ログイン中のユーザー名を既定値にするため名前も受け取る */
+    currentUserName?: string;
+    onRecordGreeting?: (id: string, input: { by: string; date: string; note: string }) => Promise<void>;
+    onUndoGreeting?: (id: string, greetingId: string) => Promise<void>;
 }
 
 export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
@@ -110,9 +116,14 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     onSave,
     onDelete,
     onRemove,
-    onStartNavigation
+    onStartNavigation,
+    currentUserName = '',
+    onRecordGreeting,
+    onUndoGreeting,
 }) => {
     const [isViewMode, setIsViewMode] = useState(initialViewMode);
+    // 閲覧モードの表示切り替え。ログは開いたときだけ問い合わせる
+    const [viewTab, setViewTab] = useState<'detail' | 'log'>('detail');
 
     const [sheetState, setSheetState] = useState<'peek' | 'expanded'>('peek');
     const [dragY, setDragY] = useState(0);
@@ -136,10 +147,18 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [selectedImgIdx, setSelectedImgIdx] = useState(0);
     const [recalcLatLng, setRecalcLatLng] = useState(false);
+    // 直前に開いていたピン。同じピンの更新で入力欄や開閉状態を巻き戻さないために持つ
+    const openedPosterKey = useRef<string | null>(null);
 
     useEffect(() => {
         if (poster && isOpen) {
-            setIsViewMode(initialViewMode && !!poster.id);
+            // 別のピンを開いたのか、同じピンが更新されただけなのかを見分ける。
+            // 新規ピンは住所の逆引きが後から届くため、フィールドの同期自体は毎回行う
+            const key = poster.id ?? '__new__';
+            const isSamePin = openedPosterKey.current === key;
+            openedPosterKey.current = key;
+
+            if (!isSamePin) setIsViewMode(initialViewMode && !!poster.id);
             if (typeof poster.type === 'string' && poster.type) {
                 setType(poster.type);
             } else if (Array.isArray(poster.type) && poster.type.length > 0) {
@@ -162,10 +181,16 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             setSelectedImgIdx(0);
             setRecalcLatLng(false);
 
-            // Set initial sheet state
-            setSheetState((!poster.id || !initialViewMode) ? 'expanded' : 'peek');
-            setDragY(0);
+            // ⚠️ 開閉とタブは、別のピンを開いたときだけ初期化する。
+            // 毎回戻すと、挨拶を記録した直後にシートが折りたたまれてしまう
+            // （記録は成功しているのに失敗したように見える）。
+            if (!isSamePin) {
+                setSheetState((!poster.id || !initialViewMode) ? 'expanded' : 'peek');
+                setViewTab('detail');
+                setDragY(0);
+            }
         } else if (!isOpen) {
+            openedPosterKey.current = null;
             setTimeout(() => {
                 setIsViewMode(false);
                 setType('佐藤まさし');
@@ -419,6 +444,31 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                     {/* ===== 閲覧モード ===== */}
                     {isViewMode && (
                         <>
+                            {/* 詳細とログの切り替え。展開したときだけ出す
+                                （たたんだ状態では住所とステータスしか見えないため） */}
+                            {sheetState === 'expanded' && poster?.id && (
+                                <div className="flex gap-1 p-1 mt-2 rounded-xl bg-gray-100 dark:bg-zinc-800">
+                                    {([
+                                        { id: 'detail' as const, label: '詳細', Icon: FileText },
+                                        { id: 'log' as const, label: 'ログ', Icon: History },
+                                    ]).map((t) => (
+                                        <button
+                                            key={t.id} type="button" onClick={() => setViewTab(t.id)}
+                                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${viewTab === t.id
+                                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                : 'text-gray-500 dark:text-gray-400'}`}
+                                        >
+                                            <t.Icon className="w-4 h-4" />
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {sheetState === 'expanded' && viewTab === 'log' && poster?.id ? (
+                                <PinLogTab posterId={poster.id} />
+                            ) : (
+                            <>
                             <div className="space-y-4 mb-6 mt-2">
                                 {imageUrls.length > 0 ? (
                                     <div className="mb-4">
@@ -488,6 +538,17 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     <div className="flex-1"><p className="text-sm text-gray-500 dark:text-gray-400">連絡先</p><p className="text-gray-900 dark:text-gray-100">{contact || '-'}</p></div>
                                 </div>
                                 <div><p className="text-sm text-gray-500 dark:text-gray-400">特記事項</p><p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{specialNote || '-'}</p></div>
+
+                                {/* 挨拶の記録。ステータスではなく独立した記録として持つ */}
+                                {sheetState === 'expanded' && poster?.id && onRecordGreeting && onUndoGreeting && (
+                                    <GreetingSection
+                                        greetings={poster.greetings ?? []}
+                                        currentUserName={currentUserName}
+                                        onRecord={(input) => onRecordGreeting(poster.id!, input)}
+                                        onUndo={(gid) => onUndoGreeting(poster.id!, gid)}
+                                    />
+                                )}
+
                                 <div className="pt-4 border-t border-gray-100 dark:border-zinc-800 text-xs text-gray-500 dark:text-gray-400 space-y-1">
                                     <p>新規登録: {poster?.createdBy || '-'} ({formatDate(poster?.createdAt)})</p>
                                     <p>最終更新: {poster?.updatedBy || '-'} ({formatDate(poster?.updatedAt)})</p>
@@ -548,6 +609,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     </button>
                                 )}
                             </div>
+                            </>
+                            )}
                         </>
                     )}
 
@@ -740,7 +803,6 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                             '設置済': 'bg-green-500 border-green-500 text-white',
                                             '張替え予定': 'bg-amber-500 border-amber-500 text-white',
                                             '未設置': 'bg-gray-500 border-gray-500 text-white',
-                                            '挨拶済': 'bg-cyan-500 border-cyan-500 text-white',
                                             'その他': 'bg-purple-500 border-purple-500 text-white',
                                         };
                                         return (

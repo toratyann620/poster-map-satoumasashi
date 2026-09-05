@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import type { PosterPin, FilterState } from '../types';
+import type { PosterPin, FilterState, GreetingRecord } from '../types';
+import { GREETED_FILTER } from '../types';
 import { db } from '../lib/firebase';
 import {
     collection,
@@ -122,6 +123,7 @@ export const usePosterData = () => {
                     // ここにも追加すること。書き込めているのに画面に出ない、という
                     // 分かりにくい不具合になる（撤去理由で実際に起きた）
                     removalReason: d.removalReason || '',
+                    greetings: Array.isArray(d.greetings) ? d.greetings : [],
                     createdAt: d.createdAt || Date.now(),
                     updatedAt: d.updatedAt || Date.now(),
                     createdBy: d.createdBy || '',
@@ -214,6 +216,68 @@ export const usePosterData = () => {
             });
         } catch (e) {
             console.error('Error updating document: ', e);
+            alert(describeWriteError(e, '更新'));
+        }
+    };
+
+    /**
+     * 挨拶を記録する。
+     *
+     * 挨拶した人と日付は既定で「操作者・操作日」だが、現場で挨拶してから
+     * 後で入力することがあるため、どちらも変更できるようにしてある。
+     * 「いつ挨拶したか」と「いつ記録したか」を別々に持つのはそのため。
+     *
+     * 記録は配列に積む。1つのピンに対して何度も挨拶することがあり、
+     * 上書きだと過去の挨拶が消えてしまう。
+     */
+    const recordGreeting = async (id: string, input: { by: string; date: string; note: string }) => {
+        const current = posters.find(p => p.id === id);
+        if (!current) return;
+        const record: GreetingRecord = {
+            id: `g_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            by: input.by.trim() || userName,
+            date: input.date,
+            note: input.note.trim(),
+            recordedBy: userName,
+            recordedAt: Date.now(),
+        };
+        try {
+            await updateDoc(doc(db, COL.posters, id), {
+                greetings: [...(current.greetings ?? []), record],
+                updatedAt: Date.now(),
+                updatedBy: userName,
+            });
+            // ピンのログからも辿れるようにしておく。挨拶の一覧とは別に、
+            // 「いつ誰がこのピンを触ったか」を1本の時系列で見られる方が現場では追いやすい
+            await writeActivityLog(
+                '更新', id, current.address || '', current.city || '', userName,
+                `挨拶を記録: ${record.by}（${record.date}）${record.note ? ` / ${record.note}` : ''}`,
+                current.type || '', current.status ?? [],
+            );
+        } catch (e) {
+            console.error('挨拶の記録に失敗しました:', e);
+            alert(describeWriteError(e, '更新'));
+        }
+    };
+
+    /** 挨拶の記録を取り消す。誤って押した場合に戻せるようにするため */
+    const removeGreeting = async (id: string, greetingId: string) => {
+        const current = posters.find(p => p.id === id);
+        if (!current) return;
+        const target = (current.greetings ?? []).find(g => g.id === greetingId);
+        try {
+            await updateDoc(doc(db, COL.posters, id), {
+                greetings: (current.greetings ?? []).filter(g => g.id !== greetingId),
+                updatedAt: Date.now(),
+                updatedBy: userName,
+            });
+            await writeActivityLog(
+                '更新', id, current.address || '', current.city || '', userName,
+                `挨拶の記録を取り消し${target ? `: ${target.by}（${target.date}）` : ''}`,
+                current.type || '', current.status ?? [],
+            );
+        } catch (e) {
+            console.error('挨拶の取り消しに失敗しました:', e);
             alert(describeWriteError(e, '更新'));
         }
     };
@@ -357,7 +421,13 @@ export const usePosterData = () => {
             }
             // statusフィルター（複数選択: いずれか一つでも含まれていれば表示）
             if (filter.status && filter.status.length > 0) {
-                const hasMatch = filter.status.some(s => p.status?.includes(s));
+                // 「挨拶済」はステータスから外し、挨拶の記録があるかどうかで判定する。
+                // 絞り込みの選択肢としては残してあるため、ここで読み替える
+                const hasMatch = filter.status.some(s => (
+                    s === GREETED_FILTER
+                        ? (p.greetings?.length ?? 0) > 0
+                        : p.status?.includes(s)
+                ));
                 if (!hasMatch) return false;
             }
 
@@ -389,6 +459,8 @@ export const usePosterData = () => {
         setFilter,
         addPoster,
         updatePoster,
+        recordGreeting,
+        removeGreeting,
         bulkUpdatePosters,
         deletePoster,
         setPosters: setPostersBulk,

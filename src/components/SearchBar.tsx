@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Search, Filter, MapPin, X } from 'lucide-react';
 import type { FilterState } from '../types';
-import { POSTER_STATUS_OPTIONS } from '../types';
+import { POSTER_STATUS_OPTIONS, GREETED_FILTER } from '../types';
 
 interface SearchBarProps {
     filter: FilterState;
@@ -207,7 +207,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                                 <span>ステータスで絞り込み</span>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                                {POSTER_STATUS_OPTIONS.map(opt => {
+                                {/* 「挨拶済」はステータスから外したが、絞り込みでは
+                                    引き続き使えるようにしてある（挨拶の記録があるかで判定） */}
+                                {[...POSTER_STATUS_OPTIONS, GREETED_FILTER].map(opt => {
                                     const active = filter.status.includes(opt);
                                     const colorMap: Record<string, string> = {
                                         '設置済': '#22C55E',

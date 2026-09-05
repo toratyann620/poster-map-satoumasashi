@@ -70,6 +70,44 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "//": "1つのピンの変更履歴（詳細画面のログタブ）。佐藤まさし事務所は条件を付けないため posterId のみ",
+      "collectionGroup": "activityLogs_v2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "posterId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "changedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "//": "1つのピンの変更履歴（他事務所）。グループの絞り込み条件が付くため city/posterType も要る",
+      "collectionGroup": "activityLogs_v2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "posterId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "posterType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "changedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

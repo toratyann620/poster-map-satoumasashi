@@ -36,7 +36,34 @@ export const POSTER_PERSONS = ['佐藤まさし', 'ごとう祐一', '堀江県�
 export type PosterPerson = typeof POSTER_PERSONS[number];
 
 // ポスターの「状態」の選択肢（複数選択）
-export const POSTER_STATUS_OPTIONS = ['設置済', '張替え予定', '未設置', '挨拶済', '要修理', 'その他'] as const;
+// ⚠️ 「挨拶済」はここから外した。誰がいつ挨拶したかが重要で、
+// 付いている／いないの2値では記録として足りないため、独立した挨拶ログに移した。
+// 絞り込みでは引き続き使えるようにしてある（GREETED_FILTER）。
+export const POSTER_STATUS_OPTIONS = ['設置済', '張替え予定', '未設置', '要修理', 'その他'] as const;
+
+/**
+ * 絞り込み専用の擬似ステータス。
+ * 実体は `greetings` に記録があるかどうかで、ポスターの status には入らない。
+ */
+export const GREETED_FILTER = '挨拶済';
+
+/**
+ * 挨拶の記録。ピン単位で積み重ねていく。
+ *
+ * 「いつ挨拶したか」と「いつ記録したか」を分けてある。
+ * 現場で挨拶して後から入力することがあり、記録日時をもって
+ * 挨拶日とすると実態とずれるため。
+ */
+export interface GreetingRecord {
+    id: string;          // 取り消しの対象を特定するためのID
+    by: string;          // 挨拶した人。既定は操作者だが変更できる
+    date: string;        // 挨拶した日（YYYY-MM-DD）。既定は操作日だが変更できる
+    note: string;        // 挨拶備考
+    recordedBy: string;  // 記録した人
+    recordedAt: number;  // 記録した日時
+    /** 旧「挨拶済」ステータスから移した記録。日付が推定値であることを示す */
+    migrated?: boolean;
+}
 export type PosterStatus = typeof POSTER_STATUS_OPTIONS[number];
 
 // マーカーの色マッピング
@@ -73,6 +100,7 @@ export interface PosterPin {
     imageUrl: string;        // 写真 (Base64またはStorage URL、互換性用)
     imageUrls?: string[];    // 複数写真 (Storage URL配列)
     tags?: string[];         // カスタムタグ (複数指定可能)
+    greetings?: GreetingRecord[]; // 挨拶の記録（新しい順ではなく、記録した順に積む）
     removed?: boolean;       // 撤去フラグ（trueの場合マップ非表示、DBにデータは残る）
     removalReason?: string;  // 撤去した理由。撤去済みを表示する設定のときに詳細から確認できる
     createdAt: number;       // 作成日時 (timestamp)
