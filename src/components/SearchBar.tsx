@@ -129,7 +129,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
         });
     };
 
-    const hasFilters = filter.types.length > 0 || filter.status.length > 0 || filter.keyword;
+    const hasFilters = filter.types.length > 0 || filter.status.length > 0 || filter.tags.length > 0 || !!filter.keyword;
 
     return (
         // スマホでは左右いっぱい、タブレット以上（md〜）では左側の一定幅に収める。
@@ -174,7 +174,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
 
                 <details className="group">
                     <summary className="flex items-center justify-between text-gray-700 dark:text-gray-300 font-medium text-sm cursor-pointer list-none mb-2 outline-none">
-                        <span className="flex items-center gap-1.5"><Filter className="w-4 h-4 text-indigo-500" />絞り込みオプション</span>
+                        {/* 絞り込み中はアイコンを塗りにして「絞り込み中」の札を出す。
+                            初期状態から種類の絞り込み（佐藤まさしのみ）がかかるため、
+                            これが無いと「ピンが出ない＝データが無い」ように見えてしまう */}
+                        <span className="flex items-center gap-1.5">
+                            <Filter className={`w-4 h-4 text-indigo-500 ${hasFilters ? 'fill-indigo-500' : ''}`} />
+                            絞り込みオプション
+                            {hasFilters && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold leading-none">
+                                    絞り込み中
+                                </span>
+                            )}
+                        </span>
                         <span className="transition group-open:rotate-180">
                             <svg fill="none" height="20" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" viewBox="0 0 24 24" width="20"><path d="M6 9l6 6 6-6"></path></svg>
                         </span>
