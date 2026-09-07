@@ -33,7 +33,18 @@ export const ensureLocationPermission = async (): Promise<boolean> => {
     }
 };
 
-const OPTIONS = { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 };
+// 継続取得（watchPosition）用。
+// ⚠️ Android では `interval` を指定しないと `timeout` が間隔として使われる。
+// 以前は timeout: 15000 だけを渡していたため、位置が約15秒おきにしか届かず、
+// 「移動しても現在地が動かない」ように見えていた。1秒間隔を要求する
+// （interval / minimumUpdateInterval は Android 専用。iOS と Web は元々連続で届く）。
+const OPTIONS = {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000,
+    interval: 1000,
+    minimumUpdateInterval: 1000,
+};
 
 // 一発取得（現在地ボタン・ピン打ち）用。
 // 常時 watchPosition が動いているので、直近30秒の測位はそのまま使ってよい。

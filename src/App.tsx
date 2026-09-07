@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MapWrapper } from './components/Map';
 import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
@@ -146,17 +146,16 @@ function App() {
   // 現在地に地図を追従させるか。Googleマップと同じ考え方で、地図を手で動かしたら
   // 解除し、現在地ボタンでまた入る。電車や車での移動中に地図が置いていかれないようにする。
   const [isFollowing, setIsFollowing] = useState(true);
-  const isFollowingRef = useRef(true);
-  useEffect(() => { isFollowingRef.current = isFollowing; }, [isFollowing]);
 
-  // 起動時に現在地へジャンプし、以降も追従中は移動に合わせて地図を動かす
+  // 現在地の継続取得。ここでは位置を配るだけにする。
+  // 追従中の地図の移動（panTo）は Map 側で行う。以前はここで setMapCenter を
+  // 呼んでいたが、その経路は「検索でジャンプ」と共用でズームまで16へ戻すため、
+  // 移動のたびに勝手にズームが変わっていた。
   useEffect(() => {
     // ネイティブでは OS の権限要求を挟む必要があるため、共通ラッパー経由で購読する
     const stop = watchPosition(
       (pos) => {
         setCurrentLocation(pos);
-        // ref を見るのは、購読を張り直さずに最新の追従状態を参照するため
-        if (isFollowingRef.current) setMapCenter(pos);
       },
       (reason) => {
         // 起動時は黙って諦める（現在地ボタンを押したときに改めて案内する）

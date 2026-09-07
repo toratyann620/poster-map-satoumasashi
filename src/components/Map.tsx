@@ -377,9 +377,27 @@ const MapInner: React.FC<MapComponentProps> = ({
             onUserPanRef.current?.();
         });
         // 静止するたびに表示範囲を取り直す。マーカーの生成をこの範囲内に
-        // 絞ることで、寄った縮尺でも作る DOM が画面周辺のぶんだけで済む
+        // 絞ることで、寄った縮尺でも作る DOM が画面周辺のぶんだけで済む。
+        //
+        // ⚠️ 間引きが必要。現在地への追従中は毎秒 panTo → idle が起きるため、
+        // 毎回マーカー同期を走らせると移動中ずっと再計算し続けることになる。
+        // 余白を半画面ぶん取ってあるので、表示幅の1/4を超えて動いたときだけ
+        // 作り直せば、欠けが見える前に必ず補充される。
         const idleListener = map.addListener('idle', () => {
-            boundsRef.current = map.getBounds() ?? null;
+            const next = map.getBounds() ?? null;
+            const prev = boundsRef.current;
+            boundsRef.current = next;
+            if (!next) return;
+            if (prev) {
+                const pc = prev.getCenter();
+                const nc = next.getCenter();
+                const spanLat = next.getNorthEast().lat() - next.getSouthWest().lat();
+                const spanLng = next.getNorthEast().lng() - next.getSouthWest().lng();
+                const zoomChanged = Math.abs(spanLat - (prev.getNorthEast().lat() - prev.getSouthWest().lat())) > spanLat * 0.1;
+                const movedFar = Math.abs(nc.lat() - pc.lat()) > spanLat * 0.25
+                    || Math.abs(nc.lng() - pc.lng()) > spanLng * 0.25;
+                if (!zoomChanged && !movedFar) return;
+            }
             setViewportVersion((v) => v + 1);
         });
         return () => {
@@ -916,32 +934,86 @@ const MapInner: React.FC<MapComponentProps> = ({
     }, [map, posters, relocatingPoster, selectedPoster, justDroppedPinId, spreadGroupKey, zoom, viewportVersion]);
 
     // Current Location Marker
+    //
+    // マーカーは1つだけ作って使い回し、位置の更新は約0.9秒かけて補間する。
+    // 以前は位置が変わるたびに作り直していたため、青い点が数秒おきに
+    // 瞬間移動して見えた。GoogleMapのように滑らかに滑らせる。
+    // ただし大きく飛んだとき（GPSの復帰など）は補間せず即座に移す。
+    const locationMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+    const locationAnimRef = useRef<number | null>(null);
+    const locationShownRef = useRef<{ lat: number, lng: number } | null>(null);
+
     useEffect(() => {
         if (!map || !currentLocation) return;
 
         const AdvancedMarkerElement = (window.google.maps as any).marker?.AdvancedMarkerElement;
         if (!AdvancedMarkerElement) return;
 
-        const dot = document.createElement('div');
-        dot.style.cssText = `
-            width: 18px; height: 18px;
-            background-color: #3B82F6;
-            border: 3px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
-        `;
+        if (!locationMarkerRef.current) {
+            const dot = document.createElement('div');
+            dot.style.cssText = `
+                width: 18px; height: 18px;
+                background-color: #3B82F6;
+                border: 3px solid white;
+                border-radius: 50%;
+                box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+            `;
+            locationMarkerRef.current = new AdvancedMarkerElement({
+                position: currentLocation,
+                map,
+                content: dot,
+                zIndex: 2000,
+            });
+            locationShownRef.current = currentLocation;
+            return;
+        }
 
-        const marker = new AdvancedMarkerElement({
-            position: currentLocation,
-            map,
-            content: dot,
-            zIndex: 2000,
-        });
+        const marker = locationMarkerRef.current;
+        const from = locationShownRef.current ?? currentLocation;
+        const to = currentLocation;
 
-        return () => {
-            marker.map = null;
+        if (locationAnimRef.current) cancelAnimationFrame(locationAnimRef.current);
+
+        // おおよそ300mを超える移動は補間しない（長い滑走がかえって不自然なため）
+        const far = Math.abs(to.lat - from.lat) > 0.003 || Math.abs(to.lng - from.lng) > 0.003;
+        if (far) {
+            marker.position = to;
+            locationShownRef.current = to;
+            return;
+        }
+
+        const startedAt = performance.now();
+        const DURATION = 900;
+        const step = (now: number) => {
+            const k = Math.min(1, (now - startedAt) / DURATION);
+            const cur = {
+                lat: from.lat + (to.lat - from.lat) * k,
+                lng: from.lng + (to.lng - from.lng) * k,
+            };
+            marker.position = cur;
+            locationShownRef.current = cur;
+            if (k < 1) locationAnimRef.current = requestAnimationFrame(step);
         };
+        locationAnimRef.current = requestAnimationFrame(step);
     }, [map, currentLocation]);
+
+    // 画面から離れるときにマーカーと補間を確実に片付ける
+    useEffect(() => {
+        return () => {
+            if (locationAnimRef.current) cancelAnimationFrame(locationAnimRef.current);
+            if (locationMarkerRef.current) locationMarkerRef.current.map = null;
+            locationMarkerRef.current = null;
+        };
+    }, [map]);
+
+    // 現在地への追従。GoogleMapと同じく、追従中は移動に合わせて地図が
+    // 現在地を中心に動く（ズームは変えない）。地図をドラッグすると解除され、
+    // 現在地ボタンで再開する。panTo は近距離ならアニメーションするため、
+    // 1秒間隔の更新でも連続的に流れて見える。
+    useEffect(() => {
+        if (!map || !followingLocation || !currentLocation) return;
+        map.panTo(currentLocation);
+    }, [map, followingLocation, currentLocation]);
 
     // ==================== ナビゲーション（単一ピンへの経路案内） ====================
     const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
