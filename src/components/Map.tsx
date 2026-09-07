@@ -26,6 +26,8 @@ interface MapComponentProps {
     centerLocation?: { lat: number, lng: number } | null;
     fitBounds?: { southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null;
     currentLocation?: { lat: number, lng: number } | null;
+    /** ズームを変えずに地図を寄せたい地点（仮ピンを中央に出す用） */
+    panTarget?: { lat: number, lng: number } | null;
     pinTypes?: { name: string, color: string }[];
     onLocateMe?: () => void;
     /** 地図を手で動かしたときに呼ぶ。現在地への追従を解除するために使う */
@@ -270,6 +272,7 @@ const MapInner: React.FC<MapComponentProps> = ({
     centerLocation,
     fitBounds,
     currentLocation,
+    panTarget,
     pinTypes = [],
     onLocateMe,
     onUserPan,
@@ -497,6 +500,13 @@ const MapInner: React.FC<MapComponentProps> = ({
             map.setZoom(16);
         }
     }, [map, centerLocation]);
+
+    // 仮ピンを中央に寄せる（ズームは変えない）。
+    // 検索用の centerLocation はズームも16へ戻すため、タップで立てた仮ピンに
+    // 使うと見ていた縮尺が勝手に変わってしまう。用途を分けている
+    useEffect(() => {
+        if (map && panTarget) map.panTo(panTarget);
+    }, [map, panTarget]);
 
     // Fit Bounds
     useEffect(() => {

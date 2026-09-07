@@ -37,16 +37,22 @@ const parseTask = (id: string, d: Record<string, unknown>): Task => ({
     notify: d.notify === true,
 });
 
-export const useTasks = () => {
+/**
+ * @param scope 取得範囲。
+ *   'group'（既定）… 自分の事務所の依頼だけ。マップ・マイページで使う。
+ *     佐藤まさし事務所のメンバーでも自事務所ぶんに絞る（ユーザー指定の仕様）。
+ *   'all' … 佐藤まさし事務所は全事務所ぶん。管理画面で使う。
+ */
+export const useTasks = (scope: 'group' | 'all' = 'group') => {
     const { ready, group, uid, name, isSuperAdmin } = useSession();
     const [fetched, setFetched] = useState<{ items: Task[]; loading: boolean }>({ items: [], loading: true });
 
-    const scopeKey = group ? `${group.id}|${group.allowAll}` : '';
+    const scopeKey = group ? `${group.id}|${group.allowAll}|${scope}` : '';
 
     useEffect(() => {
         if (!ready || !group) return;
 
-        const constraints: QueryConstraint[] = group.allowAll
+        const constraints: QueryConstraint[] = (scope === 'all' && group.allowAll)
             ? []
             : [where('groupId', '==', group.id)];
 

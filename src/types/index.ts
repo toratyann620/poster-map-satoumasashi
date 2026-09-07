@@ -188,6 +188,8 @@ export interface ActivityLog {
     city: string;                 // 市区町村。ポスター本体と同じくグループ権限の判定に使う
     posterType?: string;          // ポスターの種類（例: 佐藤まさし）
     changedBy: string;
+    /** 操作した人の所属グループID。デイリー通知を事務所単位に絞るために使う */
+    changedByGroupId?: string;
     changedAt: number;
     diff?: string;                // 変更サマリー（例: "ステータス: 未設置→設置済"）
     posterStatus?: string[];      // 更新後のステータス配列

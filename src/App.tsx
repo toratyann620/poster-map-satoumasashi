@@ -144,6 +144,8 @@ function App() {
   // 現在地に地図を追従させるか。Googleマップと同じ考え方で、地図を手で動かしたら
   // 解除し、現在地ボタンでまた入る。電車や車での移動中に地図が置いていかれないようにする。
   const [isFollowing, setIsFollowing] = useState(true);
+  // ズームを変えずに地図を寄せたいとき用（mapCenter は検索ジャンプ用でズームも16に変わる）
+  const [panTarget, setPanTarget] = useState<{ lat: number, lng: number } | null>(null);
 
   // 現在地の継続取得。ここでは位置を配るだけにする。
   // 追従中の地図の移動（panTo）は Map 側で行う。以前はここで setMapCenter を
@@ -260,7 +262,12 @@ function App() {
       return;
     }
 
-    // 通常モード: 新規ピン追加フォームを開く
+    // 通常モード: 新規ピン追加フォームを開く。
+    // ⚠️ 先に現在地への追従を切る。追従したままだと、毎秒の panTo と
+    // 競合して地図が滑り続け、立てようとした場所から流されてしまう
+    // （長押しで新規ピンを立てる際に実際に起きた）。仮ピンは中央に寄せる
+    setIsFollowing(false);
+    setPanTarget({ lat, lng });
     if (window.google) {
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } }, (results, status) => {
@@ -647,6 +654,7 @@ function App() {
             relocatingPoster={relocatingPin}
             selectedPoster={selectedPoster}
             centerLocation={mapCenter}
+            panTarget={panTarget}
             onUserPan={() => setIsFollowing(false)}
             followingLocation={isFollowing}
             currentLocation={currentLocation}

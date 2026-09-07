@@ -4,6 +4,7 @@ import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, 
 import { useDailyNotifications, getDayRange } from '../hooks/useDailyNotifications';
 import type { DailyNotificationLog } from '../hooks/useDailyNotifications';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
+import { useSession } from '../hooks/useSession';
 import { computePosterMetrics } from '../lib/posterMetrics';
 import type { Announcement, PosterPin } from '../types';
 
@@ -110,14 +111,19 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters, announceme
     const { logs: badgeLogs, isUnread: isBadgeUnread } = useDailyNotifications(userId, -1);
 
     // パネル表示用
-    const { logs, isUnread, urgentCount, loading, markAsRead, targetDateStr } = useDailyNotifications(userId, offsetDays);
+    const { logs, isUnread, urgentCount, loading, markAsRead, markAllPastRead, targetDateStr } = useDailyNotifications(userId, offsetDays);
 
-    // 新規／撤去／張替え解除／修理解除の日次指標（表示中の日付分）
+    // 新規／撤去／張替え解除／修理解除の日次指標（表示中の日付分）。
+    // ログ一覧と同じく、集計も自分の事務所のメンバーが行った処理だけを対象にする
+    const { group } = useSession();
     const { logsAsc: allLogsAsc } = useAllActivityLogs();
     const dayMetrics = useMemo(() => {
         const range = getDayRange(offsetDays);
-        return computePosterMetrics(posters, allLogsAsc, range.start, range.end + 1);
-    }, [posters, allLogsAsc, offsetDays]);
+        const ownLogs = group
+            ? allLogsAsc.filter((l) => (l.changedByGroupId || 'admin') === group.id)
+            : allLogsAsc;
+        return computePosterMetrics(posters, ownLogs, range.start, range.end + 1);
+    }, [posters, allLogsAsc, offsetDays, group]);
 
     // パネル外クリックで閉じる
     useEffect(() => {
@@ -282,9 +288,15 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters, announceme
                         <ChevronLeft className="w-4 h-4" />
                         1日前
                     </button>
-                    <span className="text-xs font-semibold text-gray-400 dark:text-zinc-500">
-                        左右スワイプで日付切り替え
-                    </span>
+                    <button
+                        onClick={() => {
+                            if (window.confirm('過去の通知をすべて既読にしますか？')) markAllPastRead();
+                        }}
+                        className="text-xs font-semibold text-gray-400 dark:text-zinc-500 hover:text-indigo-500 py-1 px-2 rounded-lg active:bg-gray-100 dark:active:bg-zinc-800 transition-all"
+                        title="過去の通知をすべて既読にする"
+                    >
+                        過去分をまとめて既読
+                    </button>
                     <button
                         onClick={goNextDay}
                         disabled={offsetDays >= 0}

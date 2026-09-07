@@ -38,6 +38,8 @@ const writeActivityLog = async (
         statusRemoved?: string[];
         removedChangedTo?: boolean | null;
     },
+    /** 操作した人の所属グループID。デイリー通知を事務所単位に絞るために使う */
+    changedByGroupId?: string,
 ) => {
     try {
         const isNeedsRepair = Array.isArray(posterStatus) && posterStatus.includes('要修理');
@@ -48,6 +50,7 @@ const writeActivityLog = async (
             posterAddress,
             city: city || '',
             changedBy,
+            changedByGroupId: changedByGroupId || '',
             changedAt: Date.now(),
             diff: diff || '',
             posterType: posterType || '',
@@ -206,7 +209,7 @@ export const usePosterData = () => {
                 updatedBy: userName,
             });
             const diff = `枚数: ${posterData.quantity || 1}枚`;
-            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', city, userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : []);
+            await writeActivityLog('追加', docRef.id, posterData.address || '住所未設定', city, userName, diff, posterData.type || '', Array.isArray(posterData.status) ? posterData.status : [], undefined, group?.id);
             ensureTypeVisible(posterData.type);
             // 立てたばかりのピンを目立たせる演出に使うため、IDを返す
             return docRef.id;
@@ -259,7 +262,7 @@ export const usePosterData = () => {
                 statusAdded,
                 statusRemoved,
                 removedChangedTo,
-            });
+            }, group?.id);
             ensureTypeVisible(posterType);
         } catch (e) {
             console.error('Error updating document: ', e);
@@ -300,6 +303,7 @@ export const usePosterData = () => {
                 '更新', id, current.address || '', current.city || '', userName,
                 `挨拶を記録: ${record.by}（${record.date}）${record.note ? ` / ${record.note}` : ''}`,
                 current.type || '', current.status ?? [],
+                undefined, group?.id,
             );
         } catch (e) {
             console.error('挨拶の記録に失敗しました:', e);
@@ -322,6 +326,7 @@ export const usePosterData = () => {
                 '更新', id, current.address || '', current.city || '', userName,
                 `挨拶の記録を取り消し${target ? `: ${target.by}（${target.date}）` : ''}`,
                 current.type || '', current.status ?? [],
+                undefined, group?.id,
             );
         } catch (e) {
             console.error('挨拶の取り消しに失敗しました:', e);
@@ -396,7 +401,7 @@ export const usePosterData = () => {
                     statusAdded,
                     statusRemoved,
                     removedChangedTo,
-                });
+                }, group?.id);
                 succeeded++;
             } catch (e) {
                 const code = (e as { code?: string })?.code ?? '';
@@ -419,7 +424,7 @@ export const usePosterData = () => {
             const currentPoster = posters.find(p => p.id === id);
             const posterType = currentPoster?.type || '';
             const diff = `枚数: ${currentPoster?.quantity || 1}枚`;
-            await writeActivityLog('削除', id, address || '住所不明', currentPoster?.city || '', userName, diff, posterType);
+            await writeActivityLog('削除', id, address || '住所不明', currentPoster?.city || '', userName, diff, posterType, undefined, undefined, group?.id);
             await deleteDoc(doc(db, COL.posters, id));
         } catch (e) {
             console.error('Error deleting document: ', e);

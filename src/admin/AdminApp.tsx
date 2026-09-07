@@ -134,7 +134,8 @@ const AdminShell: React.FC<{
     const { logs } = useActivityLogs(1000);
     const { logsAsc } = useAllActivityLogs();
     const { announcements } = useAnnouncements();
-    const { tasks, createTask, completeTask, reopenTask, removeTask } = useTasks();
+    // 管理画面は全事務所の依頼を一元管理する（マップ側は自事務所のみ）
+    const { tasks, createTask, completeTask, reopenTask, removeTask } = useTasks('all');
     const { pending: pendingRequests, reviewed: reviewedRequests, review: reviewRequest } = useAccountRequests();
     const session = useSession();
 

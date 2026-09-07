@@ -21,6 +21,7 @@ export const parseActivityLog = (snap: QueryDocumentSnapshot<DocumentData>): Act
         city: d.city || '',
         posterType: d.posterType || '',
         changedBy: d.changedBy || '',
+        changedByGroupId: d.changedByGroupId || '',
         changedAt: d.changedAt || 0,
         diff: d.diff || '',
         posterStatus: d.posterStatus || [],
