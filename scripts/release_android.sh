@@ -27,6 +27,10 @@ OUT="build/upload/postermap-${VERSION}-build${BUILD}.aab"
 echo "── Web アセットをビルド ──"
 npm run build
 
+# 使い方ガイド（/manual）はブラウザ版専用。スクリーンショット約10MBを含み、
+# アプリに同梱するとサイズだけ増えて誰も開けないため、ネイティブへは入れない
+rm -rf dist/manual
+
 echo "── ネイティブへ同期 ──"
 npx cap sync android
 

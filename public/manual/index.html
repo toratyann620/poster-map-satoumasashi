@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ポスターマップ 使い方ガイド</title>
+<style>
+  :root {
+    --ink: #1f2937;
+    --ink-soft: #4b5563;
+    --ink-faint: #9ca3af;
+    --indigo: #4f46e5;
+    --indigo-soft: #eef2ff;
+    --amber-bg: #fffbeb;
+    --amber-line: #f59e0b;
+    --rule: #e5e7eb;
+    --paper: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: #f6f7fb;
+    color: var(--ink);
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    line-height: 1.9;
+    font-size: 15px;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
+
+  /* ── 表紙 ── */
+  .cover {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 2rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .cover .app-name {
+    display: inline-flex; align-items: center; gap: .5rem;
+    font-size: .8rem; font-weight: 700; color: var(--indigo);
+    background: var(--indigo-soft); border-radius: 999px; padding: .3rem .9rem;
+  }
+  h1 { font-size: 1.7rem; margin: .7rem 0 .3rem; line-height: 1.4; }
+  .cover p { margin: .2rem 0; color: var(--ink-soft); font-size: .92rem; }
+
+  /* ── 目次 ── */
+  .toc {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 2rem;
+  }
+  .toc h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+  .toc ol { margin: 0; padding-left: 1.4rem; }
+  .toc > ol > li { margin: .3rem 0; font-weight: 700; }
+  .toc ol ol { padding-left: 1.2rem; font-weight: 400; }
+  .toc a { color: var(--indigo); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── 本文 ── */
+  section {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 1.75rem 1.75rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin: 0 0 1rem;
+    padding-bottom: .6rem;
+    border-bottom: 2px solid var(--indigo);
+  }
+  h2 .no { color: var(--indigo); margin-right: .4rem; }
+  h3 {
+    font-size: 1.05rem;
+    margin: 1.75rem 0 .6rem;
+    padding-left: .7rem;
+    border-left: 4px solid var(--indigo);
+  }
+  p { margin: .5rem 0; }
+  ul, ol { margin: .5rem 0; padding-left: 1.5rem; }
+  li { margin: .25rem 0; }
+  b { color: var(--ink); }
+
+  /* 手順の番号 */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 2.1rem;
+    margin: .55rem 0;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: .22em;
+    width: 1.45rem; height: 1.45rem;
+    background: var(--indigo); color: #fff;
+    border-radius: 50%;
+    font-size: .8rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* 画面写真 */
+  figure { margin: 1rem auto; text-align: center; }
+  figure img {
+    width: 100%; max-width: 300px;
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    box-shadow: 0 4px 16px rgba(31,41,55,.12);
+  }
+  figure.wide img { max-width: 340px; }
+  figcaption {
+    font-size: .8rem; color: var(--ink-faint);
+    margin-top: .5rem;
+  }
+  .fig-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .fig-row figure { flex: 1 1 260px; max-width: 320px; margin: .5rem 0; }
+
+  /* 補足・注意 */
+  .note {
+    background: var(--indigo-soft);
+    border-radius: 10px;
+    padding: .7rem 1rem;
+    font-size: .88rem;
+    margin: .8rem 0;
+  }
+  .caution {
+    background: var(--amber-bg);
+    border-left: 4px solid var(--amber-line);
+    border-radius: 0 10px 10px 0;
+    padding: .7rem 1rem;
+    font-size: .88rem;
+    margin: .8rem 0;
+  }
+
+  table { border-collapse: collapse; width: 100%; margin: .8rem 0; font-size: .88rem; }
+  th, td { border: 1px solid var(--rule); padding: .45rem .7rem; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; white-space: nowrap; }
+
+  .btn-label {
+    display: inline-block;
+    background: #f3f4f6; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 0 .45rem; font-size: .88em; font-weight: 700; white-space: nowrap;
+  }
+
+  .totop { text-align: right; margin-top: 1rem; }
+  .totop a { font-size: .8rem; color: var(--ink-faint); text-decoration: none; }
+
+  /* ── 印刷（PDF化）── */
+  @media print {
+    body { background: #fff; font-size: 10.5pt; }
+    .wrap { max-width: none; padding: 0; }
+    .cover, .toc, section { border: none; border-radius: 0; padding: 0 0 .5rem; margin-bottom: 1.2rem; }
+    section { break-inside: auto; }
+    h2 { break-after: avoid; }
+    section { page-break-before: always; }
+    .toc { page-break-before: always; }
+    figure img { max-width: 230px; box-shadow: none; }
+    .totop { display: none; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="top">
+
+<header class="cover">
+  <span class="app-name">📍 ポスターマップ</span>
+  <h1>使い方ガイド</h1>
+  <p>ポスターの掲示場所を地図で記録・共有するアプリです。</p>
+  <p>このガイドでは、日々の作業で使う機能をひととおり説明します。</p>
+  <p style="margin-top:.8rem; font-size:.8rem; color:var(--ink-faint);">2026年9月8日版（アプリ 1.0.10 準拠）</p>
+</header>
+
+<nav class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#s1">はじめに</a></li>
+    <li><a href="#s2">ログイン</a>
+      <ol>
+        <li><a href="#s2-1">ログインする</a></li>
+        <li><a href="#s2-2">はじめてログインしたとき（パスワード変更）</a></li>
+        <li><a href="#s2-3">アカウントがないとき（新規登録の申請）</a></li>
+      </ol>
+    </li>
+    <li><a href="#s3">地図の見方</a>
+      <ol>
+        <li><a href="#s3-1">画面の各部</a></li>
+        <li><a href="#s3-2">ピンの見方（色と印）</a></li>
+        <li><a href="#s3-3">数字つきの大きなピン（まとまり表示）</a></li>
+        <li><a href="#s3-4">×2 と付いたピン（同じ場所の重なり）</a></li>
+      </ol>
+    </li>
+    <li><a href="#s4">現在地</a></li>
+    <li><a href="#s5">探す・絞り込む</a>
+      <ol>
+        <li><a href="#s5-1">住所や施設名で地図を移動する</a></li>
+        <li><a href="#s5-2">キーワードでピンを探す</a></li>
+        <li><a href="#s5-3">絞り込みオプション</a></li>
+      </ol>
+    </li>
+    <li><a href="#s6">ピンの詳細を見る</a>
+      <ol>
+        <li><a href="#s6-1">詳細を開く</a></li>
+        <li><a href="#s6-2">「詳細」タブ</a></li>
+        <li><a href="#s6-3">「ログ」タブ（変更の記録）</a></li>
+        <li><a href="#s6-4">Googleマップで開く・ナビ</a></li>
+      </ol>
+    </li>
+    <li><a href="#s7">ポスターを登録する</a>
+      <ol>
+        <li><a href="#s7-1">地図をタップして登録する</a></li>
+        <li><a href="#s7-2">検索してから登録する</a></li>
+        <li><a href="#s7-3">入力する項目</a></li>
+        <li><a href="#s7-4">ピン打ちモード（現在地にワンタップ登録）</a></li>
+      </ol>
+    </li>
+    <li><a href="#s8">ポスターを更新する</a>
+      <ol>
+        <li><a href="#s8-1">内容を修正する</a></li>
+        <li><a href="#s8-2">挨拶を記録する</a></li>
+        <li><a href="#s8-3">ピンの位置を直す（長押し）</a></li>
+        <li><a href="#s8-4">撤去する・撤去を取り消す</a></li>
+        <li><a href="#s8-5">削除する</a></li>
+      </ol>
+    </li>
+    <li><a href="#s9">通知（ベル）</a></li>
+    <li><a href="#s10">マイページと依頼</a></li>
+    <li><a href="#s11">困ったときは</a></li>
+  </ol>
+</nav>
+
+<!-- ════════════════════════════════════ -->
+<section id="s1">
+  <h2><span class="no">1.</span>はじめに</h2>
+  <p>ポスターマップは、ポスターの掲示場所を地図上のピンで記録し、事務所のみんなで共有するアプリです。次のことができます。</p>
+  <ul>
+    <li>掲示場所を地図で確認する（写真・状態・所有者の情報つき）</li>
+    <li>新しい掲示場所を登録する／内容を更新する</li>
+    <li>挨拶したことを記録する</li>
+    <li>その日の作業のまとめ（通知）や、自分あての依頼を確認する</li>
+  </ul>
+  <div class="note">
+    スマートフォンのアプリ（iPhone / Android）と、パソコン・タブレットのブラウザ版（<b>poster-map-app.vercel.app</b>）があります。どちらも同じデータを見ています。このガイドの画面はスマートフォンのものですが、操作は共通です。
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s2">
+  <h2><span class="no">2.</span>ログイン</h2>
+
+  <h3 id="s2-1">2-1. ログインする</h3>
+  <figure>
+    <img src="/manual/img/01_login.png" alt="ログイン画面">
+    <figcaption>ログイン画面</figcaption>
+  </figure>
+  <ol class="steps">
+    <li>アプリを開くとログイン画面が表示されます。</li>
+    <li>メールアドレスとパスワードを入力し、<span class="btn-label">ログイン</span> を押します。</li>
+  </ol>
+  <div class="note">
+    一度ログインすると、次回からは自動でログインした状態で開きます。iPhone・Android のパスワード保存（自動入力）にも対応しています。
+  </div>
+
+  <h3 id="s2-2">2-2. はじめてログインしたとき（パスワード変更）</h3>
+  <p>発行された初期パスワードで最初にログインすると、パスワードの変更画面が表示されます。ご自分の新しいパスワード（8文字以上）を設定してからお使いください。</p>
+
+  <h3 id="s2-3">2-3. アカウントがないとき（新規登録の申請）</h3>
+  <figure>
+    <img src="/manual/img/02_signup.png" alt="新規登録の申請">
+    <figcaption>新規登録の申請フォーム</figcaption>
+  </figure>
+  <ol class="steps">
+    <li>ログイン画面の <span class="btn-label">新規登録を申請する</span> を押します。</li>
+    <li>氏名・メールアドレス・グループID（事務所から共有されたもの）を入力して送信します。</li>
+    <li>管理者が承認すると、入力したメールアドレスにIDと初期パスワードが届きます。</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s3">
+  <h2><span class="no">3.</span>地図の見方</h2>
+
+  <h3 id="s3-1">3-1. 画面の各部</h3>
+  <figure class="wide">
+    <img src="/manual/img/03_map.png" alt="地図画面の全体">
+    <figcaption>ログイン後の地図画面</figcaption>
+  </figure>
+  <table>
+    <tr><th>画面上部</th><td>「マップを住所や施設名で移動…」の検索窓と、キーワード検索・絞り込みオプション。右上には自分の<b>所属事務所名</b>が表示されます。</td></tr>
+    <tr><th>画面右</th><td>コンパス（北向きに戻す）と、<b>現在地ボタン</b>。</td></tr>
+    <tr><th>右下</th><td>佐藤まさしポスターの<b>総枚数</b>と先週からの増減。</td></tr>
+    <tr><th>左下</th><td>歯車（⚙）ボタン。押すとメニューが開きます（新規追加・通知・ピン打ちモード・マイページ・ログアウト）。</td></tr>
+  </table>
+  <figure>
+    <img src="/manual/img/15_menu.png" alt="歯車メニュー">
+    <figcaption>歯車を押すと開くメニュー</figcaption>
+  </figure>
+
+  <h3 id="s3-2">3-2. ピンの見方（色と印）</h3>
+  <ul>
+    <li>ピンの<b>色は種類</b>（誰のポスターか）を表します。佐藤まさし＝青、その他＝グレー など。ピンには種類の頭文字が入ります。</li>
+    <li>ピンの右下に付く小さな印は状態です:
+      <b>✓（緑）</b>＝設置済、<b>⚠️</b>＝張替え予定、<b>🚨</b>＝要修理、<b>🤝</b>＝挨拶の記録あり。</li>
+    <li>薄く表示されているピンは「未設置」または「撤去済み」です。</li>
+  </ul>
+
+  <h3 id="s3-3">3-3. 数字つきの大きなピン（まとまり表示）</h3>
+  <figure>
+    <img src="/manual/img/04_aggregate.png" alt="まとまり表示">
+    <figcaption>地図を引くと、町ごとに件数がまとまります</figcaption>
+  </figure>
+  <p>地図を広い範囲まで引くと、ピンは<b>町ごとの件数</b>にまとまります。数字はその町のポスター件数です。タップするとその町に寄って、個別のピンが表示されます。</p>
+
+  <h3 id="s3-4">3-4. ×2 と付いたピン（同じ場所の重なり）</h3>
+  <figure>
+    <img src="/manual/img/21_overlap_spread.png" alt="重なりピンの展開">
+    <figcaption>×2 のピンをタップすると横に展開されます</figcaption>
+  </figure>
+  <p>まったく同じ場所に複数のポスターが登録されていると、赤い <b>×2</b> のような数字が付きます。タップするとピンが横に展開されるので、見たい方をもう一度タップしてください。中央の × で展開を閉じます。</p>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s4">
+  <h2><span class="no">4.</span>現在地</h2>
+  <ul>
+    <li>アプリを開くと、地図は<b>現在地を中心に自動で追従</b>します。移動すると青い点と地図が一緒に動きます（Googleマップと同じ動きです）。</li>
+    <li><b>地図を指でスライドすると追従は解除</b>され、自由に地図を見られます。現在地の青い点はそのまま動き続けます。</li>
+    <li>右側の<b>現在地ボタン（紙飛行機のマーク）</b>を押すと、現在地が中央に戻り、追従が再開します。追従中はボタンが紫色になります。</li>
+    <li>コンパスを押すと、地図の向きが北向きに戻ります。</li>
+  </ul>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s5">
+  <h2><span class="no">5.</span>探す・絞り込む</h2>
+
+  <h3 id="s5-1">5-1. 住所や施設名で地図を移動する</h3>
+  <p>いちばん上の「マップを住所や施設名で移動…」に住所や建物名を入力すると、候補が表示されます。選ぶとその場所へ地図が移動し、赤いピン（仮ピン）が立ちます。そのまま登録に進むこともできます（<a href="#s7-2">7-2</a>）。</p>
+
+  <h3 id="s5-2">5-2. キーワードでピンを探す</h3>
+  <p>「住所・備考でキーワード検索…」に文字を入力すると、住所や備考にその文字を含む<b>登録済みのピンだけ</b>が地図に表示されます。「クリア」で解除します。</p>
+
+  <h3 id="s5-3">5-3. 絞り込みオプション</h3>
+  <figure>
+    <img src="/manual/img/05_filter.png" alt="絞り込みオプション">
+    <figcaption>絞り込みオプションを開いたところ</figcaption>
+  </figure>
+  <p>「絞り込みオプション」を開くと、<b>種類・ステータス・タグ</b>でピンを絞り込めます。選んだものだけが地図に表示されます。</p>
+  <div class="caution">
+    <b>最初は「佐藤まさし」のピンだけが表示されています。</b>動作を軽くするため、初期状態で種類の絞り込みがかかっています。ほかの種類も見たいときは、絞り込みオプションで種類を追加してください。選んだ内容はお使いの端末に記憶されます。<br>
+    絞り込みが効いている間は、絞り込みオプションの横に紫の「<b>絞り込み中</b>」の札が表示されます。「ピンが表示されない」と感じたら、まずこの札を確認してください。
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s6">
+  <h2><span class="no">6.</span>ピンの詳細を見る</h2>
+
+  <h3 id="s6-1">6-1. 詳細を開く</h3>
+  <figure>
+    <img src="/manual/img/06_pin_peek.png" alt="ピンをタップした直後">
+    <figcaption>ピンをタップすると下から詳細が出ます</figcaption>
+  </figure>
+  <p>ピンをタップすると、画面の下から詳細が表示されます。<b>上に引き上げると全体</b>が見られ、下に下げると地図に戻ります。上部で「詳細」と「ログ」を切り替えられます。</p>
+
+  <h3 id="s6-2">6-2. 「詳細」タブ</h3>
+  <figure>
+    <img src="/manual/img/07_pin_detail.png" alt="詳細タブ">
+    <figcaption>写真・ステータス・所在地などが確認できます</figcaption>
+  </figure>
+  <p>写真、種類、ステータス、所在地、設置素材、枚数、備考、所有者、連絡先、特記事項、挨拶の記録、登録者・更新者が確認できます。写真が複数あるときは、下の小さな画像をタップして切り替えます。</p>
+
+  <h3 id="s6-3">6-3. 「ログ」タブ（変更の記録）</h3>
+  <figure>
+    <img src="/manual/img/10_log.png" alt="ログタブ">
+    <figcaption>そのピンを「誰が・いつ・何をしたか」の記録</figcaption>
+  </figure>
+  <p>「ログ」タブでは、そのピンに対して<b>誰が・いつ・どんな操作をしたか</b>が新しい順に表示されます。登録・修正・挨拶の記録などがすべて残ります。</p>
+
+  <h3 id="s6-4">6-4. Googleマップで開く・ナビ</h3>
+  <figure>
+    <img src="/manual/img/11_actions.png" alt="詳細下部のボタン">
+    <figcaption>詳細の下部にあるボタン</figcaption>
+  </figure>
+  <ul>
+    <li><span class="btn-label">Googleマップ</span> … その場所を Googleマップアプリで開きます（経路検索などに）。</li>
+    <li><span class="btn-label">ナビ開始</span> … アプリ内でそのピンまでの経路案内を表示します。</li>
+    <li><span class="btn-label">修正</span> <span class="btn-label">撤去</span> <span class="btn-label">削除</span> … <a href="#s8">8章</a>を参照してください。</li>
+  </ul>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s7">
+  <h2><span class="no">7.</span>ポスターを登録する</h2>
+
+  <h3 id="s7-1">7-1. 地図をタップして登録する</h3>
+  <div class="fig-row">
+    <figure>
+      <img src="/manual/img/13_temp_pin.png" alt="仮ピン">
+      <figcaption>タップした場所に赤い仮ピンが立ちます</figcaption>
+    </figure>
+    <figure>
+      <img src="/manual/img/14_new_sheet.png" alt="新規登録フォーム">
+      <figcaption>新規登録フォーム</figcaption>
+    </figure>
+  </div>
+  <ol class="steps">
+    <li>登録したい場所を地図上でタップします。赤い仮ピンが立ち、登録フォームが開きます。</li>
+    <li>フォームをいったん閉じても、仮ピンの下の案内から <span class="btn-label">新規登録する →</span> でいつでも再開できます。仮ピンをやめるときは案内の × を押します。</li>
+    <li>内容を入力して保存すると、地図にピンが追加されます。</li>
+  </ol>
+  <div class="note">
+    仮ピンは<b>2秒長押しすると移動モード</b>になり、地図をタップし直して位置を微調整できます。
+  </div>
+
+  <h3 id="s7-2">7-2. 検索してから登録する</h3>
+  <p>上の検索窓で住所や施設名を検索すると、その場所に赤い仮ピンが立ちます。あとの手順は 7-1 と同じです。住所は自動で入力されます。</p>
+
+  <h3 id="s7-3">7-3. 入力する項目</h3>
+  <table>
+    <tr><th>写真</th><td>その場で撮影、または端末の写真から選択（複数可）。</td></tr>
+    <tr><th>種類</th><td>誰のポスターか（単一選択）。</td></tr>
+    <tr><th>ステータス</th><td>設置済・張替え予定・未設置・要修理・その他（複数選択可）。</td></tr>
+    <tr><th>カスタムタグ</th><td>自由なタグを付けられます（絞り込みに使えます）。</td></tr>
+    <tr><th>所在地</th><td>地図の位置から自動で入ります。必要なら手で直せます。</td></tr>
+    <tr><th>設置素材・枚数</th><td>フェンス・針金など／その場所の枚数（初期値1）。</td></tr>
+    <tr><th>備考・所有者・連絡先・特記事項</th><td>必要に応じて。</td></tr>
+  </table>
+
+  <h3 id="s7-4">7-4. ピン打ちモード（現在地にワンタップ登録）</h3>
+  <figure>
+    <img src="/manual/img/20_quick_mode.png" alt="ピン打ちモード">
+    <figcaption>ピン打ちモード</figcaption>
+  </figure>
+  <p>ポスターを貼りながら移動する日は、歯車メニューの <b>⚡（ピン打ちモード）</b>が便利です。あらかじめ「種類・ステータス・タグ」の組み合わせを最大3つ登録しておくと、<b>①②③のボタンを押すだけで現在地にピンが立ちます</b>（住所も自動で入ります）。</p>
+  <ol class="steps">
+    <li>歯車メニュー → ⚡ でピン打ちモードに入ります。</li>
+    <li>はじめて使うときは「設定」から、よく使う登録内容（例: 佐藤まさし・設置済）を1〜3番に登録します。</li>
+    <li>現地に着いたら番号のボタンを押すだけ。登録内容は端末に記憶されます。</li>
+  </ol>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s8">
+  <h2><span class="no">8.</span>ポスターを更新する</h2>
+
+  <h3 id="s8-1">8-1. 内容を修正する</h3>
+  <p>ピンの詳細を開き <span class="btn-label">修正</span> を押すと、登録時と同じフォームで内容を変更できます。写真の追加もここから行います。</p>
+
+  <h3 id="s8-2">8-2. 挨拶を記録する</h3>
+  <div class="fig-row">
+    <figure>
+      <img src="/manual/img/08_greeting.png" alt="挨拶の記録欄">
+      <figcaption>詳細タブの「挨拶」欄</figcaption>
+    </figure>
+    <figure>
+      <img src="/manual/img/09_greeting_dialog.png" alt="挨拶の入力">
+      <figcaption>「挨拶した」を押したときの入力画面</figcaption>
+    </figure>
+  </div>
+  <ol class="steps">
+    <li>ピンの詳細（特記事項の下）の <span class="btn-label">挨拶した</span> を押します。</li>
+    <li>「挨拶した人」には自分の名前、「挨拶した日」には今日の日付が最初から入っています。<b>あとから入力する場合は日付を変更できます。</b>備考も残せます。</li>
+    <li><span class="btn-label">記録する</span> で保存。記録は詳細に一覧で残り、右端の矢印で取り消しもできます。</li>
+  </ol>
+  <div class="note">
+    「旧データ」と付いた記録は、以前の「挨拶済」ステータスから引き継いだものです。挨拶した人・日付が特定できなかったものは「（記録なし）」になっています。
+  </div>
+
+  <h3 id="s8-3">8-3. ピンの位置を直す（長押し）</h3>
+  <ol class="steps">
+    <li>地図上のピンを<b>2秒長押し</b>します（ピンが浮き上がります）。</li>
+    <li>正しい場所を地図上でタップすると、位置が確定します。住所も引き直されます。</li>
+  </ol>
+
+  <h3 id="s8-4">8-4. 撤去する・撤去を取り消す</h3>
+  <figure>
+    <img src="/manual/img/12_removal.png" alt="撤去の理由入力">
+    <figcaption>撤去時は理由を残せます</figcaption>
+  </figure>
+  <p>ポスターを外したときは、詳細の <span class="btn-label">撤去</span> を押します。理由（所有者からの申し出、破損 など）を選ぶか入力して記録します。撤去済みのピンは薄い表示になり、枚数の集計から外れます。誤って撤去した場合は <span class="btn-label">撤去を解除</span> で戻せます。</p>
+
+  <h3 id="s8-5">8-5. 削除する</h3>
+  <div class="caution">
+    <span class="btn-label">削除</span> はピンの記録そのものを消します。<b>元に戻せません。</b>「ポスターを外したが場所の記録は残したい」ときは、削除ではなく<b>撤去</b>を使ってください。
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s9">
+  <h2><span class="no">9.</span>通知（ベル）</h2>
+  <div class="fig-row">
+    <figure>
+      <img src="/manual/img/16_notify_daily.png" alt="更新タブ">
+      <figcaption>「更新」タブ（日ごとの作業まとめ）</figcaption>
+    </figure>
+    <figure>
+      <img src="/manual/img/17_notify_news.png" alt="お知らせタブ">
+      <figcaption>「お知らせ」タブ</figcaption>
+    </figure>
+  </div>
+  <p>歯車メニューの<b>ベル</b>を押すと通知が開きます。未読があるとベルに赤い数字が付きます。</p>
+  <ul>
+    <li><b>更新</b> … その日に行われたポスターの登録・変更のまとめです。上部に新規・撤去・張替え・修理の件数、下に1件ずつの内容が並びます。「1日前／1日後」や左右スワイプで日付を切り替えられます。<b>表示されるのは自分の事務所のメンバーが行った作業だけ</b>です。</li>
+    <li><b>お知らせ</b> … 事務局からの連絡が届きます。開いた時点で既読になります。</li>
+  </ul>
+  <div class="note">
+    「更新」の未読が溜まったときは、日付ナビ中央の「<b>過去分をまとめて既読</b>」で一括既読にできます。
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s10">
+  <h2><span class="no">10.</span>マイページと依頼</h2>
+  <div class="fig-row">
+    <figure>
+      <img src="/manual/img/18_mypage.png" alt="マイページ">
+      <figcaption>マイページ</figcaption>
+    </figure>
+    <figure>
+      <img src="/manual/img/19_task_compose.png" alt="作業を依頼する">
+      <figcaption>「作業を依頼する」画面</figcaption>
+    </figure>
+  </div>
+  <p>歯車メニューの<b>マイページ</b>では、次のことができます。</p>
+  <ul>
+    <li><b>自分あての依頼を確認する</b> … 担当に指定された依頼と、事務所全員あての依頼が表示されます。作業が済んだら「完了にする」を押します。完了時に結果（例: 張り替え済み。1枚破損）を残すこともでき、完了済み一覧から振り返れます。</li>
+    <li><b>作業を依頼する</b> … 「〇〇の掲示板を張り替えてほしい」といった依頼を出せます。種類（設置・撤去・張替え・修理・その他）、内容、対象のポスター（任意）、担当者（決めなければ事務所全員あて）、期限を指定できます。プッシュ通知で担当者に届きます。</li>
+    <li><b>自分の作業履歴</b> … 自分がこれまで行った登録・変更の記録を確認できます。</li>
+  </ul>
+  <div class="note">
+    依頼が届くと、アプリのプッシュ通知でもお知らせします。依頼・通知に表示されるのは<b>自分の事務所のもの</b>だけです。
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ -->
+<section id="s11">
+  <h2><span class="no">11.</span>困ったときは</h2>
+  <table>
+    <tr>
+      <th>ピンが表示されない</th>
+      <td>「<b>絞り込み中</b>」の札が出ていないか確認してください。絞り込みオプションの「クリア」で全件表示に戻ります（初期状態は佐藤まさしのみ表示です）。</td>
+    </tr>
+    <tr>
+      <th>地図が現在地に戻ってしまう</th>
+      <td>現在地への追従が有効です。地図をスライドすると解除されます。</td>
+    </tr>
+    <tr>
+      <th>ログインできない</th>
+      <td>メールアドレスとパスワードをご確認のうえ、解決しない場合は管理者（事務局）へご連絡ください。</td>
+    </tr>
+    <tr>
+      <th>「新しいバージョンがあります」と表示される</th>
+      <td>案内に従ってアプリを更新してください（iPhone は TestFlight、Android は Google Play から）。ブラウザ版はページを開き直すだけで最新になります。</td>
+    </tr>
+    <tr>
+      <th>登録・保存ができない</th>
+      <td>担当エリア・担当種類の範囲外の場所には登録できない仕組みになっています。心当たりがない場合は管理者へご連絡ください。</td>
+    </tr>
+  </table>
+  <p style="margin-top:1.2rem;">そのほか不明な点は、事務局までお問い合わせください。</p>
+  <div class="totop"><a href="#top">↑ 目次にもどる</a></div>
+</section>
+
+</div>
+</body>
+</html>
