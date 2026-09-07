@@ -63,7 +63,9 @@ export const ChangePassword: React.FC<{ uid: string }> = ({ uid }) => {
     const inputCls = 'appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors text-base';
 
     return (
-        <div className="min-h-dvh w-screen bg-gray-100 dark:bg-zinc-950 flex flex-col justify-center items-center py-12 px-6">
+        // Login と同じ理由で、外側でスクロールを受け持つ（html/body は overflow: hidden）
+        <div className="h-dvh w-screen overflow-y-auto bg-gray-100 dark:bg-zinc-950">
+        <div className="min-h-full flex flex-col justify-center items-center py-12 px-6">
             <div className="w-full sm:max-w-md">
                 <div className="flex justify-center text-indigo-600 dark:text-indigo-400">
                     <KeyRound className="w-12 h-12" />
@@ -150,6 +152,7 @@ export const ChangePassword: React.FC<{ uid: string }> = ({ uid }) => {
                     </form>
                 </div>
             </div>
+        </div>
         </div>
     );
 };

@@ -444,9 +444,11 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                     {/* ===== 閲覧モード ===== */}
                     {isViewMode && (
                         <>
-                            {/* 詳細とログの切り替え。展開したときだけ出す
-                                （たたんだ状態では住所とステータスしか見えないため） */}
-                            {sheetState === 'expanded' && poster?.id && (
+                            {/* 詳細とログの切り替え。
+                                ⚠️ 半開き（peek）でも必ず出すこと。以前は展開時だけ出していたが、
+                                実機ではシートを引き上げる操作をほとんどしないため、
+                                タブも挨拶ボタンも「存在しない」ように見えていた（実際に報告があった）。 */}
+                            {poster?.id && (
                                 <div className="flex gap-1 p-1 mt-2 rounded-xl bg-gray-100 dark:bg-zinc-800">
                                     {([
                                         { id: 'detail' as const, label: '詳細', Icon: FileText },
@@ -465,7 +467,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 </div>
                             )}
 
-                            {sheetState === 'expanded' && viewTab === 'log' && poster?.id ? (
+                            {viewTab === 'log' && poster?.id ? (
                                 <PinLogTab posterId={poster.id} />
                             ) : (
                             <>
@@ -539,8 +541,9 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                 </div>
                                 <div><p className="text-sm text-gray-500 dark:text-gray-400">特記事項</p><p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{specialNote || '-'}</p></div>
 
-                                {/* 挨拶の記録。ステータスではなく独立した記録として持つ */}
-                                {sheetState === 'expanded' && poster?.id && onRecordGreeting && onUndoGreeting && (
+                                {/* 挨拶の記録。ステータスではなく独立した記録として持つ。
+                                    タブと同じ理由で、半開きでも描画する（スクロールで届く） */}
+                                {poster?.id && onRecordGreeting && onUndoGreeting && (
                                     <GreetingSection
                                         greetings={poster.greetings ?? []}
                                         currentUserName={currentUserName}

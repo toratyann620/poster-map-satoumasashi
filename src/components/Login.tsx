@@ -32,7 +32,13 @@ export const Login: React.FC = () => {
     };
 
     return (
-        <div className="min-h-dvh w-screen bg-gray-100 dark:bg-zinc-950 flex flex-col justify-center items-center py-12 px-6 lg:px-8">
+        // ⚠️ 外側でスクロールを受け持つ。html/body は overflow: hidden のため、
+        // ここで overflow-y-auto にしないと画面より縦に長い内容（新規登録の申請
+        // フォームや、キーボードが出た状態）が切れたまま一切動かせなくなる。
+        // 中央寄せは min-h-full の内側で行う。高さ固定の要素に justify-center を
+        // 付けると、あふれた分が上下に切れてスクロールでも届かない。
+        <div className="h-dvh w-screen overflow-y-auto bg-gray-100 dark:bg-zinc-950">
+        <div className="min-h-full flex flex-col justify-center items-center py-12 px-6 lg:px-8">
             <div className="w-full sm:max-w-md">
                 <div className="flex justify-center text-indigo-600 dark:text-indigo-400">
                     <MapPin className="w-12 h-12" />
@@ -152,6 +158,7 @@ export const Login: React.FC = () => {
                 </div>
                 )}
             </div>
+        </div>
         </div>
     );
 };
