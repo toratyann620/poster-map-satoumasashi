@@ -33,12 +33,17 @@ const CITY_LABELS = [
 const shortenAddress = (address) => {
     if (!address) return '(住所不明)';
     let s = String(address).trim();
+    // 前置き（「日本、」と郵便番号）を先に除去する。
+    // ⚠️ これが無いと「〒243-0211 …」のような住所は、下の
+    // 「最初の数字以降を落とす」処理で「〒」だけが残ってしまう
+    // （日次レポートに「〒 1箇所」と出た実例がある）。
+    s = s.replace(/^日本[、,]?\s*/, '').replace(/^〒?\s*\d{3}[-ー−‐]?\d{4}\s*/, '');
     // 先頭の都道府県を除去
     s = s.replace(/^\S*?[都道府県]/, '');
     // 最初に現れる数字（全角/半角）以降（丁目・番地・号等）を除去
     const idx = s.search(/[0-9０-９]/);
     if (idx > 0) s = s.slice(0, idx);
-    return s.trim() || address.trim();
+    return s.trim() || String(address).trim();
 };
 
 // 件数を住所（短縮後）ごとに集計し、多い順に並べる

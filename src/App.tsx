@@ -25,6 +25,7 @@ import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
 import { watchPosition, getCurrentPosition } from './lib/geolocation';
+import { normalizeAddress, looksLikeAddress } from './lib/address';
 import type { PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings, ClipboardList, Zap } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -209,8 +210,12 @@ function App() {
     setIsFollowing(false);
     setMapCenter({ lat, lng });
 
-    // 検索した場所の名前と住所情報を保持して、仮ピン（赤い跳ねるピン）を表示
-    const formattedAddress = address ? address.replace(/^日本、/, '') : '';
+    // 検索した場所の名前と住所情報を保持して、仮ピン（赤い跳ねるピン）を表示。
+    // POIでは formatted_address に施設名だけが入っていることがある
+    // （「しもさとみ」が住所として保存された実例）。住所の体裁でなければ
+    // 空にしておき、ピンを開いたときの逆ジオコーディングで引き直す
+    const normalized = normalizeAddress(address);
+    const formattedAddress = looksLikeAddress(normalized) ? normalized : '';
     const mapsUrl = url || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 
     setSelectedPoster({
@@ -262,7 +267,9 @@ function App() {
         let addressStr = '';
         let cityStr = '';
         if (status === 'OK' && results && results[0]) {
-          addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+          // ⚠️ 以前は最後の空白区切りだけを取っていたが、建物名付きの住所では
+          // 建物名だけが残ってしまう（「シェブー板橋」等の実例あり）。前置きだけ外す
+          addressStr = normalizeAddress(results[0].formatted_address);
           // 市区町村はグループ権限の判定に使うため、住所文字列ではなく
           // ジオコーディングの構造化データ（locality）から確定させる
           cityStr = cityFromGeocoderResult(results[0]);
@@ -297,7 +304,9 @@ function App() {
           let addressStr = '';
           let cityStr = '';
           if (status === 'OK' && results && results[0]) {
-            addressStr = results[0].formatted_address.replace(/^日本、/, '').split(' ').pop() || '';
+            // ⚠️ 以前は最後の空白区切りだけを取っていたが、建物名付きの住所では
+          // 建物名だけが残ってしまう（「シェブー板橋」等の実例あり）。前置きだけ外す
+          addressStr = normalizeAddress(results[0].formatted_address);
             cityStr = cityFromGeocoderResult(results[0]);
           }
           setSelectedPoster(prev => ({ ...prev, address: addressStr, city: cityStr }));
@@ -426,7 +435,7 @@ function App() {
           const res = await geocoder.geocode({ location: { lat, lng } });
           const best = res.results?.[0];
           if (best) {
-            address = best.formatted_address.replace(/^日本、?\s*/, '');
+            address = normalizeAddress(best.formatted_address);
             city = cityFromGeocoderResult(best) || cityFromAddress(address);
           }
         } catch { /* 下の手当てに任せる */ }

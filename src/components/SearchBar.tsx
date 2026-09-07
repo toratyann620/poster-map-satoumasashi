@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Search, Filter, MapPin, X } from 'lucide-react';
 import type { FilterState } from '../types';
 import { POSTER_STATUS_OPTIONS, GREETED_FILTER } from '../types';
+import { normalizeAddress } from '../lib/address';
 
 interface SearchBarProps {
     filter: FilterState;
@@ -61,7 +62,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                 const lat = loc.lat();
                 const lng = loc.lng();
                 const name = address;
-                const formattedAddress = results[0].formatted_address.replace(/^日本、/, '');
+                const formattedAddress = normalizeAddress(results[0].formatted_address);
                 const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
                 
                 onPlaceSelect(lat, lng, name, formattedAddress, url);
