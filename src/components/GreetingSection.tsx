@@ -107,7 +107,18 @@ export const GreetingSection: React.FC<{
     onUndo: (greetingId: string) => Promise<void>;
     /** 閲覧のみ（新規追加前のピンなど、まだ記録できない場合） */
     readOnly?: boolean;
-}> = ({ greetings, currentUserName, onRecord, onUndo, readOnly = false }) => {
+    /**
+     * 「仮登録」モード。編集・新規登録フォームで使う。
+     * true のときは、その場では保存せず親に持たせておき、
+     * フォームの「保存する」を押したときにまとめて確定させる。
+     * 詳細画面（閲覧モード）では false で、押した時点で即座に保存する。
+     */
+    pending?: boolean;
+    /** 仮登録の一覧（まだ保存されていないぶん） */
+    pendingItems?: { by: string; date: string; note: string }[];
+    /** 仮登録を1件取り消す */
+    onRemovePending?: (index: number) => void;
+}> = ({ greetings, currentUserName, onRecord, onUndo, readOnly = false, pending = false, pendingItems = [], onRemovePending }) => {
     const [open, setOpen] = useState(false);
     const [undoing, setUndoing] = useState<string | null>(null);
 
@@ -161,8 +172,44 @@ export const GreetingSection: React.FC<{
                         </li>
                     ))}
                 </ul>
-            ) : (
+            ) : pendingItems.length === 0 ? (
                 <p className="text-gray-900 dark:text-gray-100 mb-2">まだ挨拶の記録はありません</p>
+            ) : null}
+
+            {/* 仮登録（保存するまで確定しない）。確定済みと見分けが付くよう破線にする */}
+            {pendingItems.length > 0 && (
+                <ul className="space-y-1.5 mb-2">
+                    {pendingItems.map((g, i) => (
+                        <li key={i} className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-dashed border-amber-300 dark:border-amber-800">
+                            <Handshake className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm text-gray-900 dark:text-gray-100">
+                                    <span className="font-semibold">{g.by}</span>
+                                    <span className="ml-2 text-gray-600 dark:text-gray-400">{formatDate(g.date)}</span>
+                                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-500 text-white align-middle font-bold">
+                                        保存前
+                                    </span>
+                                </p>
+                                {g.note && (
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap flex items-start gap-1">
+                                        <StickyNote className="w-3 h-3 mt-0.5 shrink-0" />
+                                        {g.note}
+                                    </p>
+                                )}
+                            </div>
+                            <button type="button" onClick={() => onRemovePending?.(i)}
+                                title="この仮登録を取り消す"
+                                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-zinc-800 transition-colors">
+                                <Undo2 className="w-4 h-4" />
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {pending && pendingItems.length > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                    「保存する」を押すと確定します。
+                </p>
             )}
 
             {!readOnly && (

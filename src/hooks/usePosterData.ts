@@ -222,6 +222,22 @@ export const usePosterData = () => {
 
     const updatePoster = async (id: string, updates: Partial<PosterPin>) => {
         const currentPoster = posters.find(p => p.id === id);
+        // 編集フォームで入力された「保存前」の挨拶を、ここで確定させる。
+        // ポスター本体と同じ書き込みに含めることで、保存に失敗したのに
+        // 挨拶だけ残る、という中途半端な状態を作らない
+        const pending = (updates as { pendingGreetings?: { by: string; date: string; note: string }[] }).pendingGreetings;
+        if (pending?.length) {
+            const added: GreetingRecord[] = pending.map((g, i) => ({
+                id: `g_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+                by: g.by.trim() || userName,
+                date: g.date,
+                note: g.note.trim(),
+                recordedBy: userName,
+                recordedAt: Date.now(),
+            }));
+            updates = { ...updates, greetings: [...(currentPoster?.greetings ?? []), ...added] };
+        }
+        delete (updates as { pendingGreetings?: unknown }).pendingGreetings;
         try {
             const posterRef = doc(db, COL.posters, id);
             // 種類情報: updates に含まれる場合はそれを優先、なければ現在の state から取得

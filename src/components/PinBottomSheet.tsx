@@ -147,6 +147,8 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [selectedImgIdx, setSelectedImgIdx] = useState(0);
     const [recalcLatLng, setRecalcLatLng] = useState(false);
+    // 編集・新規登録フォームで入力した挨拶。保存を押すまで確定させない
+    const [pendingGreetings, setPendingGreetings] = useState<{ by: string; date: string; note: string }[]>([]);
     // 直前に開いていたピン。同じピンの更新で入力欄や開閉状態を巻き戻さないために持つ
     const openedPosterKey = useRef<string | null>(null);
 
@@ -180,6 +182,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             setNewTagInput('');
             setSelectedImgIdx(0);
             setRecalcLatLng(false);
+            setPendingGreetings([]);
 
             // ⚠️ 開閉とタブは、別のピンを開いたときだけ初期化する。
             // 毎回戻すと、挨拶を記録した直後にシートが折りたたまれてしまう
@@ -338,8 +341,12 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
             specialNote,
             imageUrl: imageUrls.length > 0 ? imageUrls[0] : imageUrl,
             imageUrls,
-            tags: finalTags
-        }, !isNew && recalcLatLng);
+            tags: finalTags,
+            // 仮登録の挨拶を、ポスターの保存と一緒に確定させる。
+            // 別々に書くと、保存に失敗したのに挨拶だけ残る状態が起こりうる
+            pendingGreetings: pendingGreetings.length > 0 ? pendingGreetings : undefined,
+        } as Partial<PosterPin>, !isNew && recalcLatLng);
+        setPendingGreetings([]);
     };
 
     const formatDate = (ts?: number) => {
@@ -870,6 +877,21 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                             <div className="mt-4">
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">特記事項</label>
                                 <textarea className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" rows={2} value={specialNote} onChange={(e) => setSpecialNote(e.target.value)} placeholder="特記事項..." />
+                            </div>
+
+                            {/* 挨拶。編集・新規登録の途中では「保存前」の仮登録として持っておき、
+                                下の「保存する」を押したときにポスターと一緒に確定させる。
+                                その場で書き込むと、保存をやめたのに挨拶だけ残ることになる */}
+                            <div className="mt-4">
+                                <GreetingSection
+                                    greetings={poster?.greetings ?? []}
+                                    currentUserName={currentUserName}
+                                    pending
+                                    pendingItems={pendingGreetings}
+                                    onRemovePending={(i) => setPendingGreetings(prev => prev.filter((_, k) => k !== i))}
+                                    onRecord={async (input) => { setPendingGreetings(prev => [...prev, input]); }}
+                                    onUndo={async () => { /* 確定済みの取り消しは詳細画面から */ }}
+                                />
                             </div>
 
                             <div className="flex gap-4 pt-4 mt-6 border-t border-gray-100 dark:border-zinc-800">
