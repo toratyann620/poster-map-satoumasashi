@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, ChevronRight, Megaphone } from 'lucide-react';
 import { useDailyNotifications, getDayRange } from '../hooks/useDailyNotifications';
 import type { DailyNotificationLog } from '../hooks/useDailyNotifications';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
 import { computePosterMetrics } from '../lib/posterMetrics';
-import type { PosterPin } from '../types';
+import type { Announcement, PosterPin } from '../types';
 
 interface Props {
     userId: string | null;
     posters: PosterPin[];
+    /**
+     * お知らせ。以前は別のメガホンボタンだったが、設定メニューの整理で
+     * デイリー通知と1つのパネルに統合した（「更新」「お知らせ」の2タブ）。
+     */
+    announcements: Announcement[];
+    announcementsUnread: number;
+    markAnnouncementsRead: () => void;
 }
 
 const formatTime = (ts: number) => {
@@ -88,10 +95,13 @@ const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
     );
 };
 
-export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
+export const NotificationPanel: React.FC<Props> = ({ userId, posters, announcements, announcementsUnread, markAnnouncementsRead }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [offsetDays, setOffsetDays] = useState(-1); // 初期値は昨日
     const panelRef = useRef<HTMLDivElement>(null);
+
+    // 「更新」（ポスターの変更）と「お知らせ」（事務局からの連絡）の切り替え
+    const [tab, setTab] = useState<'daily' | 'news'>('daily');
 
     // スワイプ判定用
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -124,7 +134,14 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
 
     const handleOpen = () => {
         setOffsetDays(-1); // 開くときは昨日をデフォルトにする
+        setTab('daily');
         setIsOpen(true);
+    };
+
+    // お知らせタブを開いた時点で既読にする（従来のメガホンと同じ方式）
+    const openNewsTab = () => {
+        setTab('news');
+        markAnnouncementsRead();
     };
 
     const handleMarkAsRead = async () => {
@@ -188,29 +205,72 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
                     <div className="w-10 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse" />
                 </div>
 
-                {/* ヘッダー */}
-                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800">
-                    <div className="flex items-center gap-1.5">
-                        <Bell className="w-5 h-5 text-indigo-500 shrink-0" />
-                        <div>
-                            <h2 className="text-base font-bold text-gray-900 dark:text-white leading-tight">デイリー通知</h2>
-                            <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">
-                                {formatDateLabel(targetDateStr, offsetDays)}
-                            </p>
-                        </div>
-                        {urgentCount > 0 && (
-                            <span className="ml-1 flex items-center gap-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
-                                <AlertTriangle className="w-2.5 h-2.5" />
-                                {urgentCount}
-                            </span>
-                        )}
+                {/* ヘッダー（更新／お知らせの切り替え） */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800 gap-2">
+                    <div className="flex-1 flex gap-1 p-1 rounded-xl bg-gray-100 dark:bg-zinc-800">
+                        <button type="button" onClick={() => setTab('daily')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${tab === 'daily'
+                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Bell className="w-4 h-4" />
+                            更新
+                            {urgentCount > 0 && (
+                                <span className="flex items-center gap-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    {urgentCount}
+                                </span>
+                            )}
+                        </button>
+                        <button type="button" onClick={openNewsTab}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${tab === 'news'
+                                ? 'bg-white dark:bg-zinc-900 text-amber-600 dark:text-amber-400 shadow-sm'
+                                : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Megaphone className="w-4 h-4" />
+                            お知らせ
+                            {announcementsUnread > 0 && (
+                                <span className="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                                    {announcementsUnread > 99 ? '99+' : announcementsUnread}
+                                </span>
+                            )}
+                        </button>
                     </div>
                     <button
                         onClick={() => setIsOpen(false)}
-                        className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                        className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
                     >
                         <X className="w-5 h-5 text-gray-500" />
                     </button>
+                </div>
+
+                {tab === 'news' ? (
+                <div className="overflow-y-auto px-5 py-4 space-y-4" style={{ maxHeight: '60vh', minHeight: '150px' }}>
+                    {announcements.length === 0 ? (
+                        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
+                            お知らせはありません
+                        </p>
+                    ) : (
+                        announcements.map(a => (
+                            <div key={a.id} className="pb-4 border-b border-gray-100 dark:border-zinc-800 last:border-0 last:pb-0">
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1 tabular-nums">
+                                    {a.publishedAt ? `${new Date(a.publishedAt).getFullYear()}年${new Date(a.publishedAt).getMonth() + 1}月${new Date(a.publishedAt).getDate()}日` : ''}
+                                </p>
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1.5 break-words">
+                                    {a.title}
+                                </h3>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                    {a.body}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+                ) : (
+                <>
+                {/* 表示中の日付 */}
+                <div className="flex items-center justify-center pt-2">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">
+                        {formatDateLabel(targetDateStr, offsetDays)}
+                    </p>
                 </div>
 
                 {/* 日付ナビゲーションバー（ボタンでも切り替え可能） */}
@@ -304,6 +364,11 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
                         )}
                     </div>
                 )}
+                </>
+                )}
+
+                {/* ホームバーに隠れないよう下に余白 */}
+                <div className="pb-safe shrink-0" />
             </div>
         </>
     ) : null;
@@ -314,14 +379,19 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters }) => {
             <button
                 onClick={handleOpen}
                 className="relative bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 dark:hover:bg-zinc-700 active:scale-95 transition-all"
-                title="デイリー通知"
+                title="通知（更新・お知らせ）"
             >
                 <Bell className="w-5 h-5" />
-                {isBadgeUnread && badgeLogs.length > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-sm animate-pulse">
-                        {badgeLogs.length > 99 ? '99+' : badgeLogs.length}
-                    </span>
-                )}
+                {(() => {
+                    // 未読は「昨日の更新」と「お知らせ」の合算で出す
+                    const daily = isBadgeUnread ? badgeLogs.length : 0;
+                    const total = daily + announcementsUnread;
+                    return total > 0 ? (
+                        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shadow-sm animate-pulse">
+                            {total > 99 ? '99+' : total}
+                        </span>
+                    ) : null;
+                })()}
             </button>
 
             {/* Portal で body 直下に挿入する */}

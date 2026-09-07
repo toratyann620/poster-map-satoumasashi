@@ -104,7 +104,7 @@ function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Reco
     pin.style.cssText = `
         width: ${pinSize}px;
         height: ${pinSize}px;
-        border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        border-radius: 50%;
         background-color: ${hexColor};
         display: flex;
         align-items: center;
@@ -314,7 +314,10 @@ const MapInner: React.FC<MapComponentProps> = ({
     const onPinLongPressRef = useRef(onPinLongPress);
     const onCancelTempPinRef = useRef(onCancelTempPin);
     const onUserPanRef = useRef(onUserPan);
-    const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+    // 仮ピンの案内カード。以前は Google Maps の InfoWindow を使っていたが、
+    // InfoWindow は必ずピンの「上」に出る仕様で位置を変えられない。
+    // 下に出したいという要望のため、カード自体を AdvancedMarkerElement で描く
+    const infoWindowRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
 
     useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
     useEffect(() => { onMarkerClickRef.current = onMarkerClick; }, [onMarkerClick]);
@@ -804,7 +807,7 @@ const MapInner: React.FC<MapComponentProps> = ({
         if (selectedPoster && !selectedPoster.id && selectedPoster.lat && selectedPoster.lng) {
             // 既存の仮ピン用 InfoWindow があれば閉じる
             if (infoWindowRef.current) {
-                infoWindowRef.current.close();
+                infoWindowRef.current.map = null;
                 infoWindowRef.current = null;
             }
 
@@ -865,7 +868,10 @@ const MapInner: React.FC<MapComponentProps> = ({
                 }
             });
 
-            // Google Map標準風の InfoWindow (吹き出し情報カード) を開く
+            // 案内カード。InfoWindow は必ずピンの上に出るため使わず、
+            // ピンの「下」に小さなカードを自前で描く。
+            // AdvancedMarkerElement は要素の下端中央を座標に合わせるので、
+            // 大きさ0の外枠を座標に置き、その中に absolute でカードを吊り下げる。
             const escapeHtml = (str: string) => {
                 return str
                     .replace(/&/g, "&amp;")
@@ -875,59 +881,60 @@ const MapInner: React.FC<MapComponentProps> = ({
                     .replace(/'/g, "&#039;");
             };
 
-            const infoHtml = `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 6px 4px; font-size: 13px; line-height: 1.4; color: #374151; max-width: 250px;">
-                    <div style="font-weight: 700; font-size: 14px; color: #111827; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        ${escapeHtml((dummyPoster as any).name || '選択された場所')}
+            const popupWrap = document.createElement('div');
+            popupWrap.style.cssText = 'position: relative; width: 0; height: 0; overflow: visible;';
+            popupWrap.innerHTML = `
+                <div style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+                            background: white; border-radius: 10px;
+                            box-shadow: 0 2px 12px rgba(0,0,0,0.28);
+                            padding: 7px 26px 7px 10px; width: max-content; max-width: 210px;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            line-height: 1.35; pointer-events: auto;">
+                    <div style="position: absolute; top: -5px; left: 50%; transform: translateX(-50%) rotate(45deg);
+                                width: 10px; height: 10px; background: white; border-radius: 2px 0 0 0;"></div>
+                    <button type="button" data-role="close" aria-label="やめる"
+                            style="position: absolute; top: 2px; right: 2px; width: 22px; height: 22px;
+                                   border: none; background: none; color: #9ca3af; font-size: 15px;
+                                   line-height: 1; cursor: pointer; padding: 0;">×</button>
+                    <div style="font-weight: 700; font-size: 12px; color: #111827;
+                                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 174px;">
+                        ${escapeHtml((dummyPoster as any).name || (dummyPoster.address || '').replace(/^日本、/, '') || '選択された場所')}
                     </div>
-                    <div style="color: #6b7280; font-size: 12px; margin-bottom: 8px;">
-                        日本<br/>${escapeHtml((dummyPoster.address || '').replace(/^日本、/, ''))}
-                    </div>
-                    <div style="border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 6px;">
-                        <a href="#" id="register-temp-btn" style="color: #2563eb; text-decoration: none; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                            新規登録する →
-                        </a>
-                    </div>
+                    <a href="#" data-role="register"
+                       style="color: #2563eb; text-decoration: none; font-weight: 700; font-size: 12px;
+                              display: inline-block; margin-top: 3px; cursor: pointer;">
+                        新規登録する →
+                    </a>
                 </div>
             `;
 
-            const infoWindow = new window.google.maps.InfoWindow({
-                content: infoHtml,
-                pixelOffset: new window.google.maps.Size(0, -10)
-            });
-
-            infoWindow.open({
-                map,
-                anchor: marker
-            });
-            infoWindowRef.current = infoWindow;
-
-            // HTMLがDOMに配置されたタイミングで「新規登録する」ボタンにリスナーをアタッチ
-            infoWindow.addListener('domready', () => {
-                const registerBtn = document.getElementById('register-temp-btn');
-                if (registerBtn) {
-                    registerBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        cancelLongPress();
-                        if (onMarkerClickRef.current) {
-                            onMarkerClickRef.current(dummyPoster);
-                        }
-                    });
+            popupWrap.querySelector('[data-role="register"]')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                cancelLongPress();
+                if (onMarkerClickRef.current) {
+                    onMarkerClickRef.current(dummyPoster);
                 }
             });
-
-            // X をクリックした際のクローズイベント
-            infoWindow.addListener('closeclick', () => {
+            popupWrap.querySelector('[data-role="close"]')?.addEventListener('click', (e) => {
+                e.preventDefault();
                 if (onCancelTempPinRef.current) {
                     onCancelTempPinRef.current();
                 }
             });
 
+            const popupMarker = new AdvancedMarkerElement({
+                position: { lat: dummyPoster.lat, lng: dummyPoster.lng },
+                content: popupWrap,
+                zIndex: 3000,
+            });
+            popupMarker.map = map;
+            infoWindowRef.current = popupMarker;
+
             markersRef.current.push(marker);
         } else {
             // 仮ピンがない場合は確実に InfoWindow を閉じる
             if (infoWindowRef.current) {
-                infoWindowRef.current.close();
+                infoWindowRef.current.map = null;
                 infoWindowRef.current = null;
             }
         }

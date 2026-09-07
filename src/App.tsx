@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { MapWrapper } from './components/Map';
 import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
-import { CsvActions } from './components/CsvActions';
 import { Login } from './components/Login';
 import { useSession } from './hooks/useSession';
 import { scopedPinTypes } from './lib/groups';
@@ -11,7 +10,7 @@ import { UpdatePrompt } from './components/UpdatePrompt';
 import { AdminPanel } from './components/AdminPanel';
 import { PosterCountWidget } from './components/PosterCountWidget';
 import { NotificationPanel } from './components/NotificationPanel';
-import { AnnouncementsButton, AnnouncementPopup } from './components/Announcements';
+import { AnnouncementPopup } from './components/Announcements';
 import { useAnnouncements } from './hooks/useAnnouncements';
 import { Tutorial } from './components/Tutorial';
 import { ChangePassword } from './components/ChangePassword';
@@ -50,7 +49,6 @@ function App() {
     recordGreeting,
     removeGreeting,
     deletePoster,
-    setPosters,
     posters,
     userRole
   } = usePosterData();
@@ -63,7 +61,6 @@ function App() {
   const [initialViewMode, setInitialViewMode] = useState(false);
   const [currentView, setCurrentView] = useState<'map' | 'admin'>('map');
   const [mapCenter, setMapCenter] = useState<{ lat: number, lng: number } | null>(null);
-  const [fitBounds, setFitBounds] = useState<{ southwest: { lat: number, lng: number }, northeast: { lat: number, lng: number } } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
   // 住所修正に伴い位置を再設定したピン（マーカーのドロップインエフェクト用、一時的に保持）
   const [justDroppedPinId, setJustDroppedPinId] = useState<string | null>(null);
@@ -230,25 +227,7 @@ function App() {
     setIsSheetOpen(false);
   };
 
-  const handleImportSuccess = (imported: PosterPin[]) => {
-    setFilter({ keyword: '', types: [], status: [], tags: [] });
-    if (imported.length === 0) return;
-
-    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
-    imported.forEach(p => {
-      if (p.lat < minLat) minLat = p.lat;
-      if (p.lat > maxLat) maxLat = p.lat;
-      if (p.lng < minLng) minLng = p.lng;
-      if (p.lng > maxLng) maxLng = p.lng;
-    });
-
-    const latBuffer = 0.005;
-    const lngBuffer = 0.005;
-    setFitBounds({
-      southwest: { lat: minLat - latBuffer, lng: minLng - lngBuffer },
-      northeast: { lat: maxLat + latBuffer, lng: maxLng + lngBuffer }
-    });
-  };
+  // CSVインポートは管理画面のみに移したため、旧ハンドラは削除した
 
   const handleMapClick = (lat: number, lng: number) => {
     // ナビゲーション中は地図タップでの新規ピン作成等を無効化する
@@ -661,7 +640,6 @@ function App() {
             centerLocation={mapCenter}
             onUserPan={() => setIsFollowing(false)}
             followingLocation={isFollowing}
-            fitBounds={fitBounds}
             currentLocation={currentLocation}
             pinTypes={pinTypes}
             onLocateMe={locateMe}
@@ -796,11 +774,16 @@ function App() {
                       <Plus className="w-7 h-7" />
                     </button>
 
-                    {/* Notification Bell */}
-                    <NotificationPanel userId={user?.uid ?? null} posters={posters} />
+                    {/* 通知。ポスターの更新（デイリー通知）と事務局からのお知らせを
+                        1つのベルに統合してある（設定メニューの整理のため） */}
+                    <NotificationPanel
+                      userId={user?.uid ?? null}
+                      posters={posters}
+                      announcements={announcements.announcements}
+                      announcementsUnread={announcements.unreadCount}
+                      markAnnouncementsRead={announcements.markAllRead}
+                    />
 
-                    {/* 管理者からのお知らせ。ポスターの変更を知らせるベルとは
-                        別物なので、アイコンも分けている */}
                     {/* ピン打ちモードへの切り替え。現在地にボタンひとつでピンを立てる */}
                     <button
                       onClick={() => {
@@ -828,12 +811,6 @@ function App() {
                       )}
                     </button>
 
-                    <AnnouncementsButton
-                      announcements={announcements.announcements}
-                      unreadCount={announcements.unreadCount}
-                      markAllRead={announcements.markAllRead}
-                    />
-
                     {userRole === 'admin' && (
                       <button
                         onClick={() => {
@@ -858,10 +835,6 @@ function App() {
                     </button>
                   </div>
 
-                  {/* 2列目: CSV機能 (管理者のみ) */}
-                  {userRole === 'admin' && currentView === 'map' && (
-                    <CsvActions posters={posters} setPosters={setPosters} onImportSuccess={handleImportSuccess} />
-                  )}
                 </div>
 
                 {/* メニュー展開トリガー（歯車ボタン） */}
