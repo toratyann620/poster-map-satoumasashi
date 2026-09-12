@@ -21,6 +21,7 @@ import { RemovalDialog } from './components/RemovalDialog';
 import { registerForPush, unregisterFromPush } from './lib/push';
 import { MyPage } from './components/MyPage';
 import { useTasks } from './hooks/useTasks';
+import { TaskComposer } from './components/TaskComposer';
 import { usePosterData } from './hooks/usePosterData';
 import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
@@ -98,7 +99,9 @@ function App() {
     return m;
   }, [pinTypes]);
   // バッジに出す「自分あての未対応件数」。マイページを開かなくても気づけるようにする
-  const { myTasks } = useTasks();
+  const { myTasks, createTask } = useTasks();
+  // ピンの詳細から依頼を出すときの対象。null なら閉じている
+  const [taskTargetPoster, setTaskTargetPoster] = useState<PosterPin | null>(null);
 
   // プッシュ通知の許可は、ログインが済んで実際に使える状態になってから求める。
   // 起動直後に尋ねると何のアプリか分からないまま拒否されやすく、
@@ -890,7 +893,16 @@ function App() {
             currentUserName={session.name}
             onRecordGreeting={recordGreeting}
             onUndoGreeting={removeGreeting}
+            onRequestTask={(p) => setTaskTargetPoster(p)}
           />
+          {taskTargetPoster && (
+            <TaskComposer
+              posters={posters}
+              initialPoster={taskTargetPoster}
+              onCreate={createTask}
+              onClose={() => setTaskTargetPoster(null)}
+            />
+          )}
         </>
       )}
     </div>

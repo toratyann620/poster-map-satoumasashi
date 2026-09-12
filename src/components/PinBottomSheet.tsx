@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink, FileText, History } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink, FileText, History, ClipboardList } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
@@ -104,6 +104,8 @@ interface PinBottomSheetProps {
     currentUserName?: string;
     onRecordGreeting?: (id: string, input: { by: string; date: string; note: string }) => Promise<void>;
     onUndoGreeting?: (id: string, greetingId: string) => Promise<void>;
+    /** このピンを対象にした作業の依頼を出す（依頼フォームは呼び出し元が開く） */
+    onRequestTask?: (poster: PosterPin) => void;
 }
 
 export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
@@ -120,6 +122,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     currentUserName = '',
     onRecordGreeting,
     onUndoGreeting,
+    onRequestTask,
 }) => {
     const [isViewMode, setIsViewMode] = useState(initialViewMode);
     // 閲覧モードの表示切り替え。ログは開いたときだけ問い合わせる
@@ -590,6 +593,17 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                                     >
                                         <Navigation2 className="w-5 h-5 mr-2" />
                                         ナビ開始
+                                    </button>
+                                )}
+                                {/* このピンを対象に依頼を出す。現場で気づいたことを
+                                    その場で依頼にできるよう、マイページを開き直さずに済ませる */}
+                                {onRequestTask && poster?.id && (
+                                    <button
+                                        onClick={() => onRequestTask(poster as PosterPin)}
+                                        className="flex items-center justify-center px-4 py-3 border border-indigo-400 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors text-sm font-medium"
+                                    >
+                                        <ClipboardList className="w-4 h-4 mr-1" />
+                                        依頼
                                     </button>
                                 )}
                                 {/* 撤去ボタン or 撤去解除ボタン */}

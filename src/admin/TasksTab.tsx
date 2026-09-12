@@ -2,10 +2,12 @@ import React, { useMemo, useState } from 'react';
 import {
     ClipboardList, Plus, Loader2, Trash2, CheckCircle2, RotateCcw,
     Users as UsersIcon, Smartphone, Search, X, MessageSquare,
+    Hourglass,
 } from 'lucide-react';
 import { TASK_KINDS, type PosterPin, type Task, type TaskKind } from '../types';
 import type { UserData } from '../hooks/useUsers';
 import type { Group } from '../types';
+import { taskAge, TASK_AGE_CLASS } from '../lib/taskAge';
 
 interface Props {
     tasks: Task[];
@@ -137,6 +139,14 @@ export const TasksTab: React.FC<Props> = ({
                         <span className="text-[10px] text-gray-400">{groupName(task.groupId)}</span>
                     )}
                     {task.dueDate && <span className="text-[10px] text-gray-400">期限 {task.dueDate}</span>}
+                    {(() => {
+                        const age = taskAge(task);
+                        return age && (
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${TASK_AGE_CLASS[age.level]}`}>
+                                <Hourglass className="w-2.5 h-2.5" />{age.text}
+                            </span>
+                        );
+                    })()}
                 </div>
 
                 <p className={`text-sm font-bold break-words ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>

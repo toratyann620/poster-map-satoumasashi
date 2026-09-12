@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import {
     X, CheckCircle2, Circle, ClipboardList, History, MapPin,
     Users as UsersIcon, CalendarClock, Loader2, Plus, MessageSquare,
+    Hourglass,
 } from 'lucide-react';
 import type { PosterPin, Task, ActivityLog } from '../types';
 import { useSession } from '../hooks/useSession';
 import { useTasks } from '../hooks/useTasks';
 import { TaskComposer, TaskCompleteDialog } from './TaskComposer';
+import { taskAge, TASK_AGE_CLASS } from '../lib/taskAge';
 
 interface Props {
     posters: PosterPin[];
@@ -53,6 +55,7 @@ const TaskRow: React.FC<{
 }> = ({ task, poster, onComplete, onOpenPoster, busy }) => {
     const due = dueLabel(task.dueDate);
     const done = task.status === 'done';
+    const age = taskAge(task);
 
     return (
         <div className={`rounded-xl border p-3.5 ${done
@@ -86,6 +89,13 @@ const TaskRow: React.FC<{
                                 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
                                 : 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-400'}`}>
                                 <CalendarClock className="w-2.5 h-2.5" />{due.text}
+                            </span>
+                        )}
+                        {/* 立ってからの日数。期限が無い依頼でも「いつからあるか」が見えるようにする */}
+                        {age && (
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${TASK_AGE_CLASS[age.level]}`}
+                                title={`${fmtDate(task.createdAt)} に依頼`}>
+                                <Hourglass className="w-2.5 h-2.5" />{age.text}
                             </span>
                         )}
                     </div>
