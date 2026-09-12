@@ -28,5 +28,11 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/dev-facts.js": {
+      "includeFiles": "android/app/build.gradle",
+      "maxDuration": 10
+    }
+  }
 }

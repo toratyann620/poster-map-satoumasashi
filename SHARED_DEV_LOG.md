@@ -28,6 +28,11 @@
 
 ---
 
+- [ ] **kurobot**: `KUROBOT_SHARED_SECRET` を Vercel（Production）に登録して `vercel deploy --prod --yes`。`.env.local` にも `KUROBOT_HUB_URL` / `KUROBOT_SHARED_SECRET` を書く（通知スクリプト用）。ハブの `KUROBOT_PROJECTS` に `poster=https://poster-map-app.vercel.app/api/dev-facts` を追加。Bot を開発チャンネルへ招待。
+- [ ] **kurobot**: 通知に「最近の変更点」を載せるなら、版つきの変更履歴を1か所（例: `src/data/appChangelog` を JSON 化して版を持たせる）で管理し `changes` に流す。
+- [ ] **要判断**: 日次レポート（functions）の設置率が撤去済みを分母に含めている件。ダッシュボード・/api/dev-facts と揃えるか。
+- [ ] **未コミット**: 1.0.12 ホットフィックスのコミット（本番配信済み）。新旧住所の対照表と変換案はユーザー確認後に反映。
+
 ## 3. 編集・検討履歴
 
 ### 2026-07-20 (Antigravity)
@@ -1011,3 +1016,22 @@
 * **配信**: ブラウザ版デプロイ済み。**アプリ版は未反映（指示待ち）**。
 * **配信（その64の続き）**: ユーザー指示により **1.0.11 (versionCode 13 / build 13)** のアプリ配信を開始。内容は「編集・新規登録画面からの挨拶の仮登録→保存で確定」「絞り込み中の表示」ほか。宇田川事務所のグループ設定と撤去済みの非表示はデータ・既定値の話でアプリ側の変更は不要（ブラウザ版・アプリ版とも設定済みの状態が見える）。
 * **配信結果**: **1.0.11 (versionCode 13 / build 13)** — Android は内部テスト・クローズドテストとも公開済み、iOS は TestFlight で VALID。更新案内の `latest` を 1.0.11 に設定済み。
+
+### 2026-09-12 (Claude Code) その67
+* **タスク**: kurobot 共通規格 v1 に従い、このプロジェクトを kurobot-hub（Slack ボット）のクライアントにする
+* **作ったもの**
+  1. **`api/dev-facts.js`**（Vercel Functions・ESM）。`GET` で自己紹介＋事実、`POST { tool, input }` で道具の実行（道具は当面 `[]`。未知の道具は 404）。両方とも `Authorization: Bearer <KUROBOT_SHARED_SECRET>` を **SHA-256 で長さを揃えたうえで時間一定比較**し、違えば 401。シークレット未設定でも必ず拒否（開けたままにしない）。
+     * `project.id = poster` / `name = ポスターアプリ` / `sheetTab = マップアプリ` / `productionUrl` / `keywords`。`slackChannels` は環境変数 `KUROBOT_SLACK_CHANNELS`（カンマ区切り）があれば入れる（コード変更なしで足せる）。
+     * **`version` の唯一の定義元は `android/app/build.gradle`**（versionName / versionCode。pbxproj とは配信手順で常に同期）。`vercel.json` の `functions.includeFiles` で関数に同梱して実行時に読む。読めない環境では Firestore `settings/appVersion.latest` にフォールバック。`web` には Vercel の `VERCEL_GIT_COMMIT_SHA` の先頭7桁を添える（本番で `1.0.12 (57d9240)` と出ることを確認）。
+     * **`facts` は毎回 Firestore から計算**（`posters_v2` を `select()` で必要項目だけ取得＋`activityLogs_v2` は `count()` 集計）。基準は**アプリのダッシュボードと同じ「撤去済みを除く／枚数は quantity の合計」**。10項目（佐藤まさし枚数・設置率（全体＋3市）・登録ピン数・撤去済み・直近7日の新規／変更件数・挨拶記録あり）。5分キャッシュ。
+     * `distribution` は `settings/appVersion.latest`（配信完了後に更新する値）から導く。gradle の版と一致するときだけ build 番号を添える。
+     * **`changes` は省略**。既存の `src/data/appChangelog.ts` はバージョン項目が無く 2026-06-14 で止まっているため、そのまま出すと「最近の変更点」として誤解を招く。通知に変更点を載せたければ、版つきの変更履歴を1か所に持つ設計が別途要る（後述の TODO）。
+  2. **`scripts/notify-release.mjs`**。`POST {KUROBOT_HUB_URL}/api/notify` を1回叩く。`--targets web|app`、`--mention`、`--channel`、`--sheet`。Slack のトークンも文面も持たない。環境変数が無ければ `.env.local` → `.env` から `KUROBOT_*` だけ拾う。失敗時は「デプロイ自体は完了している」と明示して exit 1。
+  3. `package.json` に `deploy:web`（build → `vercel deploy --prod` → 通知）と `notify:release` を追加。`.env.example` を新設（`KUROBOT_SHARED_SECRET` / `KUROBOT_HUB_URL` / `KUROBOT_SLACK_CHANNELS` / `FIREBASE_SERVICE_ACCOUNT`）。
+* **Firestore の認証**: 読み取り専用のサービスアカウント **`kurobot-reader@satoumasashi-poster-map.iam.gserviceaccount.com`（roles/datastore.viewer のみ）** を新設し、鍵を base64 で Vercel の `FIREBASE_SERVICE_ACCOUNT`（Production）に登録。既存の firebase-adminsdk は編集権限を持つため使っていない。ローカルの鍵ファイルは登録後に削除。
+  * ⚠️ 作った直後の鍵は1分ほど `UNAUTHENTICATED` になる。すぐ失敗しても待って再試行。
+* **本番での確認**（https://poster-map-app.vercel.app/api/dev-facts）: 正しい Bearer で `kurobot: 1` の JSON（コールド 2.6秒／2回目 0.4秒）、Bearer なし・誤り → 401、`POST` 未知の道具 → 404、`POST` Bearer なし → 401。`includeFiles` で build.gradle が読めること、git のコミットが付くことも確認。
+* **`KUROBOT_SHARED_SECRET` はユーザーが設定する取り決め**のため、確認には一時的なランダム値を使い、確認後に Vercel から削除して再デプロイした。→ **ユーザーが値を登録し `vercel deploy --prod --yes` で再デプロイするまで、本番の /api/dev-facts は全要求を 401 で拒否する（フェイルクローズ）。**
+* **ハブ側に渡す情報**: `project.id = poster`、URL `https://poster-map-app.vercel.app/api/dev-facts`。チャンネルIDは未指定（渡されたら `KUROBOT_SLACK_CHANNELS` に入れる）。
+* **注意（既存の観察）**: Cloud Functions の日次レポートの設置率は**撤去済みを分母に含めている**（ダッシュボードは除外）。/api/dev-facts はダッシュボード基準にしたため、Slack の日次レポートと数％ずれることがある。日次レポート側を揃えるかは要判断。
+* **未コミットの前回作業（このコミットには含めていない）**: 1.0.12 ホットフィックス（`usePosterData.ts` の新規登録失敗の修正・gradle/pbxproj の版上げ）は**本番配信済みだが未コミット**。新旧住所の対照表（`data/`・`scripts/build_address_map.mjs`・`scripts/find_old_addresses.mjs`・`新旧住所/`）はユーザー確認待ち。
