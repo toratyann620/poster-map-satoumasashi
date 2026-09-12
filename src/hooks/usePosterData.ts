@@ -196,10 +196,28 @@ export const usePosterData = () => {
 
     const addPoster = async (posterData: Partial<PosterPin>) => {
         const city = ensureCity(posterData);
+        // 新規登録フォームで入力された「保存前」の挨拶を、登録と同時に確定させる。
+        //
+        // ⚠️ `pendingGreetings` は画面側の受け渡し専用の項目で、そのまま
+        // Firestore へ渡してはいけない。値が undefined のときは
+        // 「Unsupported field value: undefined」で登録そのものが失敗する
+        // （挨拶を入力していない通常の登録が全部落ちる。実際に起きた）。
+        const { pendingGreetings, ...rest } = posterData as Partial<PosterPin> & {
+            pendingGreetings?: { by: string; date: string; note: string }[];
+        };
+        const greetings: GreetingRecord[] = (pendingGreetings ?? []).map((g, i) => ({
+            id: `g_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+            by: g.by.trim() || userName,
+            date: g.date,
+            note: g.note.trim(),
+            recordedBy: userName,
+            recordedAt: Date.now(),
+        }));
         try {
             const now = Date.now();
             const docRef = await addDoc(collection(db, COL.posters), {
-                ...posterData,
+                ...rest,
+                greetings,
                 city,
                 type: posterData.type || '佐藤まさし',
                 status: Array.isArray(posterData.status) ? posterData.status : ['設置済'],
