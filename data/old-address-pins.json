@@ -1,0 +1,589 @@
+{
+ "generatedAt": "2026-09-08T14:44:26.550Z",
+ "exact": [
+  {
+   "id": "4OepRFiDL3UTyeewGyPY",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家127-1",
+   "memo": "",
+   "lat": 35.4170501,
+   "lng": 139.375894,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 127,
+    "eda": 1,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家六丁目19-28",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4170318,
+    "lng": 139.3758949,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家６丁目１９−２８",
+    "locality": "海老名市"
+   },
+   "moved": 2
+  },
+  {
+   "id": "B4ZBsJ1E6mY2rhvW4HMf",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家3677",
+   "memo": "",
+   "lat": 35.4268784,
+   "lng": 139.3798992,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 3677,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家二丁目10-14",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4268927,
+    "lng": 139.3799105,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家２丁目１０−１４",
+    "locality": "海老名市"
+   },
+   "moved": 2
+  },
+  {
+   "id": "CnmYMjULWqos4I8xtPUv",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家3759",
+   "memo": "",
+   "lat": 35.4264882,
+   "lng": 139.3812182,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 3759,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家二丁目7-19",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4266574,
+    "lng": 139.3814216,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家２丁目７−１９",
+    "locality": "海老名市"
+   },
+   "moved": 26
+  },
+  {
+   "id": "D8g1ibSGulk2zqT8QYj3",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家115",
+   "memo": "",
+   "lat": 35.4207659,
+   "lng": 139.3774231,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 115,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家五丁目6-1",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4207546,
+    "lng": 139.3774169,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家５丁目６−１",
+    "locality": "海老名市"
+   },
+   "moved": 1
+  },
+  {
+   "id": "HSd4InELKkuqMQNmNtRj",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家745",
+   "memo": "",
+   "lat": 35.4215063,
+   "lng": 139.3814534,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 745,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家五丁目2-6",
+   "match": "親番地一致（新住所は1つ）",
+   "geo": {
+    "lat": 35.4215345,
+    "lng": 139.3812666,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家５丁目２−６",
+    "locality": "海老名市"
+   },
+   "moved": 17
+  },
+  {
+   "id": "SppsRbEhDpyM3M8BqUTZ",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家410",
+   "memo": "金具が大",
+   "lat": 35.4166022,
+   "lng": 139.3748302,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 410,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家六丁目23-12",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4165948,
+    "lng": 139.3746939,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家６丁目２３−１２",
+    "locality": "海老名市"
+   },
+   "moved": 12
+  },
+  {
+   "id": "WuVTgSPzegB6hq30iCaq",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家707",
+   "memo": "金具が大",
+   "lat": 35.4217289,
+   "lng": 139.3780083,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 707,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家五丁目7-14",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4209279,
+    "lng": 139.3780398,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家５丁目７−１４",
+    "locality": "海老名市"
+   },
+   "moved": 89
+  },
+  {
+   "id": "eXr17oYDyBMZyhOcSy5a",
+   "type": "佐藤まさし",
+   "removed": true,
+   "oldAddress": "神奈川県海老名市社家3933",
+   "memo": "",
+   "lat": 35.4278685,
+   "lng": 139.3837447,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 3933,
+    "eda": null,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市社家三丁目1-33",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4278574,
+    "lng": 139.3837602,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0424 神奈川県海老名市社家３丁目１−３３",
+    "locality": "海老名市"
+   },
+   "moved": 2
+  },
+  {
+   "id": "w4rd4oGwUVLosFWffkTo",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市柏ケ谷635-1",
+   "memo": "駐車場",
+   "lat": 35.4656088,
+   "lng": 139.4154551,
+   "parsed": {
+    "oaza": "柏ケ谷",
+    "oya": 635,
+    "eda": 1,
+    "tail": ""
+   },
+   "newAddress": "神奈川県海老名市柏ケ谷二丁目8-1",
+   "match": "枝番まで一致",
+   "geo": {
+    "lat": 35.4656072,
+    "lng": 139.4154342,
+    "precision": "ROOFTOP",
+    "formatted": "日本、〒243-0402 神奈川県海老名市柏ケ谷２丁目８−１",
+    "locality": "海老名市"
+   },
+   "moved": 2
+  }
+ ],
+ "needsCheck": [
+  {
+   "id": "wueKyMxeTSqeLGHnvs8p",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口1369-3",
+   "memo": "",
+   "lat": 35.4475925,
+   "lng": 139.3767388,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 1369,
+    "eda": 3,
+    "tail": ""
+   },
+   "candidates": [
+    "河原口1369-5 → 中央四丁目13-8"
+   ],
+   "reason": "枝番 -3 が対照表に無い（他の枝番の行はある）"
+  }
+ ],
+ "skipped": [
+  {
+   "id": "53Np3KIONA3vAt36iGg2",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口958",
+   "memo": "ＳＹパーキング",
+   "lat": 35.4506763,
+   "lng": 139.3855123,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 958,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "6C5nsISyuaS93OiPs1gM",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上郷415",
+   "memo": "",
+   "lat": 35.4521893,
+   "lng": 139.381623,
+   "parsed": {
+    "oaza": "上郷",
+    "oya": 415,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "CRWASqqsVbfqH90A7q3G",
+   "type": "ごとう祐一",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上今泉１７１４",
+   "memo": "",
+   "lat": 35.469371684514435,
+   "lng": 139.39405983773761,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 1714,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "DHLyCdjQ4pWtCpnSdu0G",
+   "type": "ごとう祐一",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市大谷４８２",
+   "memo": "",
+   "lat": 35.43544963381166,
+   "lng": 139.390402450718,
+   "parsed": {
+    "oaza": "大谷",
+    "oya": 482,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "GOV9dY9HafYZH2oOirxC",
+   "type": "佐藤まさし",
+   "removed": true,
+   "oldAddress": "神奈川県海老名市上郷273",
+   "memo": "",
+   "lat": 35.4565304,
+   "lng": 139.3818168,
+   "parsed": {
+    "oaza": "上郷",
+    "oya": 273,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "Lr7OaOxtMOZ5AZDuqBYm",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上今泉6-49",
+   "memo": "畑（両面）",
+   "lat": 35.46947882035556,
+   "lng": 139.41407101152248,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 6,
+    "eda": 49,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "NhHO6Xg4EmsdydqjUJP8",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上今泉6-28",
+   "memo": "",
+   "lat": 35.4715646,
+   "lng": 139.4115004,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 6,
+    "eda": 28,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "P7Q4JYaZgOEuKNRQklg9",
+   "type": "佐藤まさし",
+   "removed": true,
+   "oldAddress": "神奈川県海老名市上今泉6-49",
+   "memo": "畑",
+   "lat": 35.4692714,
+   "lng": 139.4138027,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 6,
+    "eda": 49,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "Q9ubKQRIBZhh9UzVYWlC",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市社家922",
+   "memo": "空き地",
+   "lat": 35.4217289,
+   "lng": 139.3780083,
+   "parsed": {
+    "oaza": "社家",
+    "oya": 922,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "QwutsA50LMhXVOLjXIUK",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口371",
+   "memo": "",
+   "lat": 35.4426061,
+   "lng": 139.3778685,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 371,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "TSxsdAs48VqiawxzjrB8",
+   "type": "佐藤まさし",
+   "removed": true,
+   "oldAddress": "神奈川県海老名市上郷742",
+   "memo": "両面",
+   "lat": 35.4565304,
+   "lng": 139.3818168,
+   "parsed": {
+    "oaza": "上郷",
+    "oya": 742,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "UIh3tr23KERqorBT681G",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口832",
+   "memo": "アパート",
+   "lat": 35.4475925,
+   "lng": 139.3767388,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 832,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "YMcB9HJwwZPVLnoBtdIA",
+   "type": "佐藤まさし",
+   "removed": true,
+   "oldAddress": "神奈川県海老名市勝瀬2-33",
+   "memo": "",
+   "lat": 35.4481843,
+   "lng": 139.3979126,
+   "parsed": {
+    "oaza": "勝瀬",
+    "oya": 2,
+    "eda": 33,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "efXd1SPrp9alwHCmO5eF",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上今泉6-28",
+   "memo": "",
+   "lat": 35.4715646,
+   "lng": 139.4115004,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 6,
+    "eda": 28,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "fmYLlEMQBPwAXrswkzUj",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市下今泉950-1",
+   "memo": "駐車場",
+   "lat": 35.465468,
+   "lng": 139.3868953,
+   "parsed": {
+    "oaza": "下今泉",
+    "oya": 950,
+    "eda": 1,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "gMozsLKK5sHOQMzs4NUO",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上郷901",
+   "memo": "駐車場",
+   "lat": 35.44932592085621,
+   "lng": 139.3795735864065,
+   "parsed": {
+    "oaza": "上郷",
+    "oya": 901,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "gklowAlHcG9YA4wwrVYR",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口5-1",
+   "memo": "駐車場",
+   "lat": 35.4465169,
+   "lng": 139.3829277,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 5,
+    "eda": 1,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "kvpL6fC0vs3IwjOPYreN",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市河原口1310",
+   "memo": "",
+   "lat": 35.44633280000001,
+   "lng": 139.3834895,
+   "parsed": {
+    "oaza": "河原口",
+    "oya": 1310,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "qjA0idPSM2lKI7uClfLq",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上郷788",
+   "memo": "駐車場",
+   "lat": 35.4565304,
+   "lng": 139.3818168,
+   "parsed": {
+    "oaza": "上郷",
+    "oya": 788,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "y4n6bhhDDUxGqEi9zlTi",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市大谷586",
+   "memo": "フェンス",
+   "lat": 35.4319462,
+   "lng": 139.3899908,
+   "parsed": {
+    "oaza": "大谷",
+    "oya": 586,
+    "eda": null,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  },
+  {
+   "id": "zPHqFh4fW2HstkfDuvZ0",
+   "type": "佐藤まさし",
+   "removed": false,
+   "oldAddress": "神奈川県海老名市上今泉1837-3",
+   "memo": "",
+   "lat": 35.4652429,
+   "lng": 139.3938978,
+   "parsed": {
+    "oaza": "上今泉",
+    "oya": 1837,
+    "eda": 3,
+    "tail": ""
+   },
+   "reason": "対照表に該当なし"
+  }
+ ]
+}
