@@ -20,7 +20,9 @@ const APPLY = process.argv.includes('--apply');
 admin.initializeApp({ projectId: 'satoumasashi-poster-map' });
 const db = admin.firestore();
 
-const plan = JSON.parse(fs.readFileSync('data/old-address-pins.json', 'utf8'));
+// 既定は照合スクリプトの出力。現地確認で個別に決めた分は PLAN=<jsonのパス> で渡せる
+// （同じ形: { exact: [{ id, oldAddress, newAddress, geo:{lat,lng,precision}, moved }] }）
+const plan = JSON.parse(fs.readFileSync(process.env.PLAN || 'data/old-address-pins.json', 'utf8'));
 const targets = plan.exact.filter((r) => r.geo?.lat && r.geo?.lng && r.geo.precision === 'ROOFTOP');
 
 console.log(APPLY ? '★ 実際に書き込みます' : '確認のみ（書き込みません）');
@@ -70,7 +72,7 @@ for (const r of targets) {
             changedBy: 'システム移行',
             changedByGroupId: 'admin',
             changedAt: now,
-            diff: `住所を新住居表示へ変更: ${r.oldAddress} → ${r.newAddress}（海老名市の新旧対照表に基づく。位置も ${r.moved}m 調整）`,
+            diff: `住所を新住居表示へ変更: ${r.oldAddress} → ${r.newAddress}（${r.basis || '海老名市の新旧対照表に基づく'}。位置も ${r.moved}m 調整）`,
             posterType: cur.type || '',
             posterStatus: Array.isArray(cur.status) ? cur.status : [],
             isNeedsRepair: false,
