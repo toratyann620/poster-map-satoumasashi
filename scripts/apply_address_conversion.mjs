@@ -6,7 +6,7 @@
  *
  * 1件ごとに次を行う:
  *   - address を新住所に置き換える
- *   - memo の末尾に「旧住所表記：<元の住所>」を追記する（元の表記を失わないため）
+ *   - memo の末尾に「旧住所：<元の住所>」を追記する（元の表記を失わないため）
  *   - lat / lng を新住所の緯度経度に置き換える（find_old_addresses で取得済み・ROOFTOP のみ）
  *   - 変更履歴（activityLogs_v2）に「更新」を1件残す（ピンの「ログ」タブから経緯を追えるように）
  *
@@ -44,7 +44,7 @@ for (const r of targets) {
     }
 
     const oldMemo = String(cur.memo ?? '').trim();
-    const note = `旧住所表記：${r.oldAddress}`;
+    const note = `旧住所：${r.oldAddress}`;
     const newMemo = oldMemo ? `${oldMemo}\n${note}` : note;
 
     console.log(`${done + 1}. ${r.oldAddress}`);
