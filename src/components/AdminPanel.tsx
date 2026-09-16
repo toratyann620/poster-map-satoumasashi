@@ -15,7 +15,7 @@ import { SpecTab } from './SpecTab';
 import { ChangelogTab } from './ChangelogTab';
 import { SettingsTab } from './SettingsTab';
 import {
-    UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle,
+    UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle, Monitor,
     LayoutDashboard, Users, BookOpen, ClipboardList, Settings, PackageOpen, RefreshCcw, Wrench,
 } from 'lucide-react';
 
@@ -177,6 +177,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                 </button>
                 <Shield className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white flex-1">管理者パネル</h1>
+                {/* PC向けの管理画面へ。同じアプリ内の /admin を読み直すだけなので
+                    ログインは引き継がれる。ネイティブでも拡張子の無いパスは index.html に
+                    振り分けられる（Capacitor の SPA フォールバック）ため、そのまま遷移できる */}
+                <button
+                    type="button"
+                    onClick={() => window.location.assign('/admin')}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-sm font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors whitespace-nowrap"
+                    title="PC向けの管理画面を開く（ポスター管理・グループ管理・申請の承認など）"
+                >
+                    <Monitor className="w-4 h-4" />
+                    管理画面
+                </button>
             </div>
 
             {/* タブ */}
