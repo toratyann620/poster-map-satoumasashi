@@ -99,7 +99,7 @@ function App() {
     return m;
   }, [pinTypes]);
   // バッジに出す「自分あての未対応件数」。マイページを開かなくても気づけるようにする
-  const { myTasks, createTask } = useTasks();
+  const { myTasks, myTakenTasks, createTask } = useTasks();
   // ピンの詳細から依頼を出すときの対象。null なら閉じている
   const [taskTargetPoster, setTaskTargetPoster] = useState<PosterPin | null>(null);
 
@@ -127,15 +127,22 @@ function App() {
     return Array.from(tagSet).sort();
   }, [posters]);
 
+  // 今日マイタスクに取った依頼の対象ピン。絞り込みの「マイタスクのピンのみ」に使う
+  const myTaskPosterIds = useMemo(
+    () => new Set(myTakenTasks.map(t => t.posterId).filter((id): id is string => !!id)),
+    [myTakenTasks],
+  );
+
   // 撤去ピンの表示制御を加味したポスターリスト（早期リターン前に宣言する必要あり）
   const displayPosters = useMemo(() => {
     return filteredPosters.filter(p => {
+      if (filter.myTasksOnly && !myTaskPosterIds.has(p.id)) return false;
       if (p.removed) {
         return showRemovedPins;
       }
       return true;
     });
-  }, [filteredPosters, showRemovedPins]);
+  }, [filteredPosters, showRemovedPins, filter.myTasksOnly, myTaskPosterIds]);
 
   // 選択中のポスターの最新データをリアルタイム同期しているリストから取得（早期リターン前に宣言）
   const activePoster = useMemo(() => {
@@ -716,7 +723,7 @@ function App() {
                     （15vh≒128pt）が3行ある検索窓（≒150pt）と重なる。薄く見えたまま
                     重ねるより、隠した方が読み違えない */}
               {!isQuickMode && !isSheetExpanded && (
-                <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} />
+                <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} myTaskPinCount={myTaskPosterIds.size} />
               )}
 
               {/* ピン打ちモードの帯とボタン */}

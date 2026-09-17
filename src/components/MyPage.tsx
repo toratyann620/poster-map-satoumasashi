@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom';
 import {
     X, CheckCircle2, Circle, ClipboardList, History, MapPin,
     Users as UsersIcon, CalendarClock, Loader2, Plus, MessageSquare,
-    Hourglass,
+    Hourglass, Hand, Undo2,
 } from 'lucide-react';
 import type { PosterPin, Task, ActivityLog } from '../types';
 import { useSession } from '../hooks/useSession';
-import { useTasks } from '../hooks/useTasks';
+import { useTasks, isTakenToday } from '../hooks/useTasks';
 import { TaskComposer, TaskCompleteDialog } from './TaskComposer';
 import { taskAge, TASK_AGE_CLASS } from '../lib/taskAge';
 
@@ -52,10 +52,18 @@ const TaskRow: React.FC<{
     onComplete: () => void;
     onOpenPoster: (p: PosterPin) => void;
     busy: boolean;
-}> = ({ task, poster, onComplete, onOpenPoster, busy }) => {
+    /** 自分の uid。「誰が取っているか」の表示に使う */
+    uid?: string | null;
+    /** 依頼タブで「今日やる」と取る */
+    onTake?: () => void;
+    /** マイタスクから依頼へ戻す */
+    onRelease?: () => void;
+}> = ({ task, poster, onComplete, onOpenPoster, busy, uid, onTake, onRelease }) => {
     const due = dueLabel(task.dueDate);
     const done = task.status === 'done';
     const age = taskAge(task);
+    // 今日、別の人が取っている依頼。取れないことと、誰が動いているかを見せる
+    const takenByOther = !done && isTakenToday(task) && task.takenBy !== uid;
 
     return (
         <div className={`rounded-xl border p-3.5 ${done
@@ -91,6 +99,11 @@ const TaskRow: React.FC<{
                                 <CalendarClock className="w-2.5 h-2.5" />{due.text}
                             </span>
                         )}
+                        {takenByOther && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+                                <Hand className="w-2.5 h-2.5" />{task.takenByName || '別の方'}が対応中
+                            </span>
+                        )}
                         {/* 立ってからの日数。期限が無い依頼でも「いつからあるか」が見えるようにする */}
                         {age && (
                             <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${TASK_AGE_CLASS[age.level]}`}
@@ -121,7 +134,7 @@ const TaskRow: React.FC<{
                         </div>
                     )}
 
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
                         {poster && (
                             <button
                                 type="button"
@@ -129,6 +142,28 @@ const TaskRow: React.FC<{
                                 className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                             >
                                 <MapPin className="w-3 h-3" />地図で見る
+                            </button>
+                        )}
+                        {onTake && !done && (
+                            <button
+                                type="button"
+                                onClick={onTake}
+                                disabled={busy || takenByOther}
+                                className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                title={takenByOther ? '本日は別の方が対応中です' : '今日やる依頼としてマイタスクに入れる'}
+                            >
+                                <Hand className="w-3 h-3" />今日やる
+                            </button>
+                        )}
+                        {onRelease && !done && (
+                            <button
+                                type="button"
+                                onClick={onRelease}
+                                disabled={busy}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 disabled:opacity-40 transition-colors"
+                                title="マイタスクから外して依頼に戻す"
+                            >
+                                <Undo2 className="w-3 h-3" />依頼に戻す
                             </button>
                         )}
                         <span className="text-[10px] text-gray-400 dark:text-gray-500">
@@ -151,8 +186,8 @@ const TaskRow: React.FC<{
  */
 export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }) => {
     const { uid, name, group, role } = useSession();
-    const { myTasks, doneTasks, completeTask, createTask, loading } = useTasks();
-    const [tab, setTab] = useState<'tasks' | 'archive' | 'history'>('tasks');
+    const { myTasks, myTakenTasks, doneTasks, completeTask, createTask, takeTask, releaseTask, loading } = useTasks();
+    const [tab, setTab] = useState<'tasks' | 'mine' | 'archive' | 'history'>('tasks');
     const [busyId, setBusyId] = useState<string | null>(null);
     const [composing, setComposing] = useState(false);
     // 完了にする対象。結果を書いてもらってから確定する
@@ -179,8 +214,16 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
         finally { setBusyId(null); setCompleting(null); }
     };
 
+    const run = async (taskId: string, fn: () => Promise<void>, failMsg: string) => {
+        setBusyId(taskId);
+        try { await fn(); }
+        catch (e) { window.alert((e as Error)?.message ?? failMsg); }
+        finally { setBusyId(null); }
+    };
+
     const TABS = [
         { id: 'tasks' as const, label: `依頼${myTasks.length > 0 ? ` (${myTasks.length})` : ''}`, Icon: ClipboardList },
+        { id: 'mine' as const, label: `マイタスク${myTakenTasks.length > 0 ? ` (${myTakenTasks.length})` : ''}`, Icon: Hand },
         { id: 'archive' as const, label: '完了済み', Icon: CheckCircle2 },
         { id: 'history' as const, label: '作業履歴', Icon: History },
     ];
@@ -243,7 +286,24 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
                             ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">未対応の依頼はありません</p>
                             : myTasks.map((t) => (
                                 <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
-                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id} />
+                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
+                                    uid={uid}
+                                    onTake={() => run(t.id, () => takeTask(t.id), 'マイタスクに入れられませんでした。')} />
+                            ))
+                    )}
+
+                    {/* 今日やると決めた依頼。日付が変わると自動で依頼タブに戻る */}
+                    {!loading && tab === 'mine' && (
+                        myTakenTasks.length === 0
+                            ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10 leading-relaxed">
+                                今日のマイタスクはありません<br />
+                                <span className="text-xs">依頼タブの「今日やる」で取ると、ここに入ります（翌日には依頼に戻ります）</span>
+                            </p>
+                            : myTakenTasks.map((t) => (
+                                <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
+                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
+                                    uid={uid}
+                                    onRelease={() => run(t.id, () => releaseTask(t.id), '依頼に戻せませんでした。')} />
                             ))
                     )}
 

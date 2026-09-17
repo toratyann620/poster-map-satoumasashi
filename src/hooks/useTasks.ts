@@ -35,7 +35,21 @@ const parseTask = (id: string, d: Record<string, unknown>): Task => ({
     completedAt: d.completedAt ? Number(d.completedAt) : undefined,
     completionNote: d.completionNote ? String(d.completionNote) : undefined,
     notify: d.notify === true,
+    takenBy: d.takenBy ? String(d.takenBy) : undefined,
+    takenByName: d.takenByName ? String(d.takenByName) : undefined,
+    takenAt: d.takenAt ? Number(d.takenAt) : undefined,
+    takenDate: d.takenDate ? String(d.takenDate) : undefined,
 });
+
+/** 端末の今日（YYYY-MM-DD）。マイタスクの有効期限の判定に使う */
+export const todayStr = (now = new Date()): string => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+};
+
+/** 今日、誰かが取っている依頼か（昨日以前の take は無効＝依頼に戻っている） */
+export const isTakenToday = (t: Pick<Task, 'takenBy' | 'takenDate'>): boolean =>
+    !!t.takenBy && t.takenDate === todayStr();
 
 /**
  * @param scope 取得範囲。
@@ -74,9 +88,20 @@ export const useTasks = (scope: 'group' | 'all' = 'group') => {
     const openTasks = useMemo(() => tasks.filter((t) => t.status === 'open'), [tasks]);
     const doneTasks = useMemo(() => tasks.filter((t) => t.status === 'done'), [tasks]);
 
-    /** 自分あての依頼。担当者が空のもの（事務所の全員向け）も含める */
+    /**
+     * 自分あての依頼。担当者が空のもの（事務所の全員向け）も含める。
+     * 今日自分がマイタスクに取ったものは除く（マイタスク側に移る）。
+     * 他の人が今日取っているものは残す（誰が対応中かが見えないと二重に動いてしまう）。
+     */
     const myTasks = useMemo(
-        () => openTasks.filter((t) => !t.assigneeUid || t.assigneeUid === uid),
+        () => openTasks.filter((t) => (!t.assigneeUid || t.assigneeUid === uid)
+            && !(isTakenToday(t) && t.takenBy === uid)),
+        [openTasks, uid],
+    );
+
+    /** 今日「やる」と取った依頼（マイタスク）。日付が変わると空になる */
+    const myTakenTasks = useMemo(
+        () => openTasks.filter((t) => isTakenToday(t) && t.takenBy === uid),
         [openTasks, uid],
     );
 
@@ -117,6 +142,35 @@ export const useTasks = (scope: 'group' | 'all' = 'group') => {
         });
     }, [name]);
 
+    /**
+     * 依頼を今日のマイタスクに取る。
+     * 同じ日に別の人が既に取っていれば断る（二人で同じ現場に向かうのを防ぐ）。
+     * 昨日以前の take は無効なので上書きしてよい。
+     */
+    const takeTask = useCallback(async (taskId: string) => {
+        const t = tasks.find((x) => x.id === taskId);
+        if (!t) throw new Error('依頼が見つかりませんでした。');
+        if (isTakenToday(t) && t.takenBy !== uid) {
+            throw new Error(`本日は ${t.takenByName || '別の方'} が対応中です。`);
+        }
+        await updateDoc(doc(db, COL.tasks, taskId), {
+            takenBy: uid,
+            takenByName: name,
+            takenAt: Date.now(),
+            takenDate: todayStr(),
+        });
+    }, [tasks, uid, name]);
+
+    /** マイタスクから外して依頼に戻す（今日中に手放すとき） */
+    const releaseTask = useCallback(async (taskId: string) => {
+        await updateDoc(doc(db, COL.tasks, taskId), {
+            takenBy: '',
+            takenByName: '',
+            takenAt: 0,
+            takenDate: '',
+        });
+    }, []);
+
     /** 完了を取り消して未対応へ戻す */
     const reopenTask = useCallback(async (taskId: string) => {
         await updateDoc(doc(db, COL.tasks, taskId), {
@@ -136,9 +190,12 @@ export const useTasks = (scope: 'group' | 'all' = 'group') => {
         openTasks,
         doneTasks,
         myTasks,
+        myTakenTasks,
         loading: ready && group ? fetched.loading : !ready,
         createTask,
         completeTask,
+        takeTask,
+        releaseTask,
         reopenTask,
         removeTask,
     };

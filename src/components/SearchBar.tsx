@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Search, Filter, MapPin, X } from 'lucide-react';
+import { Search, Filter, MapPin, X, Hand } from 'lucide-react';
 import type { FilterState } from '../types';
 import { POSTER_STATUS_OPTIONS, GREETED_FILTER } from '../types';
 import { normalizeAddress } from '../lib/address';
@@ -8,11 +8,13 @@ interface SearchBarProps {
     filter: FilterState;
     setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
     onPlaceSelect: (lat: number, lng: number, name?: string, address?: string, url?: string) => void;
+    /** 今日マイタスクに取った依頼の対象ピン数。0 なら絞り込みの選択肢を出さない */
+    myTaskPinCount?: number;
     allTags?: string[];
     pinTypes?: { name: string, color: string }[];
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect, allTags = [], pinTypes = [] }) => {
+export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlaceSelect, allTags = [], pinTypes = [], myTaskPinCount = 0 }) => {
     const placeInputRef = useRef<HTMLInputElement>(null);
     const isComposingRef = useRef(false);
 
@@ -129,7 +131,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
         });
     };
 
-    const hasFilters = filter.types.length > 0 || filter.status.length > 0 || filter.tags.length > 0 || !!filter.keyword;
+    const hasFilters = filter.types.length > 0 || filter.status.length > 0 || filter.tags.length > 0 || !!filter.keyword || !!filter.myTasksOnly;
 
     return (
         // スマホでは左右いっぱい、タブレット以上（md〜）では左側の一定幅に収める。
@@ -165,7 +167,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                         onChange={(e) => setFilter({ ...filter, keyword: e.target.value })}
                     />
                     {hasFilters && (
-                        <button onClick={() => setFilter({ keyword: '', types: [], status: [], tags: [] })}
+                        <button onClick={() => setFilter({ keyword: '', types: [], status: [], tags: [], myTasksOnly: false })}
                             className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1 flex-shrink-0">
                             <X className="w-3.5 h-3.5" />クリア
                         </button>
@@ -191,6 +193,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({ filter, setFilter, onPlace
                         </span>
                     </summary>
                     <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 space-y-4">
+                        {/* 今日マイタスクに取った依頼のピンだけ。取ったものが無いときは出さない
+                            （何も表示されない絞り込みを選べてしまうため） */}
+                        {(myTaskPinCount > 0 || filter.myTasksOnly) && (
+                            <button
+                                type="button"
+                                onClick={() => setFilter({ ...filter, myTasksOnly: !filter.myTasksOnly })}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm font-bold transition-all ${filter.myTasksOnly
+                                    ? 'bg-violet-600 border-violet-600 text-white'
+                                    : 'border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-zinc-800/50'}`}
+                            >
+                                <span className="inline-flex items-center gap-1.5"><Hand className="w-4 h-4" />マイタスクのピンのみ</span>
+                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${filter.myTasksOnly ? 'bg-white/20' : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'}`}>
+                                    {myTaskPinCount}
+                                </span>
+                            </button>
+                        )}
                         {/* 種類フィルター（チェックボックス） */}
                         <div>
                             <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs mb-2">

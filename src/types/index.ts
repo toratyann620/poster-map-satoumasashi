@@ -118,6 +118,8 @@ export type FilterState = {
     types: string[];   // 複数選択、空配列 = すべて表示
     status: string[];  // 複数選択、空配列 = すべて表示
     tags: string[];    // 複数選択、空配列 = すべて表示
+    /** 今日マイタスクに取った依頼の対象ピンだけを表示する */
+    myTasksOnly?: boolean;
 };
 
 /** 依頼できる作業の種類 */
@@ -155,6 +157,15 @@ export interface Task {
     completedAt?: number;
     /** 完了時に残す結果。任意。完了済みの一覧から確認できる */
     completionNote?: string;
+    /**
+     * 「今日やる」として取った人（マイタスク）。
+     * 取った日（takenDate, YYYY-MM-DD）の間だけ有効で、翌日には自動的に依頼へ戻る。
+     * 戻す処理は書かず、日付が今日と一致するかで判定する（夜間のジョブが要らない）。
+     */
+    takenBy?: string;
+    takenByName?: string;
+    takenAt?: number;
+    takenDate?: string;
     /** 作成時にプッシュ通知を送るか。送信は Cloud Functions が受け持つ */
     notify?: boolean;
 }
