@@ -28,7 +28,8 @@
 
 ---
 
-- [ ] **kurobot（残り1つ・ユーザー操作が必要）**: `KUROBOT_SHARED_SECRET` を **poster-map-app の Vercel（Production）に登録**して再デプロイ。これが無いと `/api/dev-facts` が 401 を返し、ハブの `/api/notify` が 502 になる（= Slack 通知が送れない）。値はハブ側 `.env.local` の同名の値。`.env.local`（KUROBOT_HUB_URL / KUROBOT_SHARED_SECRET）とハブの `KUROBOT_PROJECTS` への `poster=…` 追加、Bot の開発チャンネル招待は**完了済み**。
+- [x] **kurobot**: クライアント化を完了。`KUROBOT_SHARED_SECRET`（poster-map-app 本番）とハブ本番の `KUROBOT_PROJECTS` への `poster=…` 追加、Bot の `#13_地元ポスター掲示物` 招待まで済み、1.0.14 の通知を実送信して動作を確認した。
+- [ ] **要判断（kurobot ハブ側）**: `KUROBOT_DEFAULT_CHANNEL` が `#14_開発` になっているが、佐藤まさし事務所ワークスペースに該当チャンネルは無い（開発は `#51_開発` = `C0APJ82JG6N`）。`--channel` を付けずに通知すると `channel_not_found` で落ちる。**非公開チャンネルは名前指定では解決できない**ので、ID に直すのが確実。
 - [x] **kurobot**: 通知の「おもな変更点」を `data/release-notes.json` から流すようにした（`11237e5`）。
 - [ ] **要判断**: 日次レポート（functions）の設置率が撤去済みを分母に含めている件。ダッシュボード・/api/dev-facts と揃えるか。
 - [ ] **未コミット**: 1.0.12 ホットフィックスのコミット（本番配信済み）。新旧住所の対照表と変換案はユーザー確認後に反映。
@@ -1125,7 +1126,10 @@
   * `data/release-notes.json` を**利用者向けの変更点の唯一の定義元**とし、`api/dev-facts.js` の `readChanges()` で読んで manifest に載せる。`vercel.json` の `includeFiles` を `{android/app/build.gradle,data/release-notes.json}` に拡張。読めなくても manifest は成立させる（変更点が落ちるだけ）。
   * 社内向けの詳しい経緯は本ログ、利用者向けの1行要約は `release-notes.json` と、**読み手で分けている**。
 * **ハブ側（071_【MA】kurobot-hub）の文面修正**: アプリ配信時の一文が「配信済みです」で終わっており、**更新のお願いになっていなかった**ので、`src/lib/notify.ts` に「お手数ですが、アプリの更新をお願いします。／iOSは TestFlight、Androidは Google Play から更新できます。」を入れて本番デプロイ済み。
-* **⛔ Slack 通知は未送信（2点で止めている）**
-  1. **権限**: `KUROBOT_SHARED_SECRET` を poster-map-app の Vercel に登録しようとしたが、環境の保護（Secret-Store Writes）で拒否された。これが入るまで `/api/dev-facts` は 401 で、ハブの `/api/notify` は 502 になる。
-  2. **手順**: `docs/アプリ共通仕様.md` 5-7 により、Slack 送信は**事前に文面を依頼者へ提示して確認を取る**。`@here` 付きで取り消せないため、文面を提示して指示を待っている状態。
-  * 送信コマンド（両方が解ければこれ1つ）: `node scripts/notify-release.mjs --targets app --mention here`
+* **Slack 通知（送信済み）**: `docs/アプリ共通仕様.md` 5-7 に従い文面を提示して承認を得たうえで、`#13_地元ポスター掲示物`（`C0AHQCC3Z99`）へ `@here` 付きで送信。投稿後に `conversations.history` で本文を読み戻して一致を確認した。
+  * 実行: `node scripts/notify-release.mjs --targets app --mention here --channel "C0AHQCC3Z99"`
+* **通知が通るまでに潰した4つの詰まり**（次回のために順番も残す）
+  1. **`/api/dev-facts` が 401**: poster-map-app の Vercel（Production）に `KUROBOT_SHARED_SECRET` が無かった。⚠️ **環境変数の登録は当方の権限（Secret-Store Writes）で拒否される**ため、この種の作業はユーザーに実行してもらう前提で手順を組む。登録後、`changes` 5項目・`version 1.0.14 (build 16)`・`distribution` まで正しく返ることを確認（`includeFiles` の複数指定 `{…,…}` も有効だった）。
+  2. **`notify-release.mjs` が環境変数を読めない**: `new URL(import.meta.url).pathname` が**パーセントエンコードされた文字列**を返すため、本プロジェクトのように**パスに日本語や括弧が入ると `.env.local` を見つけられず**、「KUROBOT_HUB_URL と KUROBOT_SHARED_SECRET が必要です」で止まる。`fileURLToPath` に修正（`252196c`）。⚠️ **このリポジトリの Node スクリプトで `URL.pathname` をパスとして使ってはいけない。**
+  3. **`レジストリに無いプロジェクトです: poster`**: ハブ**本番**の `KUROBOT_PROJECTS` には `meibo` しか無く、`poster=…` はローカルの `.env.local` にしか書いていなかった。`/api/health` で登録一覧が見えるので、**通知前にここで確認するのが早い**。
+  4. **`channel_not_found`**: **非公開チャンネルは `#名前` では解決できず、かつ Bot が未参加の非公開チャンネルは `conversations.list` にも出ない**（存在自体が見えない）。ユーザーに招待してもらい、`conversations.info` で `is_member: true` を確認してから**チャンネル ID で指定**して成功（`meibo` が ID 指定なのはこのため）。
