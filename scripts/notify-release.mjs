@@ -15,8 +15,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// ⚠️ new URL(import.meta.url).pathname は使わない。パーセントエンコードされた文字列が
+// 返るため、日本語や括弧を含むパスでは .env.local を見つけられず、
+// 「KUROBOT_HUB_URL と KUROBOT_SHARED_SECRET が必要です」で黙って止まる。
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ── 引数 ──
 const argv = process.argv.slice(2);
