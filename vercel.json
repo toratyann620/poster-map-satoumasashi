@@ -31,7 +31,7 @@
   ],
   "functions": {
     "api/dev-facts.js": {
-      "includeFiles": "android/app/build.gradle",
+      "includeFiles": "{android/app/build.gradle,data/release-notes.json}",
       "maxDuration": 10
     }
   }

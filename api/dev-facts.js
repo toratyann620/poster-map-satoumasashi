@@ -13,6 +13,8 @@
  *  - version は android/app/build.gradle の versionName / versionCode を唯一の定義元として読む
  *    （iOS 側の pbxproj とは配信手順で常に揃えている）。読めない環境では
  *    Firestore の settings/appVersion.latest（更新案内の基準値）にフォールバックする。
+ *  - changes は data/release-notes.json（利用者向けの変更点の唯一の定義元）から読む。
+ *    デプロイ通知の本文はハブがこれを使って組み立てる。
  *  - 応答は3秒以内。Firestore の読み取り結果は5分キャッシュする（規格の上限）。
  *  - 道具はまだ無い。個人情報（氏名・住所・電話など）を返す道具を足すときは
  *    必ず sensitivity: "personal" を付けること（規格 §11）。
@@ -104,6 +106,34 @@ function readAppVersionFromGradle() {
         }
     }
     return null;
+}
+
+// ────────────────────────────────────────────────────────────
+// changes — 利用者向けの変更点（data/release-notes.json）
+// ────────────────────────────────────────────────────────────
+
+/**
+ * build.gradle と同じく includeFiles で同梱している。
+ * 読めなくても manifest は成立させる（通知から変更点が落ちるだけ）。
+ */
+function readChanges() {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+        path.join(process.cwd(), 'data', 'release-notes.json'),
+        path.join(here, '..', 'data', 'release-notes.json'),
+    ];
+    for (const p of candidates) {
+        try {
+            const { releases } = JSON.parse(readFileSync(p, 'utf8'));
+            if (!Array.isArray(releases)) continue;
+            return releases
+                .filter((r) => r && typeof r.version === 'string' && Array.isArray(r.items) && r.items.length)
+                .map((r) => ({ version: r.version, date: r.date, items: r.items.map(String) }));
+        } catch {
+            /* 次の候補へ */
+        }
+    }
+    return [];
 }
 
 // ────────────────────────────────────────────────────────────
@@ -222,6 +252,8 @@ async function buildManifest() {
     const manifest = { kurobot: 1, project };
     if (Object.keys(version).length) manifest.version = version;
     manifest.facts = facts;
+    const changes = readChanges();
+    if (changes.length) manifest.changes = changes;
     if (Object.keys(distribution).length) manifest.distribution = distribution;
     manifest.tools = TOOLS;
     manifest.generatedAt = new Date().toISOString();
