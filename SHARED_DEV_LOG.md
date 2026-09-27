@@ -28,8 +28,8 @@
 
 ---
 
-- [ ] **kurobot**: `KUROBOT_SHARED_SECRET` を Vercel（Production）に登録して `vercel deploy --prod --yes`。`.env.local` にも `KUROBOT_HUB_URL` / `KUROBOT_SHARED_SECRET` を書く（通知スクリプト用）。ハブの `KUROBOT_PROJECTS` に `poster=https://poster-map-app.vercel.app/api/dev-facts` を追加。Bot を開発チャンネルへ招待。
-- [ ] **kurobot**: 通知に「最近の変更点」を載せるなら、版つきの変更履歴を1か所（例: `src/data/appChangelog` を JSON 化して版を持たせる）で管理し `changes` に流す。
+- [ ] **kurobot（残り1つ・ユーザー操作が必要）**: `KUROBOT_SHARED_SECRET` を **poster-map-app の Vercel（Production）に登録**して再デプロイ。これが無いと `/api/dev-facts` が 401 を返し、ハブの `/api/notify` が 502 になる（= Slack 通知が送れない）。値はハブ側 `.env.local` の同名の値。`.env.local`（KUROBOT_HUB_URL / KUROBOT_SHARED_SECRET）とハブの `KUROBOT_PROJECTS` への `poster=…` 追加、Bot の開発チャンネル招待は**完了済み**。
+- [x] **kurobot**: 通知の「おもな変更点」を `data/release-notes.json` から流すようにした（`11237e5`）。
 - [ ] **要判断**: 日次レポート（functions）の設置率が撤去済みを分母に含めている件。ダッシュボード・/api/dev-facts と揃えるか。
 - [ ] **未コミット**: 1.0.12 ホットフィックスのコミット（本番配信済み）。新旧住所の対照表と変換案はユーザー確認後に反映。
 
@@ -1111,3 +1111,21 @@
   * 依頼で解消される状態以外は触らない（修理の完了で「張替え予定」は残る）。
   * **「設置」「撤去」は対象外**。撤去の完了で「設置済」を立てると逆になるため。設置の完了で設置済を立てるかは要判断（1行で足せる）。
   * 検証: 実データの組み合わせ9通りを机上で確認したうえ、実画面で2件（`張替え予定+未設置` → `設置済` ／ `張替え予定+要修理`（修理の完了）→ `張替え予定+設置済`）を完了させ、履歴の `statusRemoved`/`statusAdded` も確認。**ピンの状態・履歴・依頼はすべて復元／削除済み**（要修理20件・張替え予定219件で整合）。
+
+### 2026-09-27 (Claude Code) その75
+* **タスク**: 1.0.14 のアプリ配信と、個人bot（kurobot）による `@here` 付きアップデート通知
+* **配信結果（1.0.14 / versionCode 16 / build 16）**
+  * **Android**: 内部テスト・クローズドテストとも `1.0.14 (16)`「公開済み（テスターに配信中）」を `scripts/check_play_tracks.mjs` で確認。
+  * **iOS**: VERIFY / UPLOAD とも成功。TestFlight の build 16 は **VALID**（App Store Connect API で確認）。
+  * **更新案内**: `settings/appVersion.latest` を `1.0.13` → **`1.0.14`** に更新（メッセージも差し替え）。
+  * **ブラウザ版**: 本番デプロイ済み（Ready）。⚠️ **このプロジェクトのブラウザ版は git 連携ではなく `vercel --prod`（CLI）で配信している**。git push すると Production のビルドが即 Canceled になるだけで反映されない（remote は長く `2020f6b` のまま放置されていた）。今回あわせて `main` を push 済み。
+* **1.0.14 に入るアプリ側の変更**（`f1bf9f9..HEAD` の `src/` 差分）: マイタスク（今日やる／翌日に依頼へ戻る）・地図の「マイタスクのピンのみ」絞り込み・管理者パネルから管理画面への遷移。
+  * ⚠️ 「ピンの詳細からの依頼」「依頼の放置日数」は**1.0.13 に入っていた**（`e36f4a4` は版上げ `f1bf9f9` より前）。Play のリリースノートにはこの2つを重複して書いてしまった（内部/クローズドテスト向けなので再アップロードはしていない）。
+* **通知の仕組みの穴を1つ埋めた（`11237e5`）**: ハブの `buildNotifyText` は各プロジェクトの `/api/dev-facts` の **`changes`** を読んで「おもな変更点」を作るが、こちらが `changes` を返していなかったため**本文が空のまま送られる状態**だった。
+  * `data/release-notes.json` を**利用者向けの変更点の唯一の定義元**とし、`api/dev-facts.js` の `readChanges()` で読んで manifest に載せる。`vercel.json` の `includeFiles` を `{android/app/build.gradle,data/release-notes.json}` に拡張。読めなくても manifest は成立させる（変更点が落ちるだけ）。
+  * 社内向けの詳しい経緯は本ログ、利用者向けの1行要約は `release-notes.json` と、**読み手で分けている**。
+* **ハブ側（071_【MA】kurobot-hub）の文面修正**: アプリ配信時の一文が「配信済みです」で終わっており、**更新のお願いになっていなかった**ので、`src/lib/notify.ts` に「お手数ですが、アプリの更新をお願いします。／iOSは TestFlight、Androidは Google Play から更新できます。」を入れて本番デプロイ済み。
+* **⛔ Slack 通知は未送信（2点で止めている）**
+  1. **権限**: `KUROBOT_SHARED_SECRET` を poster-map-app の Vercel に登録しようとしたが、環境の保護（Secret-Store Writes）で拒否された。これが入るまで `/api/dev-facts` は 401 で、ハブの `/api/notify` は 502 になる。
+  2. **手順**: `docs/アプリ共通仕様.md` 5-7 により、Slack 送信は**事前に文面を依頼者へ提示して確認を取る**。`@here` 付きで取り消せないため、文面を提示して指示を待っている状態。
+  * 送信コマンド（両方が解ければこれ1つ）: `node scripts/notify-release.mjs --targets app --mention here`
