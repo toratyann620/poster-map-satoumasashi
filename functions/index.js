@@ -805,31 +805,39 @@ exports.provisionUser = onCall({ region: 'asia-northeast1' }, async (request) =>
 // ═══════════════════════════════════════════════════════════
 
 /**
- * 依頼の種類と、完了時に外すステータスの対応。
+ * 依頼の種類と、完了したときのステータスの入れ替え。
  *
  * 「修理」の依頼を完了にしたのにピンが「要修理」のままだと、
  * 地図では直っていないように見え続け、同じ場所へ二度足を運ぶことになる。
- * 完了の操作ひとつで両方そろうようにする。
+ * 完了の操作ひとつで状態がそろうようにする。
  *
- * 張替えも同じ形にできる（'張替え': '張替え予定'）が、いまは修理のみ。
- * 増やすときは日次レポートの「張替え完了」の数え方と揃っているか確認すること。
+ * ⚠️ 「設置」「撤去」は入れていない。撤去の完了で「設置済」を立てると逆になる。
+ * 増やすときは日次レポートの数え方（statusRemoved を見ている）と揃っているか確認すること。
  */
-const STATUS_CLEARED_ON_DONE = {
-    修理: '要修理',
+const STATUS_ON_DONE = {
+    修理: { remove: ['要修理'], add: ['設置済'] },
+    張替え: { remove: ['張替え予定'], add: ['設置済'] },
 };
 
 /**
- * 依頼が「完了」になったとき、対象ピンから対応するステータスを外す。
+ * 「設置済」と同時には立てられない状態。設置済にするとき一緒に外す。
+ * 両方が立っていると、地図では薄く（未設置）表示されるのに
+ * 設置率の分子には入る、という食い違いが起きる。
+ */
+const CONTRADICTS = { 設置済: ['未設置'] };
+
+/**
+ * 依頼が「完了」になったとき、対象ピンのステータスを実態に合わせる。
+ * 「要修理」「張替え予定」を外し、「設置済」を立てる（同時に「未設置」を外す）。
  *
  * クライアント側ではなくここで行う理由:
  *  - 完了の操作はマイページと管理画面の両方にあり、片方だけ直すと食い違う
  *  - 完了した人が、そのピンを書き込める事務所とは限らない（Admin SDK ならルールを通らない）
  *
- * ⚠️ 履歴には `statusRemoved: ['要修理']` を必ず入れる。
- * 日次レポートの「修理完了」はこの項目を見て数えているため、
- * 入れ忘れると画面上は直っているのに報告に出ない。
+ * ⚠️ 履歴には `statusRemoved` を必ず入れる。日次レポートの「修理完了」「張替え完了」は
+ * この項目を見て数えているため、入れ忘れると画面上は直っているのに報告に出ない。
  *
- * 同じ更新が二度届いても、既にステータスが外れていれば何もしない（冪等）。
+ * 同じ更新が二度届いても、状態が既に揃っていれば何もしない（冪等）。
  */
 exports.clearStatusOnTaskDone = onDocumentUpdated({
     document: 'tasks/{taskId}',
@@ -842,8 +850,8 @@ exports.clearStatusOnTaskDone = onDocumentUpdated({
     // 「未対応 → 完了」に変わったときだけ
     if (before.status === 'done' || after.status !== 'done') return;
 
-    const target = STATUS_CLEARED_ON_DONE[after.kind];
-    if (!target || !after.posterId) return;
+    const rule = STATUS_ON_DONE[after.kind];
+    if (!rule || !after.posterId) return;
 
     const posterRef = db.collection(COL.posters).doc(after.posterId);
     const snap = await posterRef.get();
@@ -853,9 +861,18 @@ exports.clearStatusOnTaskDone = onDocumentUpdated({
     }
     const poster = snap.data();
     const current = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
-    if (!current.includes(target)) return; // 既に外れている
 
-    const next = current.filter((s) => s !== target);
+    // 外すもの: この依頼で解消される状態と、これから立てる状態と両立しないもの
+    const toRemove = new Set(rule.remove);
+    for (const a of rule.add) for (const c of (CONTRADICTS[a] ?? [])) toRemove.add(c);
+
+    const next = current.filter((s) => !toRemove.has(s));
+    for (const a of rule.add) if (!next.includes(a)) next.push(a);
+
+    const removed = current.filter((s) => !next.includes(s));
+    const added = next.filter((s) => !current.includes(s));
+    if (removed.length === 0 && added.length === 0) return; // 既に揃っている
+
     const by = after.completedBy || 'システム';
     const now = Date.now();
 
@@ -868,17 +885,17 @@ exports.clearStatusOnTaskDone = onDocumentUpdated({
         changedBy: by,
         changedByGroupId: after.groupId || '',
         changedAt: now,
-        diff: `ステータス: ${next.join(',') || '(なし)'}（依頼「${after.title}」の完了により「${target}」を解除）`,
+        diff: `ステータス: ${next.join(',') || '(なし)'}（依頼「${after.title}」の完了による）`,
         posterType: poster.type || '',
         posterStatus: next,
         isNeedsRepair: next.includes('要修理'),
         isNewRegistration: false,
-        statusAdded: [],
-        statusRemoved: [target],
+        statusAdded: added,
+        statusRemoved: removed,
         removedChangedTo: null,
     });
 
-    logger.info('Cleared status on task completion', {
-        taskId: event.params.taskId, posterId: after.posterId, removed: target, by,
+    logger.info('Adjusted status on task completion', {
+        taskId: event.params.taskId, posterId: after.posterId, added, removed, by,
     });
 });
