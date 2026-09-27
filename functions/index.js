@@ -1,5 +1,5 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
@@ -798,4 +798,87 @@ exports.provisionUser = onCall({ region: 'asia-northeast1' }, async (request) =>
 
     logger.info('User provisioned', { uid, email, role, groupId, status, by: caller.uid });
     return { status, uid };
+});
+
+// ═══════════════════════════════════════════════════════════
+// 依頼の完了に連動して、ポスターのステータスを下ろす
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 依頼の種類と、完了時に外すステータスの対応。
+ *
+ * 「修理」の依頼を完了にしたのにピンが「要修理」のままだと、
+ * 地図では直っていないように見え続け、同じ場所へ二度足を運ぶことになる。
+ * 完了の操作ひとつで両方そろうようにする。
+ *
+ * 張替えも同じ形にできる（'張替え': '張替え予定'）が、いまは修理のみ。
+ * 増やすときは日次レポートの「張替え完了」の数え方と揃っているか確認すること。
+ */
+const STATUS_CLEARED_ON_DONE = {
+    修理: '要修理',
+};
+
+/**
+ * 依頼が「完了」になったとき、対象ピンから対応するステータスを外す。
+ *
+ * クライアント側ではなくここで行う理由:
+ *  - 完了の操作はマイページと管理画面の両方にあり、片方だけ直すと食い違う
+ *  - 完了した人が、そのピンを書き込める事務所とは限らない（Admin SDK ならルールを通らない）
+ *
+ * ⚠️ 履歴には `statusRemoved: ['要修理']` を必ず入れる。
+ * 日次レポートの「修理完了」はこの項目を見て数えているため、
+ * 入れ忘れると画面上は直っているのに報告に出ない。
+ *
+ * 同じ更新が二度届いても、既にステータスが外れていれば何もしない（冪等）。
+ */
+exports.clearStatusOnTaskDone = onDocumentUpdated({
+    document: 'tasks/{taskId}',
+    region: 'asia-northeast1',
+}, async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after) return;
+
+    // 「未対応 → 完了」に変わったときだけ
+    if (before.status === 'done' || after.status !== 'done') return;
+
+    const target = STATUS_CLEARED_ON_DONE[after.kind];
+    if (!target || !after.posterId) return;
+
+    const posterRef = db.collection(COL.posters).doc(after.posterId);
+    const snap = await posterRef.get();
+    if (!snap.exists) {
+        logger.info('Task done but poster is gone', { taskId: event.params.taskId, posterId: after.posterId });
+        return;
+    }
+    const poster = snap.data();
+    const current = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
+    if (!current.includes(target)) return; // 既に外れている
+
+    const next = current.filter((s) => s !== target);
+    const by = after.completedBy || 'システム';
+    const now = Date.now();
+
+    await posterRef.update({ status: next, updatedAt: now, updatedBy: by });
+    await db.collection(COL.activityLogs).add({
+        action: '更新',
+        posterId: after.posterId,
+        posterAddress: poster.address || after.address || '',
+        city: poster.city || '',
+        changedBy: by,
+        changedByGroupId: after.groupId || '',
+        changedAt: now,
+        diff: `ステータス: ${next.join(',') || '(なし)'}（依頼「${after.title}」の完了により「${target}」を解除）`,
+        posterType: poster.type || '',
+        posterStatus: next,
+        isNeedsRepair: next.includes('要修理'),
+        isNewRegistration: false,
+        statusAdded: [],
+        statusRemoved: [target],
+        removedChangedTo: null,
+    });
+
+    logger.info('Cleared status on task completion', {
+        taskId: event.params.taskId, posterId: after.posterId, removed: target, by,
+    });
 });
