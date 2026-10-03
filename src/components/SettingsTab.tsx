@@ -3,6 +3,7 @@ import { Settings, ToggleLeft, ToggleRight, Plus, Trash2, Tag, Zap } from 'lucid
 import { usePinTypes } from '../hooks/usePinTypes';
 import { MAX_PRESETS } from '../lib/pinPresets';
 import { PinPresetEditor } from './PinPresetEditor';
+import { SlackMentionEditor } from './SlackMentionEditor';
 
 // カラーパレット（追加時に選べる色）
 const COLOR_OPTIONS = [
@@ -67,6 +68,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
                 <PinPresetEditor pinTypes={pinTypes} />
             </div>
+
+            {/* ===== Slack通知のメンション先 ===== */}
+            <SlackMentionEditor />
 
             {/* ===== 表示設定 ===== */}
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">

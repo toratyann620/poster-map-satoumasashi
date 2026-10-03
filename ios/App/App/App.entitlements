@@ -22,6 +22,20 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:poster-map-app.vercel.app</string>
+
+		<!-- Slack の依頼通知のリンク（https://poster-map-app.vercel.app/task/<id>）を
+		     ブラウザではなくアプリで開くための宣言（Universal Links）。
+
+		     ⚠️ これと
+		     https://poster-map-app.vercel.app/.well-known/apple-app-site-association
+		     の applinks の対で、はじめて機能する。どちらか片方だけでは効かない。
+		     対象は /task/* だけに絞っている。全パスを対象にすると、
+		     アプリのURLを開くたびアプリが起動して管理画面などが開けなくなる。
+
+		     ⚠️ AASA は Apple の CDN が取得して配る。公開直後は反映されないことがあり、
+		     端末側もアプリの再インストールまで古い内容を持つ。
+		     効かないときは、まず公開中の AASA を直接開いて中身を確かめる。 -->
+		<string>applinks:poster-map-app.vercel.app</string>
 	</array>
 </dict>
 </plist>

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.satoumasashi.postermap",
+      "sha256_cert_fingerprints": [
+        "78:25:75:5E:11:F6:3A:33:E9:48:09:B2:6F:E1:55:CA:4D:AE:93:49:38:3B:6F:75:BF:1A:4B:8F:A2:67:D1:15"
+      ]
+    }
+  }
+]

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, CheckCircle2, Circle, ClipboardList, History, MapPin,
@@ -18,6 +18,13 @@ interface Props {
     onClose: () => void;
     /** 依頼に紐づくポスターを地図で開く */
     onOpenPoster: (poster: PosterPin) => void;
+    /**
+     * Slack の通知リンク（/task/<id>）から開いたときの対象。
+     * 該当するタブへ切り替えて、その依頼を目立たせる。
+     */
+    focusTaskId?: string | null;
+    /** 目的の依頼を表示し終えたら呼ぶ（URLを戻すため） */
+    onFocusHandled?: () => void;
 }
 
 const fmtDate = (ts: number) => {
@@ -184,14 +191,16 @@ const TaskRow: React.FC<{
  * 依頼は「自分が担当のもの」と「担当者が決まっていない事務所全体のもの」を
  * どちらも出す。後者を別画面にすると、手が空いた人が拾いに行かなくなるため。
  */
-export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }) => {
+export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster, focusTaskId, onFocusHandled }) => {
     const { uid, name, group, role } = useSession();
-    const { myTasks, myTakenTasks, doneTasks, completeTask, createTask, takeTask, releaseTask, loading } = useTasks();
+    const { tasks, myTasks, myTakenTasks, doneTasks, completeTask, createTask, takeTask, releaseTask, loading } = useTasks();
     const [tab, setTab] = useState<'tasks' | 'mine' | 'archive' | 'history'>('tasks');
     const [busyId, setBusyId] = useState<string | null>(null);
     const [composing, setComposing] = useState(false);
     // 完了にする対象。結果を書いてもらってから確定する
     const [completing, setCompleting] = useState<Task | null>(null);
+    /** リンクから開いた依頼。見つけたタブへ切り替えて光らせる */
+    const [highlightId, setHighlightId] = useState<string | null>(null);
 
     const posterById = useMemo(() => new Map(posters.map((p) => [p.id, p])), [posters]);
 
@@ -206,6 +215,49 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
         () => doneTasks.filter((t) => t.assigneeUid === uid || t.completedBy === name || !t.assigneeUid).slice(0, 100),
         [doneTasks, uid, name],
     );
+
+    /**
+     * Slack のリンクから開いたときに、その依頼があるタブへ切り替えて光らせる。
+     *
+     * 他の人あての依頼は myTasks に入らない（担当者で絞っているため）。
+     * その場合は「リンクで開いた依頼」として依頼タブの先頭に単独で出す。
+     * 何も出ないと、リンクを踏んだ人には壊れているように見えてしまう。
+     */
+    const linkedTask = useMemo(
+        () => (focusTaskId ? tasks.find((t) => t.id === focusTaskId) ?? null : null),
+        [focusTaskId, tasks],
+    );
+    /** 自分のどのタブにも出ない依頼か（＝単独で見せる必要がある） */
+    const linkedIsOrphan = !!linkedTask
+        && !myTasks.some((t) => t.id === linkedTask.id)
+        && !myTakenTasks.some((t) => t.id === linkedTask.id)
+        && !myArchive.some((t) => t.id === linkedTask.id);
+
+    useEffect(() => {
+        if (!focusTaskId || loading) return;
+        // 一覧に出てくるタブへ先に切り替える。切り替えないと要素が描画されず、
+        // scrollIntoView の対象が見つからない
+        if (myTakenTasks.some((t) => t.id === focusTaskId)) setTab('mine');
+        else if (myArchive.some((t) => t.id === focusTaskId)) setTab('archive');
+        else setTab('tasks');
+        setHighlightId(focusTaskId);
+        // 描画後にスクロールする。切り替えた直後はまだ DOM に無い
+        const timer = window.setTimeout(() => {
+            document.querySelector(`[data-task-id="${focusTaskId}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
+        // URL は戻しておく。残すとブラウザ版を再読み込みするたび開き直す
+        onFocusHandled?.();
+        // 光らせるのは数秒だけ。付けっぱなしだと、どれが今日の対象か分からなくなる
+        const fade = window.setTimeout(() => setHighlightId(null), 4000);
+        return () => { window.clearTimeout(timer); window.clearTimeout(fade); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusTaskId, loading]);
+
+    /** リンクから開いた依頼を数秒だけ囲んで分かるようにする */
+    const highlightClass = (id: string) => (highlightId === id
+        ? 'rounded-xl ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900 transition-shadow'
+        : '');
 
     const handleComplete = async (taskId: string, note: string) => {
         setBusyId(taskId);
@@ -281,14 +333,36 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
                         </button>
                     )}
 
+                    {/* 他の人あての依頼は下の一覧に出てこない。リンクを踏んだ人に
+                        「何も無い」と見えないよう、単独で出す */}
+                    {!loading && tab === 'tasks' && linkedTask && linkedIsOrphan && (
+                        <div data-task-id={linkedTask.id} className={highlightClass(linkedTask.id)}>
+                            <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1.5">
+                                リンクで開いた依頼
+                                {linkedTask.assigneeName && `（担当: ${linkedTask.assigneeName}）`}
+                                {linkedTask.status === 'done' && '（完了済み）'}
+                            </p>
+                            <TaskRow task={linkedTask} poster={linkedTask.posterId ? posterById.get(linkedTask.posterId) : undefined}
+                                onComplete={() => setCompleting(linkedTask)} onOpenPoster={onOpenPoster}
+                                busy={busyId === linkedTask.id} uid={uid} />
+                        </div>
+                    )}
+                    {!loading && focusTaskId && !linkedTask && !loading && (
+                        <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded-lg px-3 py-2">
+                            リンク先の依頼は見つかりませんでした。削除されたか、別の事務所の依頼の可能性があります。
+                        </p>
+                    )}
+
                     {!loading && tab === 'tasks' && (
                         myTasks.length === 0
                             ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">未対応の依頼はありません</p>
                             : myTasks.map((t) => (
-                                <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
-                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
-                                    uid={uid}
-                                    onTake={() => run(t.id, () => takeTask(t.id), 'マイタスクに入れられませんでした。')} />
+                                <div key={t.id} data-task-id={t.id} className={highlightClass(t.id)}>
+                                    <TaskRow task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
+                                        onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
+                                        uid={uid}
+                                        onTake={() => run(t.id, () => takeTask(t.id), 'マイタスクに入れられませんでした。')} />
+                                </div>
                             ))
                     )}
 
@@ -300,10 +374,12 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
                                 <span className="text-xs">依頼タブの「今日やる」で取ると、ここに入ります（翌日には依頼に戻ります）</span>
                             </p>
                             : myTakenTasks.map((t) => (
-                                <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
-                                    onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
-                                    uid={uid}
-                                    onRelease={() => run(t.id, () => releaseTask(t.id), '依頼に戻せませんでした。')} />
+                                <div key={t.id} data-task-id={t.id} className={highlightClass(t.id)}>
+                                    <TaskRow task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
+                                        onComplete={() => setCompleting(t)} onOpenPoster={onOpenPoster} busy={busyId === t.id}
+                                        uid={uid}
+                                        onRelease={() => run(t.id, () => releaseTask(t.id), '依頼に戻せませんでした。')} />
+                                </div>
                             ))
                     )}
 
@@ -311,8 +387,10 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster }
                         myArchive.length === 0
                             ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">完了した依頼はまだありません</p>
                             : myArchive.map((t) => (
-                                <TaskRow key={t.id} task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
-                                    onComplete={() => { }} onOpenPoster={onOpenPoster} busy={false} />
+                                <div key={t.id} data-task-id={t.id} className={highlightClass(t.id)}>
+                                    <TaskRow task={t} poster={t.posterId ? posterById.get(t.posterId) : undefined}
+                                        onComplete={() => { }} onOpenPoster={onOpenPoster} busy={false} />
+                                </div>
                             ))
                     )}
 

@@ -18,6 +18,30 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Slack の依頼通知のリンク（https://poster-map-app.vercel.app/task/<id>）を
+                 ブラウザではなくアプリで開く（App Links）。
+
+                 ⚠️ autoVerify が成立するには、
+                 https://poster-map-app.vercel.app/.well-known/assetlinks.json に
+                 **Play アプリ署名の証明書の SHA-256** が載っていること。
+                 アップロード鍵の指紋だけでは、Play から入れた端末で検証が通らない。
+                 検証が通らない間はブラウザ版が開く（依頼は同じように表示される）。
+
+                 ⚠️ パスは /task だけに絞る。host だけで受けるとアプリのURL全体を
+                 奪ってしまい、管理画面をブラウザで開けなくなる。
+
+                 launchMode は singleTask のため、起動中に踏まれた場合は
+                 画面が作り直されず onNewIntent で届く。JS 側は Capacitor の
+                 appUrlOpen で受けている（src/lib/deepLink.ts）。 -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="poster-map-app.vercel.app"
+                      android:pathPrefix="/task" />
+            </intent-filter>
         </activity>
 
         <provider

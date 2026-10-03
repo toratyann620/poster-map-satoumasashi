@@ -18,7 +18,8 @@ import { hasSeenTutorial, forgetTutorial } from './lib/tutorial';
 import { readPresets, presetLabel, type PinPreset } from './lib/pinPresets';
 import { PinPresetSheet } from './components/PinPresetEditor';
 import { RemovalDialog } from './components/RemovalDialog';
-import { registerForPush, unregisterFromPush } from './lib/push';
+import { unregisterFromPush } from './lib/push';
+import { clearTaskFromUrl, onTaskDeepLink, readInitialTaskId } from './lib/deepLink';
 import { MyPage } from './components/MyPage';
 import { useTasks } from './hooks/useTasks';
 import { TaskComposer } from './components/TaskComposer';
@@ -78,6 +79,9 @@ function App() {
 
   const announcements = useAnnouncements();
   const [showMyPage, setShowMyPage] = useState(false);
+  // Slack の通知リンク（/task/<id>）で開かれた依頼。起動時のURLと、
+  // 起動中にリンクを踏まれたとき（ネイティブ）の両方から入る
+  const [deepLinkTaskId, setDeepLinkTaskId] = useState<string | null>(() => readInitialTaskId());
 
   // ピン打ちモード。現在地にボタンひとつでピンを立てるための簡易入力モード。
   // 標準モードと違い、種類・ステータス・タグはあらかじめ決めた内容を使う。
@@ -103,13 +107,23 @@ function App() {
   // ピンの詳細から依頼を出すときの対象。null なら閉じている
   const [taskTargetPoster, setTaskTargetPoster] = useState<PosterPin | null>(null);
 
-  // プッシュ通知の許可は、ログインが済んで実際に使える状態になってから求める。
-  // 起動直後に尋ねると何のアプリか分からないまま拒否されやすく、
-  // iOS は一度拒否されると設定アプリからしか戻せない。
+  // ⚠️ プッシュ通知は 2026-10-03 の依頼で全面的に止めた（周知は Slack に寄せる方針）。
+  // 送らないのに許可を求めるのは筋が通らないので、トークンの登録もしない。
+  // 送信側の停止は functions/index.js の PUSH_ENABLED。
+  // 「アップデート通知」は settings/appVersion を見てアプリ内に出すダイアログ
+  // （useAppVersionGate → UpdatePrompt）で、プッシュではないため影響しない。
+  // 再開するときは registerForPush をここで呼び直す（lib/push.ts は残してある）。
+
+  // 起動中にリンクを踏まれた場合。ネイティブでは画面が作り直されないため、
+  // URL を読むだけでは取りこぼす
+  useEffect(() => onTaskDeepLink(setDeepLinkTaskId), []);
+
+  // ログインが済んでから開く。未ログインのまま開いても依頼は読めない
   useEffect(() => {
+    if (!deepLinkTaskId) return;
     if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
-    void registerForPush(session.uid);
-  }, [session.ready, session.uid, session.problem, session.mustChangePassword]);
+    setShowMyPage(true);
+  }, [deepLinkTaskId, session.ready, session.uid, session.problem, session.mustChangePassword]);
 
   // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
   // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
@@ -626,6 +640,8 @@ function App() {
         <MyPage
           posters={posters}
           logs={activityLogs}
+          focusTaskId={deepLinkTaskId}
+          onFocusHandled={() => { clearTaskFromUrl(); setDeepLinkTaskId(null); }}
           onClose={() => setShowMyPage(false)}
           onOpenPoster={(p) => {
             setShowMyPage(false);

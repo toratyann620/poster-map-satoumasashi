@@ -1,5 +1,22 @@
 {
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "46346RA3CT.app.satoumasashi.postermap"
+        ],
+        "components": [
+          {
+            "/": "/task/*",
+            "comment": "Slack の依頼通知のリンク。アプリで開いて対象の依頼を表示する"
+          }
+        ]
+      }
+    ]
+  },
   "webcredentials": {
-    "apps": ["46346RA3CT.app.satoumasashi.postermap"]
+    "apps": [
+      "46346RA3CT.app.satoumasashi.postermap"
+    ]
   }
 }

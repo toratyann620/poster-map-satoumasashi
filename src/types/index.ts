@@ -166,8 +166,39 @@ export interface Task {
     takenByName?: string;
     takenAt?: number;
     takenDate?: string;
-    /** 作成時にプッシュ通知を送るか。送信は Cloud Functions が受け持つ */
+    /**
+     * 作成時にプッシュ通知を送るか。
+     * ⚠️ プッシュは 2026-10-03 に全面停止したため、いまは参照されない
+     * （functions の PUSH_ENABLED が false）。過去の依頼に値が残っている。
+     */
     notify?: boolean;
+
+    /** 作成時に Slack（#13_地元ポスター掲示物）へ投稿するか */
+    slackNotify?: boolean;
+    /**
+     * メンション先。`settings/slackMentions` に登録された `mention` の値をそのまま持つ
+     * （`<@U…>` / `<!subteam^S…>` / `<!here>` など Slack の記法）。
+     * ⚠️ 送信時に Cloud Functions 側で設定済みの一覧と突き合わせ、
+     * 一覧に無いものは捨てる。クライアントから任意の文字列を混ぜられないようにするため。
+     */
+    slackMentions?: string[];
+    /** メンションの後ろに添える一言（任意） */
+    slackMessage?: string;
+}
+
+/**
+ * Slack のメンション先の候補。`settings/slackMentions` の `targets` に入れる。
+ *
+ * Slack の API を叩いてメンバーを引くことはできない（日次レポートと同じ
+ * Incoming Webhook しか持っておらず、webhook では users.list を呼べない）ため、
+ * 管理画面から手で登録する。メンバーIDは Slack のプロフィール →
+ * 「その他」→「メンバーIDをコピー」で取れる。
+ */
+export interface SlackMentionTarget {
+    /** 画面に出す名前。例: 「黒川睦夫」「@here（チャンネルにいる人全員）」 */
+    label: string;
+    /** Slack に渡す記法。例: `<@U0ABCDEF>` / `<!subteam^S012345>` / `<!here>` */
+    mention: string;
 }
 
 /**

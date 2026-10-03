@@ -28,7 +28,6 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [isPopup, setIsPopup] = useState(false);
-    const [sendPush, setSendPush] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -47,15 +46,15 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
                 title: title.trim(),
                 body: body.trim(),
                 isPopup,
-                // 送信は Cloud Functions が受け持つ。作成後に値を変えても送り直されない
-                sendPush,
+                // ⚠️ プッシュ通知は全面停止したため常に false。
+                // 周知は Slack（#13_地元ポスター掲示物）に寄せる方針になった。
+                sendPush: false,
                 publishedAt: Date.now(),
                 createdBy: authorName,
             });
             setTitle('');
             setBody('');
             setIsPopup(false);
-            setSendPush(false);
         } catch (e) {
             setError((e as Error)?.message ?? '配信に失敗しました。');
         } finally {
@@ -124,19 +123,12 @@ export const AnnouncementsTab: React.FC<Props> = ({ announcements, authorName })
                     </span>
                 </label>
 
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={sendPush} onChange={e => setSendPush(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded accent-indigo-600" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                        <span className="inline-flex items-center gap-1 font-medium">
-                            <Smartphone className="w-3.5 h-3.5 text-indigo-500" />
-                            スマートフォンにプッシュ通知を送る
-                        </span>
-                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            アプリを入れている全員の端末に届きます。配信すると取り消せません。
-                        </span>
-                    </span>
-                </label>
+                {/*
+                  ⚠️ 「プッシュ通知を送る」のチェックは外した（2026-10-03）。
+                  送信側（functions の PUSH_ENABLED）を false にしたため、
+                  チェックできると「送ったつもり」になって連絡が届かない。
+                  過去のお知らせに付いている sendPush のバッジは履歴として残す。
+                */}
 
                 <button
                     type="button" onClick={handlePublish} disabled={saving}

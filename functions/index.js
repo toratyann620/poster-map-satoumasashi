@@ -21,6 +21,29 @@ const COL = {
 
 const SLACK_WEBHOOK_URL = defineSecret('SLACK_WEBHOOK_URL');
 
+/**
+ * アプリの本番URL。メールの案内文のログインURLと、
+ * Slack 通知に付ける依頼へのリンク（${APP_URL}task/<id>）の組み立てに使う。
+ * ⚠️ 末尾のスラッシュを含む。連結するときは重ねないこと。
+ */
+const APP_URL = 'https://poster-map-app.vercel.app/';
+
+/**
+ * 端末へのプッシュ通知を送るかどうか。
+ *
+ * ⚠️ 2026-10-03、依頼により **すべてのプッシュ通知を止めた**（false 固定）。
+ * 周知は Slack（#13_地元ポスター掲示物）に寄せる方針になったため、
+ * お知らせ・依頼・新規登録の申請のいずれも端末へは飛ばさない。
+ *
+ * 「アップデート通知」は残しているが、あれはプッシュではなく
+ * Firestore の settings/appVersion を見てアプリ内に出すダイアログ
+ * （src/hooks/useAppVersionGate.ts）なので、こことは無関係に動く。
+ *
+ * 再開するときは、環境変数ではなくこの定数を true にして意図を残すこと
+ * （環境変数だけだと、なぜ送られているのかコードから追えない）。
+ */
+const PUSH_ENABLED = false;
+
 // 設置率の対象都市（既存ダッシュボード [DashboardTab.tsx] の getCityCategory と同じ判定基準）
 const CITY_LABELS = [
     { match: '厚木市', label: '厚木' },
@@ -224,8 +247,7 @@ exports.dailyPosterReport = onSchedule({
  * 管理画面から「プッシュ通知も送る」で配信されたお知らせを、
  * 登録済みの全端末へ送る。
  *
- * 実際に送るのは環境変数 PUSH_NOTIFICATIONS_ENABLED が 'true' のときだけ。
- * 開発中の誤送信は取り消せないため、既定では送らない側に倒している。
+ * 実際に送るのは PUSH_ENABLED が true のときだけ。いまは false なので送らない。
  */
 
 /** FCM の1リクエストあたりの上限 */
@@ -251,10 +273,8 @@ exports.sendAnnouncementPush = onDocumentCreated({
     const announcement = event.data?.data();
     if (!announcement || announcement.sendPush !== true) return;
 
-    if (process.env.PUSH_NOTIFICATIONS_ENABLED !== 'true') {
-        logger.info('Push skipped: PUSH_NOTIFICATIONS_ENABLED is not set to "true"', {
-            announcementId: event.params.announcementId,
-        });
+    if (!PUSH_ENABLED) {
+        logger.info('Push skipped: PUSH_ENABLED is false', { announcementId: event.params.announcementId });
         return;
     }
 
@@ -321,8 +341,8 @@ exports.sendTaskPush = onDocumentCreated({
     const task = event.data?.data();
     if (!task || task.notify !== true) return;
 
-    if (process.env.PUSH_NOTIFICATIONS_ENABLED !== 'true') {
-        logger.info('Task push skipped: PUSH_NOTIFICATIONS_ENABLED is not "true"', { taskId: event.params.taskId });
+    if (!PUSH_ENABLED) {
+        logger.info('Task push skipped: PUSH_ENABLED is false', { taskId: event.params.taskId });
         return;
     }
 
@@ -343,6 +363,81 @@ exports.sendTaskPush = onDocumentCreated({
         uids,
         label: 'task',
     });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 作業依頼（タスク）の Slack 通知
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Slack に渡す平文をエスケープする。
+ * Slack はこの3文字だけを特別扱いするので、この3つだけ直す。
+ * ⚠️ メンションの記法（`<@U…>`）には掛けないこと。掛けると生の文字列になる。
+ */
+const escapeSlack = (text) => String(text ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * 依頼が作られたときに Slack（#13_地元ポスター掲示物）へ投稿する。
+ * 投稿するのは作成画面で「Slackで通知」が選ばれたときだけ。
+ *
+ * 投稿先は日次レポートと同じ Incoming Webhook（SLACK_WEBHOOK_URL）。
+ * webhook はチャンネルが固定なので、送り先を選ぶ機能は持たせていない。
+ */
+exports.notifyTaskToSlack = onDocumentCreated({
+    document: 'tasks/{taskId}',
+    region: 'asia-northeast1',
+    secrets: [SLACK_WEBHOOK_URL],
+}, async (event) => {
+    const task = event.data?.data();
+    if (!task || task.slackNotify !== true) return;
+    const taskId = event.params.taskId;
+
+    // ⚠️ メンションは必ず設定済みの一覧と突き合わせる。
+    // クライアントから来た文字列をそのまま流すと、@channel を勝手に付けたり、
+    // 任意のテキストを本文に差し込んだりできてしまう。
+    let allowed = new Set(['<!here>', '<!channel>']);
+    try {
+        const snap = await db.collection('settings').doc('slackMentions').get();
+        const list = snap.exists ? snap.data()?.targets : null;
+        if (Array.isArray(list) && list.length > 0) {
+            allowed = new Set(list.map((t) => t?.mention).filter(Boolean));
+        }
+    } catch (e) {
+        logger.warn('Slack mention list unavailable; falling back to here/channel only', { error: String(e) });
+    }
+    const requested = Array.isArray(task.slackMentions) ? task.slackMentions : [];
+    const mentions = [...new Set(requested.filter((m) => allowed.has(m)))];
+    const dropped = requested.filter((m) => !allowed.has(m));
+    if (dropped.length) logger.warn('Slack mentions dropped (not in settings)', { taskId, dropped });
+
+    const lines = [];
+    if (mentions.length) lines.push(mentions.join(' '));
+    // 一言は平文なので、メンションの記法を書かれても効かないようにエスケープする。
+    // コードブロックを閉じられると以降の整形が崩れるため ``` も潰す。
+    if (task.slackMessage) lines.push(escapeSlack(String(task.slackMessage).replace(/`{3,}/g, '｀｀｀')));
+    if (lines.length) lines.push('');
+
+    lines.push(`◆${task.kind ?? '作業'}の依頼が登録されました`);
+    lines.push('```');
+    lines.push(`種別：${task.kind ?? '(未設定)'}`);
+    lines.push(`内容：${task.title ?? ''}`);
+    if (task.address) lines.push(`場所：${task.address}`);
+    lines.push(`担当：${task.assigneeName || '事務所の全員'}`);
+    lines.push(`期限：${task.dueDate || 'なし'}`);
+    if (task.body) lines.push(`補足：${task.body}`);
+    lines.push(`依頼者：${task.createdBy ?? '(不明)'}`);
+    lines.push('```');
+    // リンクはアプリで開く。アプリが無い端末ではブラウザ版が同じ依頼を開く
+    lines.push(`▼この依頼を開く\n${APP_URL}task/${taskId}`);
+
+    try {
+        await postToSlack(lines.join('\n'));
+        logger.info('Task posted to Slack', { taskId, mentions: mentions.length });
+    } catch (e) {
+        // 通知の失敗で依頼そのものを壊さない（依頼は既に保存されている）
+        logger.error('Task Slack notification failed', { taskId, error: String(e) });
+    }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -429,9 +524,6 @@ const nodemailer = require('nodemailer');
  */
 const SMTP_URL = defineSecret('SMTP_URL');
 const MAIL_FROM = defineSecret('MAIL_FROM');
-
-/** ログイン画面のURL。メールの案内文に載せる */
-const APP_URL = 'https://poster-map-app.vercel.app/';
 
 const isMailConfigured = () => {
     const url = SMTP_URL.value();
@@ -562,7 +654,7 @@ exports.submitAccountRequest = onCall({
 
     // 管理者に気づいてもらう。承認されるまで申請者は何もできないため、
     // 放置されるのがいちばん困る
-    if (process.env.PUSH_NOTIFICATIONS_ENABLED === 'true') {
+    if (PUSH_ENABLED) {
         try {
             const admins = await db.collection('users')
                 .where('role', '==', 'admin')
