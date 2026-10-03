@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
     ClipboardList, Plus, Loader2, Trash2, CheckCircle2, RotateCcw,
-    Users as UsersIcon, Smartphone, Search, X, MessageSquare,
+    Users as UsersIcon, Hash, AtSign, Search, X, MessageSquare,
     Hourglass,
 } from 'lucide-react';
 import { TASK_KINDS, type PosterPin, type Task, type TaskKind } from '../types';
 import type { UserData } from '../hooks/useUsers';
 import type { Group } from '../types';
 import { taskAge, TASK_AGE_CLASS } from '../lib/taskAge';
+import { useSlackMentions } from '../hooks/useSlackMentions';
 
 interface Props {
     tasks: Task[];
@@ -54,7 +55,12 @@ export const TasksTab: React.FC<Props> = ({
     const [assigneeUid, setAssigneeUid] = useState('');
     const [groupId, setGroupId] = useState(myGroupId ?? '');
     const [dueDate, setDueDate] = useState('');
-    const [notify, setNotify] = useState(true);
+    // ⚠️ プッシュ通知は全面停止したため notify は送らない（functions 側も見ていない）。
+    // 周知は「Slackで通知」に置き換えた。
+    const { targets: mentionTargets } = useSlackMentions();
+    const [slackNotify, setSlackNotify] = useState(false);
+    const [slackMentions, setSlackMentions] = useState<string[]>([]);
+    const [slackMessage, setSlackMessage] = useState('');
     const [posterQuery, setPosterQuery] = useState('');
     const [poster, setPoster] = useState<PosterPin | null>(null);
     const [saving, setSaving] = useState(false);
@@ -100,11 +106,16 @@ export const TasksTab: React.FC<Props> = ({
                 assigneeUid: assigneeUid || undefined,
                 assigneeName: assigneeUid ? userName(assigneeUid) : undefined,
                 dueDate: dueDate || undefined,
-                notify,
+                slackNotify,
+                // チェックが入っていないときは中身を送らない。消し忘れの文面が
+                // 後から通知として流れるのを防ぐ
+                slackMentions: slackNotify && slackMentions.length ? slackMentions : undefined,
+                slackMessage: slackNotify && slackMessage.trim() ? slackMessage.trim() : undefined,
                 groupId: isSuperAdmin ? (groupId || undefined) : undefined,
             });
             setTitle(''); setBody(''); setAssigneeUid(''); setDueDate('');
             setPoster(null); setPosterQuery('');
+            setSlackNotify(false); setSlackMentions([]); setSlackMessage('');
         } catch (e) {
             setError((e as Error)?.message ?? '依頼の作成に失敗しました。');
         } finally {
@@ -298,18 +309,55 @@ export const TasksTab: React.FC<Props> = ({
                     </label>
                 </div>
 
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded accent-indigo-600" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                        <span className="inline-flex items-center gap-1 font-medium">
-                            <Smartphone className="w-3.5 h-3.5 text-indigo-500" />プッシュ通知を送る
+                <div className="rounded-xl border border-gray-200 dark:border-zinc-700 p-3 space-y-3">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input type="checkbox" checked={slackNotify} onChange={(e) => setSlackNotify(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded accent-indigo-600" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                            <span className="inline-flex items-center gap-1 font-medium">
+                                <Hash className="w-3.5 h-3.5 text-indigo-500" />Slackで通知
+                            </span>
+                            <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                依頼の内容を #13_地元ポスター掲示物 に投稿します。
+                            </span>
                         </span>
-                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            担当者を指定していればその方だけに、指定していなければ事務所の全員に届きます。
-                        </span>
-                    </span>
-                </label>
+                    </label>
+
+                    {slackNotify && (
+                        <div className="space-y-3 pl-7">
+                            <div>
+                                <span className={labelCls}>メンション先（複数選べます・任意）</span>
+                                {mentionTargets.length === 0 ? (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        候補がまだ登録されていません。「設定」タブから追加できます。
+                                    </p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {mentionTargets.map((t) => {
+                                            const on = slackMentions.includes(t.mention);
+                                            return (
+                                                <button key={t.mention} type="button"
+                                                    onClick={() => setSlackMentions((prev) => on
+                                                        ? prev.filter((m) => m !== t.mention)
+                                                        : [...prev, t.mention])}
+                                                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-sm font-medium border transition-all ${on
+                                                        ? 'bg-indigo-600 border-transparent text-white'
+                                                        : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}>
+                                                    <AtSign className="w-3 h-3" />{t.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            <label className="block">
+                                <span className={labelCls}>ひとこと（任意）</span>
+                                <textarea value={slackMessage} onChange={(e) => setSlackMessage(e.target.value)} rows={2}
+                                    className={`${field} resize-y`} placeholder="例: 急ぎでお願いします" />
+                            </label>
+                        </div>
+                    )}
+                </div>
 
                 <button type="button" onClick={handleCreate} disabled={saving}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-colors">
