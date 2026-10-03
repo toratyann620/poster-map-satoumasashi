@@ -1171,8 +1171,8 @@
   * Android: **1.0.15 (versionCode 18)** を内部テスト・クローズドテストへ公開済み。
   * iOS: **未配信**。後述。
 * **⚠️ 今回踏んだ罠（次回のために）**
-  1. **`release_ios.sh` が失敗しても exit 0 を返していた**。`xcodebuild -exportArchive` は「`** EXPORT FAILED **`」と出しても終了コード 0 のことがあり、`set -e` では止まらず「✅ 完了」と表示される。**成果物（`build/ipa/App.ipa`）の有無で確かめる**ガードを追加した。
-  2. 失敗の原因は **Apple Developer の契約更新が未同意（`PLA Update available`）**。developer.apple.com で Review Agreement を済ませるまで iOS は配信できない。**ユーザー操作が必要**。
+  1. **iOS の書き出しが `PLA Update available` で失敗**。⚠️ 同時に「`No signing certificate "iOS Distribution" found`」が出るため**証明書の問題と取り違えやすい**が、実際は **Apple Developer の契約更新が未同意**なだけ。developer.apple.com の Review Agreement を済ませるまで配信できない（**ユーザー操作が必要**）。
+     * なお `release_ios.sh` 自体は正しく中断していた（`exportArchive` の終了コードは **70**、`set -e` で停止）。当初「exit 0 で素通りした」と判断したが、それは実行時に付けた `echo "ios exit=$?"` の分を読み違えたもので**誤り**。成果物の有無を見るガードは念のため残した。
   3. **アプリのビルドは web の `dist` を同梱する**。`TasksTab` の修正前にビルドしてしまい、アプリ内の管理画面だけ古くなった。versionName は 1.0.15 のまま **build/versionCode だけ 18 に上げて作り直した**（テスターに2回更新を促さないため）。
 * **残り（ユーザー操作が必要）**
   * [ ] **Apple の契約更新に同意** → iOS 1.0.15 (build 18) を配信 → `settings/appVersion.latest` を 1.0.15 に（**iOS が出るまで上げない**。TestFlight に無い版への更新を促してしまう）

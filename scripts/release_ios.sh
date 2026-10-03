@@ -53,15 +53,17 @@ xcodebuild -exportArchive \
   -exportPath "$ROOT/build/ipa" \
   -allowProvisioningUpdates
 
-# ⚠️ xcodebuild -exportArchive は「** EXPORT FAILED **」と出しても終了コード 0 を
-# 返すことがある（Apple の契約更新待ち＝PLA Update available で実際に踏んだ）。
-# set -e では止まらず、そのまま「✅ 完了」と表示されてしまうため、
-# 成果物の有無で必ず確かめる。
+# 念のための確認。exportArchive は失敗時に 70 を返すので set -e で止まるが、
+# 止まらなかった場合に「✅ 完了」と出てしまうと配信できたと誤解するため、
+# 成果物の有無でも確かめる。
+# よくある失敗: Apple Developer の契約更新が未同意（PLA Update available）。
+# このとき「No signing certificate "iOS Distribution" found」と並んで出るので、
+# 証明書の問題と取り違えやすい。実際は developer.apple.com で
+# Review Agreement を済ませれば直る。
 if [ ! -f build/ipa/App.ipa ]; then
   echo >&2
   echo "❌ IPA の書き出しに失敗しました（build/ipa/App.ipa がありません）。" >&2
-  echo "   よくある原因: Apple Developer の契約更新が未同意（PLA Update available）。" >&2
-  echo "   https://developer.apple.com/account/ で「Review Agreement」を済ませてから再実行してください。" >&2
+  echo "   まず https://developer.apple.com/account/ の Review Agreement を確認してください。" >&2
   exit 1
 fi
 
