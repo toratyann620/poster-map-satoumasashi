@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Wrapper, Status } from '@googlemaps/react-wrapper';
 import { AGGREGATE_ZOOM, aggregateByTown, type TownAggregate } from '../lib/townAggregation';
 import { Navigation, Car, Footprints, Bike, X } from 'lucide-react';
-import type { PosterPin } from '../types';
+import type { BuildingPin, PosterPin } from '../types';
 import { PERSON_COLORS } from '../types';
 
 // APIキー・Map IDは環境変数からのみ読み込む。
@@ -17,6 +17,14 @@ type NavigationMode = 'DRIVING' | 'WALKING' | 'BICYCLING';
 
 interface MapComponentProps {
     posters: PosterPin[];
+    /**
+     * 建物ピン（自治会掲示板・自治会館など）。ポスターとは別物として描く。
+     * 絞り込みで非表示にしているときは空配列が渡る。
+     */
+    buildings?: BuildingPin[];
+    /** 建物の種類 → 色 */
+    buildingColorOf?: (kind: string) => string;
+    onBuildingClick?: (building: BuildingPin) => void;
     onMapClick: (lat: number, lng: number) => void;
     onMarkerClick: (poster: PosterPin) => void;
     onPinLongPress?: (poster: PosterPin) => void;
@@ -68,6 +76,64 @@ const render = (status: Status): React.ReactElement => {
  * - status で透明度・アニメーション・バッジを重ね掛け
  * - isFloating = true の場合は浮いた大きいデザイン
  */
+
+/**
+ * 建物ピン（自治会掲示板・自治会館など）の見た目を作る。
+ *
+ * ⚠️ ポスターのピンと**ひと目で区別できる形**にすること。ポスターは「丸」なので、
+ * こちらは「角丸の四角」にして、中に文字ではなくアイコンを入れる。
+ * 色だけで分けると、色覚や画面の明るさの差で見分けられないことがある。
+ * 先端の三角は残す（地図上の1点を指しているという意味は同じため）。
+ */
+const buildBuildingMarker = (b: BuildingPin, color: string): HTMLElement => {
+    const container = document.createElement('div');
+    container.style.cssText = `
+        position: relative;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+        filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
+    `;
+
+    const head = document.createElement('div');
+    head.style.cssText = `
+        width: 30px; height: 30px;
+        border-radius: 8px;
+        background-color: ${color};
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        border: 2.5px solid rgba(255,255,255,0.85);
+    `;
+
+    // 掲示板は「脚の付いた板」、それ以外は「建物」。中身で描き分ける
+    const isBoard = b.kind.includes('掲示板');
+    head.innerHTML = isBoard
+        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white"
+                stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+             <rect x="3" y="3" width="18" height="12" rx="1.5" />
+             <path d="M8 21l2-6M16 21l-2-6" />
+           </svg>`
+        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white"
+                stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+             <path d="M3 21h18M5 21V8l7-5 7 5v13" />
+             <path d="M10 21v-5h4v5" />
+           </svg>`;
+
+    const tip = document.createElement('div');
+    tip.style.cssText = `
+        width: 0; height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 8px solid ${color};
+        margin-top: -1px;
+    `;
+
+    container.appendChild(head);
+    container.appendChild(tip);
+    return container;
+};
+
 function buildDomMarker(poster: PosterPin, isFloating: boolean, colorsMap?: Record<string, string>): HTMLElement {
     const statuses: string[] = Array.isArray(poster.status) ? poster.status : (poster.status ? [poster.status] : []);
     const isTemp = poster.id === 'temp-marker-id' || statuses.includes('仮ピン');
@@ -263,6 +329,9 @@ function buildAggregateMarkerEl(town: TownAggregate): HTMLElement {
 
 const MapInner: React.FC<MapComponentProps> = ({
     posters,
+    buildings = [],
+    buildingColorOf,
+    onBuildingClick,
     onMapClick,
     onMarkerClick,
     onPinLongPress,
@@ -956,6 +1025,48 @@ const MapInner: React.FC<MapComponentProps> = ({
     // 以前は位置が変わるたびに作り直していたため、青い点が数秒おきに
     // 瞬間移動して見えた。GoogleMapのように滑らかに滑らせる。
     // ただし大きく飛んだとき（GPSの復帰など）は補間せず即座に移す。
+    // ──────────────────────────────────────────────────────────
+    // 建物ピン（自治会掲示板・自治会館など）
+    // ──────────────────────────────────────────────────────────
+    //
+    // ポスターのピンとは別に描く。件数がポスターほど多くならない見込みなので、
+    // 差分更新はせず、変化があったらまとめて作り直す素直な作りにしている。
+    // 絞り込みで非表示にしているときは buildings が空配列で渡るため、
+    // ここで全部消える。
+    const buildingMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+    const onBuildingClickRef = useRef(onBuildingClick);
+    onBuildingClickRef.current = onBuildingClick;
+
+    useEffect(() => {
+        if (!map) return;
+        const AdvancedMarkerElement = (window.google.maps as any).marker?.AdvancedMarkerElement;
+        if (!AdvancedMarkerElement) return;
+
+        buildingMarkersRef.current.forEach((mk) => { mk.map = null; });
+        buildingMarkersRef.current = [];
+
+        buildings.forEach((b) => {
+            if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return;
+            const el = buildBuildingMarker(b, buildingColorOf?.(b.kind) ?? '#64748B');
+            const marker = new AdvancedMarkerElement({
+                position: { lat: b.lat, lng: b.lng },
+                map,
+                content: el,
+                title: b.name || b.kind,
+                // ポスターのピンより下に置く。ポスターが主役で、建物は目印のため
+                zIndex: 1,
+            });
+            marker.element?.addEventListener('gmp-click', () => onBuildingClickRef.current?.(b));
+            marker.addListener('click', () => onBuildingClickRef.current?.(b));
+            buildingMarkersRef.current.push(marker);
+        });
+
+        return () => {
+            buildingMarkersRef.current.forEach((mk) => { mk.map = null; });
+            buildingMarkersRef.current = [];
+        };
+    }, [map, buildings, buildingColorOf]);
+
     const locationMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
     const locationAnimRef = useRef<number | null>(null);
     const locationShownRef = useRef<{ lat: number, lng: number } | null>(null);

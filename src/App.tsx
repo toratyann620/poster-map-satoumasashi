@@ -21,6 +21,8 @@ import { RemovalDialog } from './components/RemovalDialog';
 import { unregisterFromPush } from './lib/push';
 import { clearTaskFromUrl, onTaskDeepLink, readInitialTaskId } from './lib/deepLink';
 import { MyPage } from './components/MyPage';
+import { BuildingSheet } from './components/BuildingSheet';
+import { useBuildings } from './hooks/useBuildings';
 import { useTasks } from './hooks/useTasks';
 import { TaskComposer } from './components/TaskComposer';
 import { usePosterData } from './hooks/usePosterData';
@@ -28,7 +30,7 @@ import { useActivityLogs } from './hooks/useActivityLogs';
 import { cityFromGeocoderResult, cityFromAddress } from './lib/city';
 import { watchPosition, getCurrentPosition } from './lib/geolocation';
 import { normalizeAddress, looksLikeAddress } from './lib/address';
-import type { PosterPin } from './types';
+import type { BuildingPin, PosterPin } from './types';
 import { Plus, LogOut, Shield, Map as MapIcon, MapPin, X, Settings, ClipboardList, Zap } from 'lucide-react';
 import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -106,6 +108,12 @@ function App() {
   const { myTasks, myTakenTasks, createTask } = useTasks();
   // ピンの詳細から依頼を出すときの対象。null なら閉じている
   const [taskTargetPoster, setTaskTargetPoster] = useState<PosterPin | null>(null);
+
+  // 建物ピン（自治会掲示板・自治会館など）。ポスターとは別のコレクション
+  const { buildings, kinds: buildingKinds, colorOf: buildingColorOf, addBuilding, updateBuilding, removeBuilding } = useBuildings();
+  // 開いている建物。'new' のときは下書き（新規登録）
+  const [openBuilding, setOpenBuilding] = useState<BuildingPin | null>(null);
+  const [buildingDraft, setBuildingDraft] = useState<{ lat: number; lng: number; address: string; city: string } | null>(null);
 
   // ⚠️ プッシュ通知は 2026-10-03 の依頼で全面的に止めた（周知は Slack に寄せる方針）。
   // 送らないのに許可を求めるのは筋が通らないので、トークンの登録もしない。
@@ -636,6 +644,20 @@ function App() {
         />
       )}
 
+      {/* 建物ピンの登録・編集。ポスターの入力画面とは別物にしてある
+          （ステータス・枚数・挨拶など、建物に要らない項目が多いため） */}
+      {(openBuilding || buildingDraft) && (
+        <BuildingSheet
+          building={openBuilding}
+          draft={buildingDraft}
+          kinds={buildingKinds}
+          onSave={addBuilding}
+          onUpdate={updateBuilding}
+          onDelete={removeBuilding}
+          onClose={() => { setOpenBuilding(null); setBuildingDraft(null); }}
+        />
+      )}
+
       {showMyPage && (
         <MyPage
           posters={posters}
@@ -673,6 +695,9 @@ function App() {
           {/* Map Area */}
           <MapWrapper
             posters={displayPosters}
+            buildings={filter.showBuildings === false ? [] : buildings}
+            buildingColorOf={buildingColorOf}
+            onBuildingClick={(b) => { setBuildingDraft(null); setOpenBuilding(b); }}
             onMapClick={handleMapClick}
             onMarkerClick={handleMarkerClick}
             onPinLongPress={handlePinLongPress}
@@ -739,7 +764,7 @@ function App() {
                     （15vh≒128pt）が3行ある検索窓（≒150pt）と重なる。薄く見えたまま
                     重ねるより、隠した方が読み違えない */}
               {!isQuickMode && !isSheetExpanded && (
-                <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} myTaskPinCount={myTaskPosterIds.size} />
+                <SearchBar filter={filter} setFilter={setFilter} onPlaceSelect={handlePlaceSelect} allTags={allTags} pinTypes={selectablePinTypes} myTaskPinCount={myTaskPosterIds.size} buildingCount={buildings.length} />
               )}
 
               {/* ピン打ちモードの帯とボタン */}
@@ -912,6 +937,19 @@ function App() {
             onSave={handleSave}
             onDelete={handleDelete}
             onRemove={handleRemove}
+            onSwitchToBuilding={() => {
+              // 新規の仮ピンを建物として登録し直す。地図のタップで逆引き済みの
+              // 住所と市区町村をそのまま引き継ぐ（取り直すと二度手間になる）
+              // 仮ピンは Partial なので座標が無いことがありうる。
+              // 無いまま進むと登録の瞬間にルールで弾かれるため、ここで止める
+              if (!activePoster || typeof activePoster.lat !== 'number' || typeof activePoster.lng !== 'number') return;
+              setBuildingDraft({
+                lat: activePoster.lat, lng: activePoster.lng,
+                address: activePoster.address ?? '', city: activePoster.city ?? '',
+              });
+              setIsSheetOpen(false);
+              setSelectedPoster(null);
+            }}
             onStartNavigation={handleStartNavigation}
             currentUserName={session.name}
             onRecordGreeting={recordGreeting}

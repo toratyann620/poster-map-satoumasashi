@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink, FileText, History, ClipboardList } from 'lucide-react';
+import { X, Trash2, Save, Edit2, Upload, PackageOpen, Navigation2, Camera as CameraIcon, Images, ExternalLink, FileText, History, ClipboardList, Building2 } from 'lucide-react';
 import type { PosterPin } from '../types';
 import { POSTER_STATUS_OPTIONS, PERSON_COLORS } from '../types';
 import imageCompression from 'browser-image-compression';
@@ -106,6 +106,12 @@ interface PinBottomSheetProps {
     onUndoGreeting?: (id: string, greetingId: string) => Promise<void>;
     /** このピンを対象にした作業の依頼を出す（依頼フォームは呼び出し元が開く） */
     onRequestTask?: (poster: PosterPin) => void;
+    /**
+     * 新規登録のときだけ出す「建物として登録」。
+     * 自治会掲示板・自治会館はポスターとは別のデータなので、ここで入口を分ける。
+     * 呼び出し元が建物の登録画面を開く（座標と住所は引き継がれる）。
+     */
+    onSwitchToBuilding?: () => void;
 }
 
 export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
@@ -123,6 +129,7 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
     onRecordGreeting,
     onUndoGreeting,
     onRequestTask,
+    onSwitchToBuilding,
 }) => {
     const [isViewMode, setIsViewMode] = useState(initialViewMode);
     // 閲覧モードの表示切り替え。ログは開いたときだけ問い合わせる
@@ -411,6 +418,21 @@ export const PinBottomSheet: React.FC<PinBottomSheetProps> = ({
                             <X className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                         </button>
                     </div>
+
+                    {/* ここに置いたのは、地図をタップすると必ずこの画面が開くため。
+                        別の入口を作るより、開いた先で選べる方が迷わない。
+                        住所と市区町村は逆引き済みのものをそのまま引き継ぐ */}
+                    {isNew && onSwitchToBuilding && (
+                        <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={onSwitchToBuilding}
+                            className="mt-4 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50 dark:bg-teal-900/20 text-sm font-bold text-teal-700 dark:text-teal-400 pointer-events-auto cursor-pointer"
+                        >
+                            <Building2 className="w-4 h-4" />
+                            ポスターではなく建物（自治会掲示板・自治会館）として登録する
+                        </button>
+                    )}
 
                     {/* 撤去の理由。撤去済みのピンを開いたときは、折りたたみでも
                         展開でも必ず見えるようにする。設定で撤去済みを表示している

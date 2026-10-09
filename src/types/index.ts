@@ -120,7 +120,61 @@ export type FilterState = {
     tags: string[];    // 複数選択、空配列 = すべて表示
     /** 今日マイタスクに取った依頼の対象ピンだけを表示する */
     myTasksOnly?: boolean;
+    /**
+     * 建物ピン（自治会掲示板・自治会館など）を地図に出すか。
+     * 省略時は表示する（既定 true）。ポスターの絞り込みとは独立していて、
+     * types / status / tags の指定は建物ピンには掛からない。
+     */
+    showBuildings?: boolean;
 };
+
+// ═══════════════════════════════════════════════════════════
+// 建物ピン（ポスターとは別物）
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 自治会掲示板・自治会館などの場所。
+ *
+ * ⚠️ ポスター（posters_v2）とは**別のコレクション**に置く。混ぜると
+ * 設置率や枚数の集計に入り込んでしまうため。ダッシュボード・日次レポート・
+ * CSV はいずれも posters_v2 しか見ないので、建物を足しても数字は動かない。
+ *
+ * ⚠️ 権限は **city だけ**で判定する（ポスターのような type での絞り込みはしない）。
+ * 自治会館は特定の候補者のものではなく、事務所ごとに持ち分が分かれないため。
+ */
+export interface BuildingPin {
+    id: string;
+    /** 種類。BUILDING_KINDS か settings/buildingKinds に載っているもの */
+    kind: string;
+    /** 名称（例: 中荻野自治会館）。空でも登録できる */
+    name: string;
+    lat: number;
+    lng: number;
+    /** 権限の判定に使う。ジオコーディングの locality から入れる */
+    city: string;
+    address: string;
+    memo: string;
+    imageUrls?: string[];
+    createdAt: number;
+    updatedAt: number;
+    createdBy: string;
+    updatedBy: string;
+}
+
+/**
+ * 建物ピンの種類と色の既定値。
+ *
+ * 増やすときは `settings/buildingKinds` に `{ kinds: [{ name, color }] }` を
+ * 置けばアプリの再配信なしで反映される（`scripts/seed_building_kinds.mjs`）。
+ * ここはその土台になる初期値。
+ */
+export const BUILDING_KINDS = [
+    { name: '自治会掲示板', color: '#0D9488' },
+    { name: '自治会館', color: '#7C3AED' },
+    { name: 'その他', color: '#64748B' },
+] as const;
+
+export const DEFAULT_BUILDING_KIND = '自治会掲示板';
 
 /** 依頼できる作業の種類 */
 export const TASK_KINDS = ['設置', '撤去', '張替え', '修理', 'その他'] as const;

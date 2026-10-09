@@ -228,6 +228,38 @@ service cloud.firestore {
         && d.type != '';
     }
 
+    // ══════════════════════════════════════════════════════════
+    // 建物ピン (buildings)
+    // ══════════════════════════════════════════════════════════
+    // 自治会掲示板・自治会館などの場所。ポスターとは別物として扱う。
+    //
+    // ⚠️ 権限は **city だけ**で判定する。ポスターの inScope と違い type は見ない。
+    // 自治会館は特定の候補者のものではなく、事務所ごとに持ち分が分かれないため。
+    // この違いがあるので posters_v2 の inScope を使い回さず、専用の関数にしている。
+    function buildingInScope(d) {
+      return isMember() && (
+        groupDoc().allowAll == true
+        || (d.keys().hasAll(['city']) && d.city in groupDoc().cities)
+      );
+    }
+
+    match /buildings/{buildingId} {
+      allow read: if buildingInScope(resource.data);
+
+      allow create: if request.resource.data.keys().hasAll(['city'])
+                    && request.resource.data.city is string
+                    && buildingInScope(request.resource.data);
+
+      // ⚠️ ポスターと同じく、変更「前」と「後」の両方が範囲内であることを要求する。
+      // これが無いと、city を書き換えて他事務所の管轄へ送り出せてしまう。
+      allow update: if request.resource.data.keys().hasAll(['city'])
+                    && request.resource.data.city is string
+                    && buildingInScope(resource.data)
+                    && buildingInScope(request.resource.data);
+
+      allow delete: if buildingInScope(resource.data);
+    }
+
     match /posters_v2/{posterId} {
       allow read: if inScope(resource.data);
 

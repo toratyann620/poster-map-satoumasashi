@@ -58,6 +58,16 @@ await testEnv.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'posters_v2/atsugi_other'), poster({ city: '厚木市', type: 'その他' }));
   await setDoc(doc(db, 'posters_v2/ebina_other'), poster({ city: '海老名市', type: 'その他' }));
 
+  // 建物ピン。ポスターと違い city だけで権限が決まる（type は持たない）
+  const building = (over) => ({
+    kind: '自治会掲示板', name: 'テスト掲示板', lat: 35.44, lng: 139.36,
+    address: 'テスト住所', memo: '', createdAt: 1, updatedAt: 1,
+    createdBy: 'seed', updatedBy: 'seed', ...over,
+  });
+  await setDoc(doc(db, 'buildings/atsugi_board'), building({ city: '厚木市' }));
+  await setDoc(doc(db, 'buildings/ebina_hall'), building({ city: '海老名市', kind: '自治会館' }));
+  await setDoc(doc(db, 'buildings/nocity'), building({ city: '' }));
+
   const log = (over) => ({ action: '更新', posterId: 'x', posterAddress: 'a', changedBy: 'seed', changedAt: 1, ...over });
   await setDoc(doc(db, 'activityLogs_v2/log_atsugi'), log({ city: '厚木市', posterType: '佐藤まさし' }));
   await setDoc(doc(db, 'activityLogs_v2/log_ebina'), log({ city: '海老名市', posterType: '佐藤まさし' }));
@@ -397,6 +407,67 @@ await t('承認済みメンバーは現行 posters を読み書きできる', as
 
 await t('🔒 users ドキュメントを持たないアカウントは現行 posters も読めない', () =>
   assertFails(getDoc(doc(as('strangerWithAuthOnly'), 'posters/legacy1'))));
+
+// ═══════════════════════════════════════════════════════════
+// 建物ピン (buildings)
+// ═══════════════════════════════════════════════════════════
+section('建物ピン');
+
+const B = 'buildings';
+
+await t('🔒 未ログインは建物を読めない', () =>
+  assertFails(getDoc(doc(anon(), `${B}/atsugi_board`))));
+
+await t('🔒 users ドキュメントを持たないアカウントは建物を読めない', () =>
+  assertFails(getDoc(doc(as('strangerWithAuthOnly'), `${B}/atsugi_board`))));
+
+await t('佐藤まさし事務所（allowAll）はどの市の建物も読める', async () => {
+  await assertSucceeds(getDoc(doc(as('satoGeneral'), `${B}/atsugi_board`)));
+  await assertSucceeds(getDoc(doc(as('satoGeneral'), `${B}/ebina_hall`)));
+  await assertSucceeds(getDoc(doc(as('satoGeneral'), `${B}/nocity`)));
+});
+
+await t('難波事務所は担当市（厚木市）の建物を読める', () =>
+  assertSucceeds(getDoc(doc(as('nanbaUser'), `${B}/atsugi_board`))));
+
+await t('🔒 難波事務所は担当外の市（海老名市）の建物を読めない', () =>
+  assertFails(getDoc(doc(as('nanbaUser'), `${B}/ebina_hall`))));
+
+await t('🔒 city が空の建物は、担当市が決まっている事務所からは読めない', () =>
+  assertFails(getDoc(doc(as('nanbaUser'), `${B}/nocity`))));
+
+await t('担当市で絞ったクエリは通る', () =>
+  assertSucceeds(getDocs(query(collection(as('nanbaUser'), B), where('city', 'in', ['厚木市'])))));
+
+await t('🔒 絞り込みの無い全件クエリは拒否される（担当市のある事務所）', () =>
+  assertFails(getDocs(collection(as('nanbaUser'), B))));
+
+await t('担当市の建物は作成・更新・削除できる', async () => {
+  await assertSucceeds(setDoc(doc(as('nanbaUser'), `${B}/new_atsugi`), {
+    kind: '自治会館', name: '新規', city: '厚木市', lat: 35.4, lng: 139.3,
+    address: 'a', memo: '', createdAt: 1, updatedAt: 1, createdBy: 'u', updatedBy: 'u',
+  }));
+  await assertSucceeds(updateDoc(doc(as('nanbaUser'), `${B}/new_atsugi`), { memo: 'ok', city: '厚木市' }));
+  await assertSucceeds(deleteDoc(doc(as('nanbaUser'), `${B}/new_atsugi`)));
+});
+
+await t('🔒 担当外の市の建物は作成できない', () =>
+  assertFails(setDoc(doc(as('nanbaUser'), `${B}/new_ebina`), {
+    kind: '自治会館', name: 'だめ', city: '海老名市', lat: 35.4, lng: 139.3,
+    address: 'a', memo: '', createdAt: 1, updatedAt: 1, createdBy: 'u', updatedBy: 'u',
+  })));
+
+await t('🔒 city の無い建物は作成できない（権限を判定できないため）', () =>
+  assertFails(setDoc(doc(as('nanbaUser'), `${B}/no_city_new`), {
+    kind: '自治会館', name: 'だめ', lat: 35.4, lng: 139.3,
+    address: 'a', memo: '', createdAt: 1, updatedAt: 1, createdBy: 'u', updatedBy: 'u',
+  })));
+
+await t('🔒 city を担当外へ書き換えて管轄の外へ送り出せない', () =>
+  assertFails(updateDoc(doc(as('nanbaUser'), `${B}/atsugi_board`), { city: '海老名市' })));
+
+await t('🔒 担当外の市の建物は削除できない', () =>
+  assertFails(deleteDoc(doc(as('nanbaUser'), `${B}/ebina_hall`))));
 
 // ═══════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(56)}`);

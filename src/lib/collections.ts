@@ -29,6 +29,12 @@ export const COL = {
     tasks: 'tasks',
     /** ログイン画面から届く新規登録の申請（新規。書き込みは Cloud Functions のみ） */
     accountRequests: 'accountRequests',
+    /**
+     * 建物ピン（自治会掲示板・自治会館など。新規）。
+     * ⚠️ ポスターとは別コレクション。混ぜると設置率・枚数の集計に入ってしまう。
+     * 権限は city だけで判定する（type では絞らない）。
+     */
+    buildings: 'buildings',
 } as const;
 
 /** 移行元となる現行の本番コレクション（移行スクリプトからのみ参照する） */
