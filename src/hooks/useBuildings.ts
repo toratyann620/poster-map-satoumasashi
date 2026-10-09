@@ -5,8 +5,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { COL } from '../lib/collections';
-import { BUILDING_KINDS, type BuildingPin } from '../types';
+import { type BuildingPin } from '../types';
 import { useSession } from './useSession';
+import { useBuildingKinds } from './useBuildingKinds';
 
 /**
  * 建物ピン（自治会掲示板・自治会館など）の読み書き。
@@ -20,13 +21,6 @@ import { useSession } from './useSession';
  * 拒否するため、条件を付け忘れると permission-denied になる（情報漏洩ではなく
  * 即座のエラーとして現れる）。
  */
-
-export interface BuildingKind {
-    name: string;
-    color: string;
-}
-
-const DEFAULT_KINDS: BuildingKind[] = BUILDING_KINDS.map((k) => ({ name: k.name, color: k.color }));
 
 /** 建物の取得クエリに付ける条件。ポスターと違い city だけで絞る（type は見ない） */
 const scopeConstraints = (group: { allowAll: boolean; cities: string[] } | null): QueryConstraint[] => {
@@ -54,7 +48,8 @@ const parse = (id: string, d: Record<string, unknown>): BuildingPin => ({
 export const useBuildings = () => {
     const { ready, group, name } = useSession();
     const [fetched, setFetched] = useState<{ items: BuildingPin[]; loading: boolean }>({ items: [], loading: true });
-    const [kinds, setKinds] = useState<BuildingKind[]>(DEFAULT_KINDS);
+    // 種類は設定画面と同じフックから取る（二重に購読しない）
+    const { kinds, colorOf } = useBuildingKinds();
 
     const scopeKey = group ? `${group.id}|${group.allowAll}|${group.cities.join(',')}` : '';
 
@@ -71,24 +66,7 @@ export const useBuildings = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ready, scopeKey]);
 
-    // 種類は settings/buildingKinds で差し替えられる（アプリを配信し直さずに増やせる）。
-    // 無ければコード側の既定値を使う。
-    useEffect(() => {
-        if (!ready || !group) return;
-        const unsub = onSnapshot(doc(db, COL.settings, 'buildingKinds'), (snap) => {
-            const list = snap.exists() ? snap.data()?.kinds : null;
-            setKinds(Array.isArray(list) && list.length > 0 ? (list as BuildingKind[]) : DEFAULT_KINDS);
-        }, () => setKinds(DEFAULT_KINDS));
-        return () => unsub();
-    }, [ready, group]);
-
     const buildings = useMemo(() => (ready && group ? fetched.items : []), [ready, group, fetched.items]);
-
-    /** 種類 → 色。地図のマーカーが参照する */
-    const colorOf = useCallback(
-        (kind: string) => kinds.find((k) => k.name === kind)?.color ?? '#64748B',
-        [kinds],
-    );
 
     const addBuilding = useCallback(async (input: Omit<BuildingPin, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) => {
         if (!input.city) {

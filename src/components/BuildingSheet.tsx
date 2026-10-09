@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, X, Loader2, Trash2, Navigation } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Building2, X, Loader2, Trash2, Navigation, Upload, ExternalLink } from 'lucide-react';
+import { storage } from '../lib/firebase';
 import type { BuildingPin } from '../types';
 import type { BuildingKind } from '../hooks/useBuildings';
+import { PhotoPicker } from './PhotoPicker';
 
 /**
  * 建物ピン（自治会掲示板・自治会館など）の登録・編集。
@@ -32,11 +36,48 @@ export const BuildingSheet: React.FC<Props> = ({ building, draft, kinds, onSave,
     const [name, setName] = useState(building?.name ?? '');
     const [address, setAddress] = useState(building?.address ?? draft?.address ?? '');
     const [memo, setMemo] = useState(building?.memo ?? '');
+    const [imageUrls, setImageUrls] = useState<string[]>(building?.imageUrls ?? []);
+    const [uploading, setUploading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
     const field = 'w-full px-3 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-base text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none';
     const label = 'block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5';
+
+    /**
+     * 写真をアップロードする。ポスター側と同じ圧縮設定（長辺1200px / 0.5MB 目安）。
+     * ⚠️ 保存先は `buildings/<id>/`。ポスターの `posters/` と混ぜないこと。
+     * 新規登録はまだIDが無いので `new_entry` に置く（ポスター側と同じ扱い）。
+     */
+    const handleUpload = async (files: File[]) => {
+        if (!files.length) return;
+        setUploading(true);
+        setError('');
+        try {
+            const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true, initialQuality: 0.7 };
+            const urls = await Promise.all(files.map(async (file) => {
+                const compressed = await imageCompression(file, options);
+                const filename = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
+                const snapshot = await uploadBytes(ref(storage, `buildings/${building?.id ?? 'new_entry'}/${filename}`), compressed);
+                return await getDownloadURL(snapshot.ref);
+            }));
+            setImageUrls((prev) => [...prev, ...urls]);
+        } catch (e) {
+            console.error('写真のアップロードに失敗しました:', e);
+            setError('写真のアップロードに失敗しました。通信とファイル形式を確認してください。');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    /**
+     * 一覧から外す。Storage のファイルは消さない。
+     * 既存のポスター側も同じ扱いで、誤って外したときに戻せる余地を残している。
+     */
+    const removePhoto = (url: string) => {
+        if (!window.confirm('この写真を外しますか？')) return;
+        setImageUrls((prev) => prev.filter((u) => u !== url));
+    };
 
     const handleSave = async () => {
         setError('');
@@ -46,10 +87,12 @@ export const BuildingSheet: React.FC<Props> = ({ building, draft, kinds, onSave,
             if (isNew) {
                 await onSave({
                     kind, name: name.trim(), address: address.trim(), memo: memo.trim(),
-                    lat: base.lat, lng: base.lng, city: base.city,
+                    lat: base.lat, lng: base.lng, city: base.city, imageUrls,
                 });
             } else {
-                await onUpdate(building.id, { kind, name: name.trim(), address: address.trim(), memo: memo.trim() });
+                await onUpdate(building.id, {
+                    kind, name: name.trim(), address: address.trim(), memo: memo.trim(), imageUrls,
+                });
             }
             onClose();
         } catch (e) {
@@ -131,6 +174,36 @@ export const BuildingSheet: React.FC<Props> = ({ building, draft, kinds, onSave,
                         <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3}
                             className={`${field} resize-y`} placeholder="掲示できる枚数、連絡先、鍵の管理者など" />
                     </label>
+
+                    <div>
+                        <span className={label}>写真（任意）</span>
+                        {imageUrls.length > 0 && (
+                            <div className="grid grid-cols-3 gap-2 mb-2">
+                                {imageUrls.map((url) => (
+                                    <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-zinc-800">
+                                        <img src={url} alt="" className="w-full h-full object-cover" />
+                                        <a href={url} target="_blank" rel="noopener noreferrer"
+                                            className="absolute bottom-1 left-1 p-1 rounded-md bg-black/50 text-white">
+                                            <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                        <button type="button" onClick={() => removePhoto(url)}
+                                            className="absolute top-1 right-1 p-1 rounded-md bg-black/50 text-white">
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <PhotoPicker
+                            onFiles={handleUpload}
+                            disabled={uploading}
+                            className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-zinc-700 text-sm font-bold text-gray-600 dark:text-gray-400 cursor-pointer"
+                        >
+                            {uploading
+                                ? <><Loader2 className="w-4 h-4 animate-spin" />アップロード中…</>
+                                : <><Upload className="w-4 h-4" />写真を追加</>}
+                        </PhotoPicker>
+                    </div>
 
                     {base && (
                         <a

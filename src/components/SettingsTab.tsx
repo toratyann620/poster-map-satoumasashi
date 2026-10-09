@@ -4,6 +4,7 @@ import { usePinTypes } from '../hooks/usePinTypes';
 import { MAX_PRESETS } from '../lib/pinPresets';
 import { PinPresetEditor } from './PinPresetEditor';
 import { SlackMentionEditor } from './SlackMentionEditor';
+import { BuildingKindEditor } from './BuildingKindEditor';
 
 // カラーパレット（追加時に選べる色）
 const COLOR_OPTIONS = [
@@ -68,6 +69,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
                 <PinPresetEditor pinTypes={pinTypes} />
             </div>
+
+            {/* ===== 建物ピンの種類 ===== */}
+            <BuildingKindEditor />
 
             {/* ===== Slack通知のメンション先 ===== */}
             <SlackMentionEditor />
