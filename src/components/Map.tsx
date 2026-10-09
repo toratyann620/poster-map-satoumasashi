@@ -1039,7 +1039,11 @@ const MapInner: React.FC<MapComponentProps> = ({
 
     useEffect(() => {
         if (!map) return;
-        const AdvancedMarkerElement = (window.google.maps as any).marker?.AdvancedMarkerElement;
+        // このファイルの他の箇所は as any で取っているが、新たに any を増やしたくないので
+        // 必要な形だけを書いて取り出す
+        const AdvancedMarkerElement = (window.google.maps as unknown as {
+            marker?: { AdvancedMarkerElement?: typeof google.maps.marker.AdvancedMarkerElement };
+        }).marker?.AdvancedMarkerElement;
         if (!AdvancedMarkerElement) return;
 
         buildingMarkersRef.current.forEach((mk) => { mk.map = null; });
