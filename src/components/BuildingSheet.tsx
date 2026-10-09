@@ -5,7 +5,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Building2, X, Loader2, Trash2, Navigation, Upload, ExternalLink } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import type { BuildingPin } from '../types';
-import type { BuildingKind } from '../hooks/useBuildings';
+import type { BuildingKind } from '../hooks/useBuildingKinds';
 import { PhotoPicker } from './PhotoPicker';
 
 /**
