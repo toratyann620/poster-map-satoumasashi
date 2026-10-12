@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
     ClipboardList, Plus, Loader2, Trash2, CheckCircle2, RotateCcw,
-    Users as UsersIcon, Hash, AtSign, Search, X, MessageSquare,
+    Users as UsersIcon, Hash, Search, X, MessageSquare,
     Hourglass,
 } from 'lucide-react';
 import { TASK_KINDS, type PosterPin, type Task, type TaskKind } from '../types';
@@ -9,6 +9,7 @@ import type { UserData } from '../hooks/useUsers';
 import type { Group } from '../types';
 import { taskAge, TASK_AGE_CLASS } from '../lib/taskAge';
 import { useSlackMentions } from '../hooks/useSlackMentions';
+import { MentionSelect } from '../components/MentionSelect';
 
 interface Props {
     tasks: Task[];
@@ -327,28 +328,12 @@ export const TasksTab: React.FC<Props> = ({
                         <div className="space-y-3 pl-7">
                             <div>
                                 <span className={labelCls}>メンション先（複数選べます・任意）</span>
-                                {mentionTargets.length === 0 ? (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        候補がまだ登録されていません。「設定」タブから追加できます。
-                                    </p>
-                                ) : (
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {mentionTargets.map((t) => {
-                                            const on = slackMentions.includes(t.mention);
-                                            return (
-                                                <button key={t.mention} type="button"
-                                                    onClick={() => setSlackMentions((prev) => on
-                                                        ? prev.filter((m) => m !== t.mention)
-                                                        : [...prev, t.mention])}
-                                                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-sm font-medium border transition-all ${on
-                                                        ? 'bg-indigo-600 border-transparent text-white'
-                                                        : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}>
-                                                    <AtSign className="w-3 h-3" />{t.label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                <MentionSelect
+                                    targets={mentionTargets}
+                                    selected={slackMentions}
+                                    onChange={setSlackMentions}
+                                    className={field}
+                                />
                             </div>
                             <label className="block">
                                 <span className={labelCls}>ひとこと（任意）</span>

@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ClipboardList, X, Search, Loader2, Hash, Users as UsersIcon, AtSign } from 'lucide-react';
+import { ClipboardList, X, Search, Loader2, Hash, Users as UsersIcon } from 'lucide-react';
 import { TASK_KINDS, type PosterPin, type Task, type TaskKind } from '../types';
 import { useGroupMembers } from '../hooks/useGroupMembers';
 import { useSlackMentions } from '../hooks/useSlackMentions';
+import { MentionSelect } from './MentionSelect';
 
 interface Props {
     posters: PosterPin[];
@@ -200,29 +201,12 @@ export const TaskComposer: React.FC<Props> = ({ posters, initialPoster, onCreate
                             <div className="space-y-3 pl-7">
                                 <div>
                                     <span className={label}>メンション先（複数選べます・任意）</span>
-                                    {mentionTargets.length === 0 ? (
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                                            候補がまだ登録されていません。管理画面の「設定」から追加できます。
-                                        </p>
-                                    ) : (
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {mentionTargets.map((t) => {
-                                                const on = slackMentions.includes(t.mention);
-                                                return (
-                                                    <button key={t.mention} type="button"
-                                                        onClick={() => setSlackMentions((prev) => on
-                                                            ? prev.filter((m) => m !== t.mention)
-                                                            : [...prev, t.mention])}
-                                                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-sm font-medium border transition-all ${on
-                                                            ? 'bg-indigo-600 border-transparent text-white'
-                                                            : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400'}`}>
-                                                        <AtSign className="w-3 h-3" />
-                                                        {t.label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
+                                    <MentionSelect
+                                        targets={mentionTargets}
+                                        selected={slackMentions}
+                                        onChange={setSlackMentions}
+                                        className={field}
+                                    />
                                 </div>
 
                                 <label className="block">
