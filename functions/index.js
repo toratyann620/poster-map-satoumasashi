@@ -166,7 +166,11 @@ async function buildReport() {
     const repairCancelBreakdown = tally(repairCancelLogs, e => e.posterAddress);
 
     // 設置率（佐藤まさし、市区町村別・既存ダッシュボードと同じ算出方法: 設置済枚数 / 全体枚数）
-    const satoPosters = posters.filter(p => p.type === TARGET_TYPE);
+    //
+    // ⚠️ 分母から撤去済みを必ず除く。ダッシュボード [DashboardTab.tsx] の activePosters（!p.removed）と
+    // kurobot の /api/dev-facts も同じ基準で数えており、ここだけ含めると同じ「設置率」が数%ずれる。
+    // 撤去したピンは「設置すべき場所」ではないので、残っている場所に対する進捗として数える。
+    const satoPosters = posters.filter(p => p.type === TARGET_TYPE && !p.removed);
     const qtyOf = (p) => (typeof p.quantity === 'number' && p.quantity > 0) ? p.quantity : 1;
     const isInstalled = (p) => (Array.isArray(p.status) ? p.status : [p.status]).includes('設置済');
 
