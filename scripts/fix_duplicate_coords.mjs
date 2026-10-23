@@ -24,14 +24,47 @@ import admin from '../functions/node_modules/firebase-admin/lib/index.js';
 
 const APPLY = process.argv.includes('--apply');
 
-/** 直す対象。expectLat/expectLng は「いま重なっている座標」 */
+/**
+ * 直す対象。
+ *   address … いまDBに入っている住所（これと違っていたら触らない）
+ *   expect  … いま重なっている座標（これと違っていたら触らない＝誰かが先に直した）
+ *   query   … 位置を引くときに使う住所
+ *   basis   … なぜその住所で引いたか。履歴に残す
+ */
 const TARGETS = [
-    { id: 'HuvzO9G7u5sy52OiV5kl', address: '神奈川県海老名市柏ヶ谷865', query: '神奈川県海老名市柏ケ谷865' },
-    { id: 'eYI6NNtKCorOkYfiyXCo', address: '神奈川県海老名市柏ヶ谷412', query: '神奈川県海老名市柏ケ谷412' },
-    { id: 'IM1PtwdmqoCBu59DoK02', address: '神奈川県海老名市柏ヶ谷710-1', query: '神奈川県海老名市柏ケ谷710' },
-    { id: 'CHVkPAqUDuncunayLxaD', address: '神奈川県海老名市柏ヶ谷750', query: '神奈川県海老名市柏ケ谷750' },
+    // ── 1回目: 「柏ケ谷」の代表点に4件が重なっていた ──
+    { id: 'HuvzO9G7u5sy52OiV5kl', address: '神奈川県海老名市柏ヶ谷865', query: '神奈川県海老名市柏ケ谷865',
+        expect: { lat: 35.4642884, lng: 139.4122942 }, basis: '旧地番' },
+    { id: 'eYI6NNtKCorOkYfiyXCo', address: '神奈川県海老名市柏ヶ谷412', query: '神奈川県海老名市柏ケ谷412',
+        expect: { lat: 35.4642884, lng: 139.4122942 }, basis: '旧地番' },
+    { id: 'IM1PtwdmqoCBu59DoK02', address: '神奈川県海老名市柏ヶ谷710-1', query: '神奈川県海老名市柏ケ谷710',
+        expect: { lat: 35.4642884, lng: 139.4122942 }, basis: '旧地番（枝番は番地レベルまで）' },
+    { id: 'CHVkPAqUDuncunayLxaD', address: '神奈川県海老名市柏ヶ谷750', query: '神奈川県海老名市柏ケ谷750',
+        expect: { lat: 35.4642884, lng: 139.4122942 }, basis: '旧地番' },
+
+    // ── 2回目: 「柏ケ谷二丁目」の代表点に3件が重なっていた ──
+    // ⚠️ この3件の住所は「新住所の街区 − 旧地番」が連結された形
+    //    （例: 柏ケ谷２丁目１２−１０８７−１０ ＝ 二丁目12番 ＋ 旧1087-10）。
+    //    街区番号は対照表の新住所と一致するので、どちらから引くかを個別に選んでいる。
+    {
+        // 街区12は住所検索で解決できず「柏ケ谷二丁目」の代表点に落ちるため、旧地番から引く
+        id: 'aEbBKCCRSanAhcu4ZPKY', address: '神奈川県海老名市柏ケ谷２丁目１２−１０８７−１０',
+        query: '神奈川県海老名市柏ケ谷1087',
+        expect: { lat: 35.4667606, lng: 139.417693 }, basis: '旧地番1087番地（新住所の街区12は住所検索で解決できず）',
+    },
+    {
+        // 対照表で 旧1150-1 → 二丁目21-2 と確定している。新住所の方が細かい
+        id: 'WzUuJ2AvZ6MdUqVLP7Rj', address: '神奈川県海老名市柏ケ谷２丁目２１−１１５０−１',
+        query: '神奈川県海老名市柏ケ谷二丁目21-2',
+        expect: { lat: 35.4667606, lng: 139.417693 }, basis: '新住所 二丁目21-2（対照表で旧1150-1から確定。旧地番で引いた点とも15m差）',
+    },
+    {
+        // 新住所（二丁目11番）と旧地番（1063番地）が同じ点を指す
+        id: 'wV1OXSuguBPMwX32WbdN', address: '神奈川県海老名市柏ケ谷２丁目１１−１０６３',
+        query: '神奈川県海老名市柏ケ谷二丁目11',
+        expect: { lat: 35.4667606, lng: 139.417693 }, basis: '新住所 二丁目11番（旧地番1063番地と同じ点）',
+    },
 ];
-const DUPLICATED = { lat: 35.4642884, lng: 139.4122942 };
 
 const R = 6371000;
 const rad = (d) => (d * Math.PI) / 180;
@@ -72,7 +105,7 @@ for (const t of TARGETS) {
         continue;
     }
     // すでに誰かが動かしていたら触らない
-    if (cur.lat !== DUPLICATED.lat || cur.lng !== DUPLICATED.lng) {
+    if (cur.lat !== t.expect.lat || cur.lng !== t.expect.lng) {
         skipped.push({ ...t, reason: `座標が想定と違う（現在: ${cur.lat},${cur.lng}）。すでに直された可能性` });
         continue;
     }
@@ -99,8 +132,8 @@ for (const t of TARGETS) {
             changedBy: 'システム修正',
             changedByGroupId: 'admin',
             changedAt: now,
-            diff: `位置を修正: 住所の異なる4件が同じ代表点に重なっていたため、`
-                + `国土地理院の住所検索（${found.title}）の位置へ ${moved}m 移動`,
+            diff: `位置を修正: 住所の異なるピンが同じ代表点に重なっていたため、`
+                + `国土地理院の住所検索（${found.title}／${t.basis}）の位置へ ${moved}m 移動`,
             posterType: cur.type || '',
             posterStatus: Array.isArray(cur.status) ? cur.status : [],
             isNeedsRepair: false,
