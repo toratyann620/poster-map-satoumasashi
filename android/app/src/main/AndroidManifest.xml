@@ -41,6 +41,9 @@
                 <data android:scheme="https"
                       android:host="poster-map-app.vercel.app"
                       android:pathPrefix="/task" />
+                <data android:scheme="https"
+                      android:host="poster-map-app.vercel.app"
+                      android:pathPrefix="/poster" />
             </intent-filter>
         </activity>
 

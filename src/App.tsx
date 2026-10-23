@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { MapWrapper } from './components/Map';
 import { PinBottomSheet } from './components/PinBottomSheet';
 import { SearchBar } from './components/SearchBar';
@@ -19,7 +19,7 @@ import { readPresets, presetLabel, type PinPreset } from './lib/pinPresets';
 import { PinPresetSheet } from './components/PinPresetEditor';
 import { RemovalDialog } from './components/RemovalDialog';
 import { unregisterFromPush } from './lib/push';
-import { clearTaskFromUrl, onTaskDeepLink, readInitialTaskId } from './lib/deepLink';
+import { clearDeepLinkFromUrl, onDeepLink, readInitialDeepLink, type DeepLink } from './lib/deepLink';
 import { MyPage } from './components/MyPage';
 import { BuildingSheet } from './components/BuildingSheet';
 import { useBuildings } from './hooks/useBuildings';
@@ -55,6 +55,7 @@ function App() {
     removeGreeting,
     deletePoster,
     posters,
+    loading: postersLoading,
     userRole
   } = usePosterData();
 
@@ -81,9 +82,10 @@ function App() {
 
   const announcements = useAnnouncements();
   const [showMyPage, setShowMyPage] = useState(false);
-  // Slack の通知リンク（/task/<id>）で開かれた依頼。起動時のURLと、
-  // 起動中にリンクを踏まれたとき（ネイティブ）の両方から入る
-  const [deepLinkTaskId, setDeepLinkTaskId] = useState<string | null>(() => readInitialTaskId());
+  // 外から渡されたリンク（/task/<id> の依頼、/poster/<id> のピン）。
+  // 起動時のURLと、起動中にリンクを踏まれたとき（ネイティブ）の両方から入る
+  const [deepLink, setDeepLink] = useState<DeepLink | null>(() => readInitialDeepLink());
+  const deepLinkTaskId = deepLink?.kind === 'task' ? deepLink.id : null;
 
   // ピン打ちモード。現在地にボタンひとつでピンを立てるための簡易入力モード。
   // 標準モードと違い、種類・ステータス・タグはあらかじめ決めた内容を使う。
@@ -124,7 +126,22 @@ function App() {
 
   // 起動中にリンクを踏まれた場合。ネイティブでは画面が作り直されないため、
   // URL を読むだけでは取りこぼす
-  useEffect(() => onTaskDeepLink(setDeepLinkTaskId), []);
+  useEffect(() => onDeepLink(setDeepLink), []);
+
+  /**
+   * 1件のピンを地図で開く。変更履歴やマイページから「このピンを見る」ときの共通処理。
+   *
+   * ⚠️ 先に現在地への追従を切る。追従したままだと毎秒の panTo と競合して、
+   * 寄せた先から地図が流れていく（仮ピンを立てるときに実際に起きた）。
+   */
+  const openPosterOnMap = useCallback((p: PosterPin) => {
+    setShowMyPage(false);
+    setIsFollowing(false);
+    setMapCenter({ lat: p.lat, lng: p.lng });
+    setSelectedPoster(p);
+    setInitialViewMode(true);
+    setIsSheetOpen(true);
+  }, []);
 
   // ログインが済んでから開く。未ログインのまま開いても依頼は読めない
   useEffect(() => {
@@ -132,6 +149,23 @@ function App() {
     if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
     setShowMyPage(true);
   }, [deepLinkTaskId, session.ready, session.uid, session.problem, session.mustChangePassword]);
+
+  // /poster/<id> で開かれたとき。ポスターの読み込みが終わってから探す。
+  // ⚠️ 見つからない場合（削除済み・担当外の市区町村）は黙って閉じず、
+  // 理由を知らせる。リンクが壊れているように見えてしまうため。
+  useEffect(() => {
+    if (deepLink?.kind !== 'poster') return;
+    if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
+    if (postersLoading) return;
+    const target = posters.find((p) => p.id === deepLink.id);
+    if (target) {
+      openPosterOnMap(target);
+    } else {
+      window.alert('リンク先のピンが見つかりませんでした。\n削除されたか、担当外の市区町村のピンの可能性があります。');
+    }
+    clearDeepLinkFromUrl();
+    setDeepLink(null);
+  }, [deepLink, postersLoading, posters, openPosterOnMap, session.ready, session.uid, session.problem, session.mustChangePassword]);
 
   // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
   // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
@@ -663,16 +697,9 @@ function App() {
           posters={posters}
           logs={activityLogs}
           focusTaskId={deepLinkTaskId}
-          onFocusHandled={() => { clearTaskFromUrl(); setDeepLinkTaskId(null); }}
+          onFocusHandled={() => { clearDeepLinkFromUrl(); setDeepLink(null); }}
           onClose={() => setShowMyPage(false)}
-          onOpenPoster={(p) => {
-            setShowMyPage(false);
-              setIsFollowing(false);
-            setMapCenter({ lat: p.lat, lng: p.lng });
-            setSelectedPoster(p);
-            setInitialViewMode(true);
-            setIsSheetOpen(true);
-          }}
+          onOpenPoster={openPosterOnMap}
         />
       )}
 
@@ -847,6 +874,7 @@ function App() {
                     <NotificationPanel
                       userId={user?.uid ?? null}
                       posters={posters}
+                      onOpenPoster={openPosterOnMap}
                       announcements={announcements.announcements}
                       announcementsUnread={announcements.unreadCount}
                       markAnnouncementsRead={announcements.markAllRead}

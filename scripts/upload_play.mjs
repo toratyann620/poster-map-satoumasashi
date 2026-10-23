@@ -32,7 +32,14 @@ const KEY_PATH = path.join(os.homedir(), '.playconsole', 'play-publisher.json');
 const API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
 const UPLOAD_API = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3';
 
-const aabPath = process.argv[2] ?? 'build/upload/postermap-1.0.0-build1.aab';
+// 指定がなければ、build/upload のいちばん新しい AAB（ビルド番号の大きいもの）を送る（2026-10-20）
+const latestAab = () => {
+    const dir = 'build/upload';
+    const list = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^postermap-[0-9.]+-build\d+\.aab$/.test(f)) : [];
+    list.sort((a, b) => Number(b.match(/build(\d+)/)[1]) - Number(a.match(/build(\d+)/)[1]));
+    return list.length ? path.join(dir, list[0]) : 'build/upload/postermap-1.0.0-build1.aab';
+};
+const aabPath = process.argv[2] ?? latestAab();
 // リリース名に使うバージョン。生成物のファイル名（postermap-1.0.3-build5.aab）から取る
 const VERSION = (aabPath.match(/postermap-([0-9.]+)-build/) ?? [, ''])[1];
 

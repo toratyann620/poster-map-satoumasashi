@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, ChevronRight, Megaphone } from 'lucide-react';
+import { Bell, X, CheckCheck, AlertTriangle, PlusCircle, FileEdit, ChevronLeft, ChevronRight, Megaphone, MapPin } from 'lucide-react';
 import { useDailyNotifications, getDayRange } from '../hooks/useDailyNotifications';
 import type { DailyNotificationLog } from '../hooks/useDailyNotifications';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
@@ -11,6 +11,8 @@ import type { Announcement, PosterPin } from '../types';
 interface Props {
     userId: string | null;
     posters: PosterPin[];
+    /** 履歴の行から、その対象のピンを地図で開く */
+    onOpenPoster?: (poster: PosterPin) => void;
     /**
      * お知らせ。以前は別のメガホンボタンだったが、設定メニューの整理で
      * デイリー通知と1つのパネルに統合した（「更新」「お知らせ」の2タブ）。
@@ -38,7 +40,7 @@ const formatDateLabel = (dateStr: string, offsetDays: number) => {
     return `${y}年${parseInt(m)}月${parseInt(d)}日${relativeStr}`;
 };
 
-const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
+const LogItem: React.FC<{ log: DailyNotificationLog; onOpen?: () => void }> = ({ log, onOpen }) => {
     const isUrgent = log.isNeedsRepair || log.isNewRegistration;
 
     const actionIcon = () => {
@@ -54,11 +56,16 @@ const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
         return null;
     };
 
+    // 対象のピンが今も残っていれば、押して地図で開けるようにする。
+    // 削除済み・担当外のものは押せない（押しても何も起きないと壊れて見える）
+    const Wrapper = onOpen ? 'button' : 'div';
     return (
-        <div className={`rounded-xl p-3 mb-2 ${isUrgent
-            ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900'
-            : 'bg-gray-50 dark:bg-zinc-800/60 border border-gray-100 dark:border-zinc-700/50'
-            }`}>
+        <Wrapper
+            {...(onOpen ? { type: 'button' as const, onClick: onOpen } : {})}
+            className={`w-full text-left rounded-xl p-3 mb-2 ${isUrgent
+                ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900'
+                : 'bg-gray-50 dark:bg-zinc-800/60 border border-gray-100 dark:border-zinc-700/50'
+                } ${onOpen ? 'hover:brightness-95 dark:hover:brightness-110 transition-[filter] cursor-pointer' : ''}`}>
             <div className="flex items-start gap-2">
                 <span className={`mt-0.5 ${isUrgent ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
                     {actionIcon()}
@@ -71,9 +78,12 @@ const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
                     )}
                     <p className={`text-sm font-semibold truncate ${isUrgent
                         ? 'text-red-800 dark:text-red-200'
-                        : 'text-gray-800 dark:text-gray-200'
+                        : onOpen
+                            ? 'text-indigo-700 dark:text-indigo-400'
+                            : 'text-gray-800 dark:text-gray-200'
                         }`}>
                         {log.posterAddress || '住所未設定'}
+                        {onOpen && <MapPin className="inline w-3 h-3 ml-1 -mt-0.5" />}
                     </p>
                     {log.posterType && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{log.posterType}</p>
@@ -92,11 +102,11 @@ const LogItem: React.FC<{ log: DailyNotificationLog }> = ({ log }) => {
                     </div>
                 </div>
             </div>
-        </div>
+        </Wrapper>
     );
 };
 
-export const NotificationPanel: React.FC<Props> = ({ userId, posters, announcements, announcementsUnread, markAnnouncementsRead }) => {
+export const NotificationPanel: React.FC<Props> = ({ userId, posters, onOpenPoster, announcements, announcementsUnread, markAnnouncementsRead }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [offsetDays, setOffsetDays] = useState(-1); // 初期値は昨日
     const panelRef = useRef<HTMLDivElement>(null);
@@ -117,6 +127,14 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters, announceme
     // ログ一覧と同じく、集計も自分の事務所のメンバーが行った処理だけを対象にする
     const { group } = useSession();
     const { logsAsc: allLogsAsc } = useAllActivityLogs();
+
+    // 履歴の行から対象のピンを引く。今も残っているものだけ押せるようにする
+    const posterById = useMemo(() => new Map(posters.map((p) => [p.id, p])), [posters]);
+    const openerFor = (log: { posterId?: string }) => {
+        const target = log.posterId ? posterById.get(log.posterId) : undefined;
+        if (!target || !onOpenPoster) return undefined;
+        return () => { setIsOpen(false); onOpenPoster(target); };
+    };
     const dayMetrics = useMemo(() => {
         const range = getDayRange(offsetDays);
         const ownLogs = group
@@ -347,11 +365,11 @@ export const NotificationPanel: React.FC<Props> = ({ userId, posters, announceme
                         <div className="space-y-1">
                             {/* 要注意ログを上に表示 */}
                             {logs.filter(l => l.isNeedsRepair || l.isNewRegistration).map(log => (
-                                <LogItem key={log.id} log={log} />
+                                <LogItem key={log.id} log={log} onOpen={openerFor(log)} />
                             ))}
                             {/* 通常ログ */}
                             {logs.filter(l => !l.isNeedsRepair && !l.isNewRegistration).map(log => (
-                                <LogItem key={log.id} log={log} />
+                                <LogItem key={log.id} log={log} onOpen={openerFor(log)} />
                             ))}
                         </div>
                     )}

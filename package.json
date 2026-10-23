@@ -13,7 +13,8 @@
     "test:update-prompt": "node scripts/test_update_prompt.mjs",
     "upload:play": "node scripts/upload_play.mjs",
     "deploy:web": "npm run build && vercel deploy --prod --yes && node scripts/notify-release.mjs --targets web",
-    "notify:release": "node scripts/notify-release.mjs"
+    "notify:release": "node scripts/notify-release.mjs",
+    "app:release": "bash scripts/release_ios.sh && bash scripts/release_android.sh && node scripts/upload_play.mjs && node scripts/notify-release.mjs --targets app"
   },
   "dependencies": {
     "@capacitor-firebase/messaging": "^8.4.0",

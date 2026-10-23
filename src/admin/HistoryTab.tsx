@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { PlusCircle, RefreshCw, XCircle, Search, PackageOpen, RefreshCcw, Wrench } from 'lucide-react';
+import { PlusCircle, RefreshCw, XCircle, Search, PackageOpen, RefreshCcw, Wrench, MapPin } from 'lucide-react';
 import type { ActivityLog, PosterPin } from '../types';
 import { computePosterMetrics } from '../lib/posterMetrics';
+import { posterLink } from '../lib/deepLink';
 
 interface HistoryTabProps {
     logs: ActivityLog[];
@@ -33,6 +34,11 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ logs, logsAsc, posters }
     const removedIds = useMemo(() => new Set(metrics.removedLogs.map(l => l.id)), [metrics]);
     const replaceIds = useMemo(() => new Set(metrics.replaceCancelEvents.map(e => e.id)), [metrics]);
     const repairIds = useMemo(() => new Set(metrics.repairCancelEvents.map(e => e.id)), [metrics]);
+
+    // 履歴の行から対象のピンを引く。管理画面には地図が無いので、
+    // 地図画面（/poster/<id>）を別タブで開く形にする。
+    // ⚠️ 削除済み・担当外のピンは出さない（押しても開けず、壊れて見えるため）
+    const posterIds = useMemo(() => new Set(posters.map((p) => p.id)), [posters]);
 
     const users = useMemo(
         () => [...new Set(logs.map(l => l.changedBy).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja')),
@@ -134,7 +140,16 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ logs, logsAsc, posters }
                                         </span>
                                     </td>
                                     <td className="px-4 py-2.5 text-gray-900 dark:text-gray-100">
-                                        {l.posterAddress || <span className="text-gray-400">(住所なし)</span>}
+                                        {l.posterId && posterIds.has(l.posterId) ? (
+                                            <a href={posterLink(l.posterId)} target="_blank" rel="noopener noreferrer"
+                                                className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
+                                                title="地図でこのピンを開く">
+                                                {l.posterAddress || '(住所なし)'}
+                                                <MapPin className="w-3 h-3 shrink-0" />
+                                            </a>
+                                        ) : (
+                                            l.posterAddress || <span className="text-gray-400">(住所なし)</span>
+                                        )}
                                         <span className="ml-2 text-xs text-gray-500">{l.posterType}</span>
                                         {l.city && <span className="ml-1 text-xs text-gray-400">/ {l.city}</span>}
                                     </td>

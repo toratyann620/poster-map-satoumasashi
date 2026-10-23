@@ -20,6 +20,10 @@
     {
       "source": "/task/:taskId",
       "destination": "/index.html"
+    },
+    {
+      "source": "/poster/:posterId",
+      "destination": "/index.html"
     }
   ],
   "headers": [

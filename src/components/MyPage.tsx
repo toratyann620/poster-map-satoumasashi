@@ -397,20 +397,37 @@ export const MyPage: React.FC<Props> = ({ posters, logs, onClose, onOpenPoster, 
                     {tab === 'history' && (
                         myLogs.length === 0
                             ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">作業の記録はまだありません</p>
-                            : myLogs.map((l) => (
-                                <div key={l.id} className="flex items-start gap-2.5 py-2 border-b border-gray-100 dark:border-zinc-800 last:border-0">
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 shrink-0 mt-0.5">
-                                        {l.action}
-                                    </span>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{l.posterAddress || '(住所なし)'}</p>
-                                        {l.diff && (
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words line-clamp-2">{l.diff}</p>
-                                        )}
-                                    </div>
-                                    <span className="text-[10px] text-gray-400 shrink-0 tabular-nums mt-0.5">{fmtDate(l.changedAt)}</span>
-                                </div>
-                            ))
+                            : myLogs.map((l) => {
+                                // 対象のピンが今も残っていれば、押して地図で開けるようにする。
+                                // 削除済み・担当外のものは押せない（押しても何も起きないと壊れて見える）
+                                const target = l.posterId ? posterById.get(l.posterId) : undefined;
+                                const row = (
+                                    <>
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 shrink-0 mt-0.5">
+                                            {l.action}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-sm break-words ${target ? 'text-indigo-700 dark:text-indigo-400 font-medium' : 'text-gray-800 dark:text-gray-200'}`}>
+                                                {l.posterAddress || '(住所なし)'}
+                                                {target && <MapPin className="inline w-3 h-3 ml-1 -mt-0.5" />}
+                                            </p>
+                                            {l.diff && (
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words line-clamp-2">{l.diff}</p>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-gray-400 shrink-0 tabular-nums mt-0.5">{fmtDate(l.changedAt)}</span>
+                                    </>
+                                );
+                                const cls = 'w-full text-left flex items-start gap-2.5 py-2 border-b border-gray-100 dark:border-zinc-800 last:border-0';
+                                return target
+                                    ? (
+                                        <button key={l.id} type="button" onClick={() => onOpenPoster(target)}
+                                            className={`${cls} hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors`}>
+                                            {row}
+                                        </button>
+                                    )
+                                    : <div key={l.id} className={cls}>{row}</div>;
+                            })
                     )}
                 </div>
 
