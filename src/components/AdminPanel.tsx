@@ -5,6 +5,7 @@ import { useSession } from '../hooks/useSession';
 import { useAccountRequests } from '../hooks/useAccountRequests';
 import { AccountRequestsTab } from '../admin/AccountRequestsTab';
 import type { UserData } from '../hooks/useUsers';
+import type { PosterPin } from '../types';
 import { useActivityLogs } from '../hooks/useActivityLogs';
 import { useAllActivityLogs } from '../hooks/useAllActivityLogs';
 import { usePosterData } from '../hooks/usePosterData';
@@ -16,7 +17,7 @@ import { ChangelogTab } from './ChangelogTab';
 import { SettingsTab } from './SettingsTab';
 import {
     UserPlus, Trash2, Shield, User, ArrowLeft, History, PlusCircle, RefreshCw, XCircle, Monitor,
-    LayoutDashboard, Users, BookOpen, ClipboardList, Settings, PackageOpen, RefreshCcw, Wrench,
+    LayoutDashboard, Users, BookOpen, ClipboardList, Settings, PackageOpen, RefreshCcw, Wrench, MapPin,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -24,6 +25,8 @@ interface AdminPanelProps {
     showRemovedPins: boolean;
     onToggleShowRemoved: (val: boolean) => void;
     pinTypes?: { name: string, color: string }[];
+    /** 変更履歴の行から、その対象のピンを地図で開く */
+    onOpenPoster?: (poster: PosterPin) => void;
 }
 
 type Tab = 'users' | 'requests' | 'history' | 'dashboard' | 'analytics' | 'spec' | 'changelog' | 'settings';
@@ -34,7 +37,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; label: string; I
     '削除': { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-400', label: '削除', Icon: XCircle },
 };
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [] }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins, onToggleShowRemoved, pinTypes = [], onOpenPoster }) => {
     const { users, loading: usersLoading, createUser, updateUser, removeUser } = useUsers();
     const session = useSession();
     const { pending: pendingRequests, reviewed: reviewedRequests, review: reviewRequest } = useAccountRequests();
@@ -50,6 +53,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
         () => computePosterMetrics(posters, allLogsAsc, 0, Date.now() + 1),
         [posters, allLogsAsc]
     );
+
+    // 変更履歴の行から対象のピンを引く。今も残っているものだけ押せるようにする
+    // （削除済み・担当外のものまで押せると、押しても何も起きず壊れて見える）
+    const posterById = useMemo(() => new Map(posters.map((p) => [p.id, p])), [posters]);
 
     // ユーザー名ごとの新規／撤去／張替え解除／修理解除 件数
     const metricsByUser = useMemo(() => {
@@ -572,10 +579,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                 {logs.map((log) => {
                                     const style = ACTION_STYLES[log.action] || ACTION_STYLES['更新'];
                                     const Icon = style.Icon;
+                                    const target = log.posterId ? posterById.get(log.posterId) : undefined;
+                                    const openable = !!target && !!onOpenPoster;
+                                    const Row = openable ? 'button' : 'div';
                                     return (
-                                        <div
+                                        <Row
                                             key={log.id}
-                                            className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                                            {...(openable ? { type: 'button' as const, onClick: () => onOpenPoster(target) } : {})}
+                                            className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-zinc-800 transition-colors ${openable ? 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/50'}`}
                                         >
                                             {/* アクションバッジ */}
                                             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${style.bg} ${style.text}`}>
@@ -585,8 +596,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
 
                                             {/* 内容 */}
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                                                <p className={`text-sm font-medium truncate ${openable ? 'text-indigo-700 dark:text-indigo-400' : 'text-gray-800 dark:text-gray-100'}`}>
                                                     {log.posterAddress || '（住所なし）'}
+                                                    {openable && <MapPin className="inline w-3 h-3 ml-1 -mt-0.5" />}
                                                 </p>
                                                 {log.diff && (
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
@@ -623,7 +635,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, showRemovedPins
                                                     {formatDate(log.changedAt)}
                                                 </p>
                                             </div>
-                                        </div>
+                                        </Row>
                                     );
                                 })}
                             </div>

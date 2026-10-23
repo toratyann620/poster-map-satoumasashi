@@ -134,6 +134,8 @@ function App() {
    * 寄せた先から地図が流れていく（仮ピンを立てるときに実際に起きた）。
    */
   const openPosterOnMap = useCallback((p: PosterPin) => {
+    // 管理者パネルから呼ばれることもあるので、地図画面へ戻してから開く
+    setCurrentView('map');
     setShowMyPage(false);
     setIsFollowing(false);
     setMapCenter({ lat: p.lat, lng: p.lng });
@@ -727,6 +729,7 @@ function App() {
           showRemovedPins={showRemovedPins}
           onToggleShowRemoved={handleToggleShowRemoved}
           pinTypes={pinTypes}
+          onOpenPoster={openPosterOnMap}
         />
       ) : (
         <>
