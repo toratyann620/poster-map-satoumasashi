@@ -57,7 +57,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="space-y-6 max-w-2xl mx-auto">
 
             {/* ===== ピン打ちモードの設定 ===== */}
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 sm:p-6">
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-zinc-800 pb-3 mb-2 flex items-center gap-2">
                     <Zap className="w-5 h-5 text-amber-500" />
                     ピン打ちモードの設定
@@ -77,7 +77,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <SlackMentionEditor />
 
             {/* ===== 表示設定 ===== */}
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 sm:p-6">
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-zinc-800 pb-3 mb-5 flex items-center gap-2">
                     <Settings className="w-5 h-5 text-indigo-500" />
                     表示設定
@@ -108,7 +108,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
 
             {/* ===== ピン種類管理 ===== */}
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 sm:p-6">
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-zinc-800 pb-3 mb-5 flex items-center gap-2">
                     <Tag className="w-5 h-5 text-indigo-500" />
                     ピンの種類管理
@@ -140,7 +140,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                                 </div>
                                 <button
                                     onClick={() => handleRemove(pt.name)}
-                                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                    // ⚠️ hover でしか出さないと、タッチ端末では押せない。常に出す
+                                    className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                     title="削除"
                                 >
                                     <Trash2 className="w-4 h-4" />
@@ -153,19 +154,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 {/* 新規追加フォーム */}
                 <div className="border-t border-gray-100 dark:border-zinc-800 pt-5">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">新しい種類を追加</p>
-                    <div className="flex gap-2 mb-3">
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
                         <input
                             type="text"
                             value={newName}
                             onChange={e => setNewName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
                             placeholder="例: 山田候補"
-                            className="flex-1 px-3 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-base sm:text-sm"
                         />
                         <button
                             onClick={handleAdd}
                             disabled={!newName.trim() || isAdding}
-                            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                            className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
                         >
                             <Plus className="w-4 h-4" />
                             追加
@@ -181,7 +182,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                                     key={c.value}
                                     onClick={() => setNewColor(c.value)}
                                     title={c.label}
-                                    className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                                    className={`w-9 h-9 sm:w-7 sm:h-7 rounded-full border-2 transition-transform hover:scale-110 ${
                                         newColor === c.value
                                             ? 'border-gray-800 dark:border-white scale-110'
                                             : 'border-transparent'

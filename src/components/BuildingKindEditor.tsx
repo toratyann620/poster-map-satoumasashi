@@ -59,7 +59,7 @@ export const BuildingKindEditor: React.FC = () => {
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-zinc-800 pb-3 mb-2 flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-teal-600" />
                 建物ピンの種類
@@ -100,7 +100,7 @@ export const BuildingKindEditor: React.FC = () => {
                     <label className="block">
                         <span className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">種類の名前</span>
                         <input value={newName} onChange={(e) => setNewName(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none"
+                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-base sm:text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none"
                             placeholder="例: 公民館" />
                     </label>
                     <div>
@@ -108,14 +108,14 @@ export const BuildingKindEditor: React.FC = () => {
                         <div className="flex flex-wrap gap-2">
                             {COLOR_OPTIONS.map((c) => (
                                 <button key={c.value} type="button" onClick={() => setNewColor(c.value)} title={c.label}
-                                    className={`w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110 ${newColor === c.value
+                                    className={`w-9 h-9 sm:w-7 sm:h-7 rounded-lg border-2 transition-transform hover:scale-110 ${newColor === c.value
                                         ? 'border-gray-800 dark:border-white scale-110' : 'border-transparent'}`}
                                     style={{ backgroundColor: c.value }} />
                             ))}
                         </div>
                     </div>
                     <button type="button" onClick={handleAdd} disabled={busy}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-bold transition-colors">
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-bold transition-colors">
                         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                         追加する
                     </button>

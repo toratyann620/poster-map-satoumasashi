@@ -298,7 +298,7 @@ const AdminShell: React.FC<{
                         )}
 
                         {tab === 'settings' && (
-                            <div className="overflow-y-auto h-full">
+                            <div className="overflow-y-auto h-full p-4 sm:p-6">
                                 <SettingsTab showRemovedPins={showRemovedPins} onToggleShowRemoved={toggleShowRemoved} />
                             </div>
                         )}

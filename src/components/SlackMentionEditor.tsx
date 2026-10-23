@@ -20,7 +20,7 @@ export const SlackMentionEditor: React.FC = () => {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
 
-    const field = 'w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none';
+    const field = 'w-full px-3 py-2.5 border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-base sm:text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none';
 
     const handleAdd = async () => {
         setError('');
@@ -54,7 +54,7 @@ export const SlackMentionEditor: React.FC = () => {
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-zinc-800 pb-3 mb-2 flex items-center gap-2">
                 <Hash className="w-5 h-5 text-indigo-500" />
                 Slack通知のメンション先
@@ -77,7 +77,7 @@ export const SlackMentionEditor: React.FC = () => {
                         <li key={t.mention} className="flex items-center gap-2 py-2.5">
                             <AtSign className="w-4 h-4 text-indigo-500 shrink-0" />
                             <span className="text-sm text-gray-800 dark:text-gray-200 flex-1 truncate">{t.label}</span>
-                            <code className="text-[11px] text-gray-400 shrink-0">{t.mention}</code>
+                            <code className="hidden sm:inline text-[11px] text-gray-400 shrink-0">{t.mention}</code>
                             {canEdit && (
                                 <button type="button" onClick={() => handleRemove(t.mention, t.label)}
                                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors shrink-0">
@@ -105,7 +105,7 @@ export const SlackMentionEditor: React.FC = () => {
                         </label>
                     </div>
                     <button type="button" onClick={handleAdd} disabled={busy}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-colors">
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-colors">
                         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                         追加する
                     </button>
