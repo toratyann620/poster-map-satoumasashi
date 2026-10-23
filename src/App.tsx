@@ -55,7 +55,6 @@ function App() {
     removeGreeting,
     deletePoster,
     posters,
-    loading: postersLoading,
     userRole
   } = usePosterData();
 
@@ -156,16 +155,28 @@ function App() {
   useEffect(() => {
     if (deepLink?.kind !== 'poster') return;
     if (!session.ready || !session.uid || session.problem || session.mustChangePassword) return;
-    if (postersLoading) return;
+
     const target = posters.find((p) => p.id === deepLink.id);
     if (target) {
       openPosterOnMap(target);
-    } else {
-      window.alert('リンク先のピンが見つかりませんでした。\n削除されたか、担当外の市区町村のピンの可能性があります。');
+      clearDeepLinkFromUrl();
+      setDeepLink(null);
+      return;
     }
-    clearDeepLinkFromUrl();
-    setDeepLink(null);
-  }, [deepLink, postersLoading, posters, openPosterOnMap, session.ready, session.uid, session.problem, session.mustChangePassword]);
+
+    // ⚠️ 見つからないからといってすぐ諦めない。
+    // ログイン直後は、所属事務所が確定してポスターの購読が張り直されるまでの
+    // 一瞬だけ「読み込み済み・0件」に見える。そこで判定すると、実際には
+    // 存在するピンを「見つかりません」と言ってしまう（実際に踏んだ）。
+    // この効果はポスターが届くたびに動くので、現れた時点で上の分岐に入る。
+    // しばらく待っても現れないときだけ知らせる。
+    const timer = window.setTimeout(() => {
+      window.alert('リンク先のピンが見つかりませんでした。\n削除されたか、担当外の市区町村のピンの可能性があります。');
+      clearDeepLinkFromUrl();
+      setDeepLink(null);
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [deepLink, posters, openPosterOnMap, session.ready, session.uid, session.problem, session.mustChangePassword]);
 
   // 入力欄に出す種類は、所属事務所が扱えるものだけに絞る。
   // 担当外の種別を選べてしまうと、保存の瞬間にルール側で拒否されて
